@@ -1,14 +1,14 @@
+# services/message_consumer.py
+
 """
 Message consumer service for processing messages from RabbitMQ.
 """
 
-import asyncio
-import json
 from typing import Dict, Any
 
 from ..interfaces.message_broker import MessageBroker
 from ..services.sentiment_service import SentimentService
-from ..models.sentiment import SentimentRequest
+from ..core.config import settings
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
@@ -48,10 +48,10 @@ class MessageConsumerService:
             # Declare necessary exchanges and queues
             await self._setup_message_infrastructure()
 
-            # Start consuming from raw articles queue
+            # Start consuming from article sentiment analysis queue
             await self.message_broker.consume(
-                queue="raw_articles_queue",
-                callback=self._process_raw_article_message,
+                queue=settings.rabbitmq_queue_raw_articles,
+                callback=self._process_article_sentiment_message,
                 auto_ack=False,
             )
 
@@ -76,24 +76,28 @@ class MessageConsumerService:
         try:
             # Declare exchanges
             await self.message_broker.declare_exchange(
-                "news_crawler_exchange", "topic", durable=True
+                settings.rabbitmq_exchange, "topic", durable=True
             )
             await self.message_broker.declare_exchange(
                 "sentiment_analysis_exchange", "topic", durable=True
             )
 
             # Declare queues
-            await self.message_broker.declare_queue("raw_articles_queue", durable=True)
             await self.message_broker.declare_queue(
-                "processed_sentiments_queue", durable=True
+                settings.rabbitmq_queue_raw_articles, durable=True
+            )
+            await self.message_broker.declare_queue(
+                settings.rabbitmq_queue_processed, durable=True
             )
 
             # Bind queues to exchanges
             await self.message_broker.bind_queue(
-                "raw_articles_queue", "news_crawler_exchange", "article.crawled"
+                settings.rabbitmq_queue_raw_articles,
+                settings.rabbitmq_exchange,
+                "article.sentiment_analysis",
             )
             await self.message_broker.bind_queue(
-                "processed_sentiments_queue",
+                settings.rabbitmq_queue_processed,
                 "sentiment_analysis_exchange",
                 "sentiment.processed",
             )
@@ -104,49 +108,50 @@ class MessageConsumerService:
             logger.error(f"Failed to setup message infrastructure: {str(e)}")
             raise
 
-    async def _process_raw_article_message(self, message: Dict[str, Any]) -> None:
+    async def _process_article_sentiment_message(self, message: Dict[str, Any]) -> None:
         """
-        Process a raw article message from news crawler.
+        Process an article message for sentiment analysis.
 
         Args:
-            message: Raw article message data
+            message: Article message data from news crawler
         """
         try:
-            logger.info(
-                f"Processing raw article message: {message.get('id', 'unknown')}"
-            )
-
-            # Extract article data
             article_id = message.get("id")
             title = message.get("title", "")
             content = message.get("content", "")
             url = message.get("url")
+            search_query = message.get("search_query", "")
+
+            logger.info(f"Processing sentiment analysis for article: {article_id}")
 
             if not article_id or not content:
                 logger.warning("Skipping message with missing required fields")
                 return
 
-            # Create sentiment request
-            request = SentimentRequest(
-                text=content,
-                title=title,
-                source_url=url,
-            )
+            # Combine title and content for better context
+            analysis_text = f"{title}\n\n{content}" if title else content
+
+            # Truncate if too long (API limits)
+            if len(analysis_text) > 8000:
+                analysis_text = analysis_text[:8000] + "..."
+                logger.debug(f"Truncated analysis text for article {article_id}")
 
             # Analyze sentiment
             result = await self.sentiment_service.analyze_text(
-                text=content,
+                text=analysis_text,
                 title=title,
                 article_id=article_id,
                 source_url=url,
                 save_result=True,
             )
 
-            # Publish processed sentiment
+            # Publish processed sentiment result
             sentiment_message = {
                 "article_id": article_id,
                 "url": url,
                 "title": title,
+                "content_preview": content[:200] if content else "",
+                "search_query": search_query,
                 "sentiment_label": result.label.value,
                 "scores": {
                     "positive": result.scores.positive,
@@ -155,20 +160,25 @@ class MessageConsumerService:
                 },
                 "confidence": result.confidence,
                 "reasoning": result.reasoning,
-                "processed_at": str(message.get("created_at", "")),
+                "processed_at": message.get("search_timestamp", ""),
+                "metadata": message.get("metadata", {}),
             }
 
+            # Publish to processed sentiments queue
             await self.message_broker.publish(
                 exchange="sentiment_analysis_exchange",
                 routing_key="sentiment.processed",
                 message=sentiment_message,
             )
 
-            logger.info(f"Successfully processed article {article_id}: {result.label}")
+            logger.info(
+                f"Successfully processed sentiment for article {article_id}: {result.label} (confidence: {result.confidence:.2f})"
+            )
 
         except Exception as e:
-            logger.error(f"Failed to process raw article message: {str(e)}")
+            logger.error(f"Failed to process article sentiment message: {str(e)}")
             # Don't raise exception to avoid requeue loops
+            # In production, might want to send to dead letter queue
 
     def is_running(self) -> bool:
         """Check if consumer is running."""

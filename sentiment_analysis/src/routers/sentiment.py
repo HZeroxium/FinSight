@@ -1,3 +1,5 @@
+# routers/sentiment.py
+
 """
 REST API routes for sentiment analysis operations.
 """
@@ -15,7 +17,6 @@ from ..schemas.sentiment_schemas import (
     SentimentSearchRequestSchema,
     SentimentSearchResponseSchema,
     SentimentAggregationSchema,
-    SentimentErrorSchema,
 )
 from ..schemas import HealthCheckSchema, ErrorResponseSchema
 from ..services.sentiment_service import SentimentService

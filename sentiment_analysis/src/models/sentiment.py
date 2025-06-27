@@ -1,3 +1,5 @@
+# models/sentiment.py
+
 """
 Data models for sentiment analysis operations and persistence.
 """

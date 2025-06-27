@@ -1,3 +1,5 @@
+# adapters/__init__.py
+
 """
 External service adapters and implementations.
 """

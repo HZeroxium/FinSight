@@ -143,12 +143,3 @@ async def health_check(
                 error="ServiceUnavailable", message=f"Health check failed: {str(e)}"
             ).model_dump(),
         )
-
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return JSONResponse(
-            status_code=503,
-            content=ErrorResponseSchema(
-                error="ServiceUnavailable", message=f"Health check failed: {str(e)}"
-            ).model_dump(),
-        )

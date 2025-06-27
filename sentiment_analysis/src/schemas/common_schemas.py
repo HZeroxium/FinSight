@@ -1,8 +1,10 @@
+# schemas/common_schemas.py
+
 """
 Common API schemas used across the sentiment analysis service.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 
@@ -13,7 +15,7 @@ class HealthCheckSchema(BaseModel):
     status: str = Field(..., description="Service health status")
     service: str = Field(..., description="Service name")
     version: str = Field("1.0.0", description="Service version")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.now(timezone.utc))
     dependencies: Optional[Dict[str, str]] = Field(
         None, description="Dependency health status"
     )
@@ -28,7 +30,7 @@ class ErrorResponseSchema(BaseModel):
     details: Optional[Dict[str, Any]] = Field(
         None, description="Additional error details"
     )
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.now(timezone.utc))
     request_id: Optional[str] = Field(None, description="Request ID for tracking")
 
 

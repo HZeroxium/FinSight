@@ -4,6 +4,7 @@
 FastAPI application for the news crawler service.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +12,12 @@ from fastapi.responses import JSONResponse
 
 from .core.config import settings
 from .routers import search, crawler
-from .utils.dependencies import get_search_service, get_article_repository
+from .services.sentiment_consumer import SentimentConsumerService
+from .utils.dependencies import (
+    get_search_service,
+    get_article_repository,
+    get_message_broker,
+)
 from .common.logger import LoggerFactory, LoggerType, LogLevel
 
 
@@ -25,17 +31,23 @@ logger = LoggerFactory.get_logger(
     log_file="logs/news_crawler.log" if not settings.debug else None,
 )
 
+# Global variable for sentiment consumer
+sentiment_consumer: SentimentConsumerService = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Application lifespan manager.
     """
+    global sentiment_consumer
+
     logger.info(f"Starting {settings.app_name}")
 
     # Initialize services
     search_service = get_search_service()
     article_repository = get_article_repository()
+    message_broker = get_message_broker()
 
     # Initialize database indexes
     try:
@@ -43,6 +55,17 @@ async def lifespan(app: FastAPI):
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
+
+    # Initialize sentiment consumer
+    try:
+        sentiment_consumer = SentimentConsumerService(message_broker=message_broker)
+
+        # Start consuming in background task
+        asyncio.create_task(sentiment_consumer.start_consuming())
+        logger.info("Sentiment consumer started")
+
+    except Exception as e:
+        logger.error(f"Failed to start sentiment consumer: {str(e)}")
 
     # Verify search engine connectivity
     try:
@@ -58,8 +81,10 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     try:
+        if sentiment_consumer:
+            await sentiment_consumer.stop_consuming()
         await article_repository.close()
-        logger.info("Database connections closed")
+        logger.info("All services cleaned up successfully")
     except Exception as e:
         logger.error(f"Error during cleanup: {str(e)}")
 
@@ -103,18 +128,23 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
+    global sentiment_consumer
+
     try:
         search_service = get_search_service()
         is_healthy = await search_service.health_check()
 
+        consumer_running = sentiment_consumer._running if sentiment_consumer else False
+
         return {
-            "status": "healthy" if is_healthy else "degraded",
+            "status": "healthy" if is_healthy and consumer_running else "degraded",
             "service": settings.app_name,
             "search_engine": "tavily",
             "components": {
                 "search_service": "healthy" if is_healthy else "unhealthy",
                 "database": "healthy",  # Would check in production
                 "message_broker": "healthy",  # Would check in production
+                "sentiment_consumer": "running" if consumer_running else "stopped",
             },
         }
     except Exception as e:
@@ -127,6 +157,21 @@ async def health_check():
                 "error": str(e),
             },
         )
+
+
+@app.get("/metrics")
+async def get_metrics():
+    """Get service metrics."""
+    global sentiment_consumer
+
+    return {
+        "service": settings.app_name,
+        "consumer_running": (
+            sentiment_consumer._running if sentiment_consumer else False
+        ),
+        "uptime": "N/A",  # Would track in production
+        "processed_messages": "N/A",  # Would track in production
+    }
 
 
 # Global exception handler

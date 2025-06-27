@@ -1,8 +1,9 @@
+# services/sentiment_service.py
+
 """
 Sentiment analysis service layer for business logic.
 """
 
-import time
 from typing import List, Optional
 from datetime import datetime
 from urllib.parse import urlparse
@@ -18,6 +19,7 @@ from ..models.sentiment import (
 )
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 from ..common.cache import CacheFactory, CacheType, cache_result
+from ..core.config import settings
 
 logger = LoggerFactory.get_logger(
     name="sentiment-service", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
@@ -45,12 +47,28 @@ class SentimentService:
         self.repository = repository
 
         # Initialize cache for sentiment results
-        self._cache = CacheFactory.get_cache(
-            name="sentiment_cache",
-            cache_type=CacheType.MEMORY,
-            max_size=1000,
-            default_ttl=3600,  # 1 hour
-        )
+        try:
+            self._cache = CacheFactory.get_cache(
+                name="sentiment_cache",
+                cache_type=CacheType.REDIS,
+                host="localhost",
+                port=6379,
+                db=1,  # Different DB from news crawler
+                key_prefix="sentiment:",
+                serialization="json",
+            )
+            logger.info("Sentiment service initialized with Redis cache")
+        except Exception as cache_error:
+            logger.warning(
+                f"Failed to initialize Redis cache: {cache_error}, falling back to memory cache"
+            )
+            self._cache = CacheFactory.get_cache(
+                name="sentiment_cache_memory",
+                cache_type=CacheType.MEMORY,
+                max_size=1000,
+                default_ttl=settings.cache_ttl_seconds,
+            )
+            logger.info("Sentiment service initialized with memory cache fallback")
 
         logger.info("Sentiment service initialized successfully")
 
@@ -64,10 +82,10 @@ class SentimentService:
         save_result: bool = True,
     ) -> SentimentAnalysisResult:
         """
-        Analyze sentiment of text with optional saving.
+        Analyze sentiment of a single text.
 
         Args:
-            text: Text to analyze
+            text: Text content to analyze
             title: Optional title for context
             article_id: Optional article ID for storage
             source_url: Optional source URL
@@ -76,9 +94,11 @@ class SentimentService:
         Returns:
             SentimentAnalysisResult: Analysis results
         """
-        logger.info(f"Analyzing sentiment for text (length: {len(text)})")
+        logger.info(f"Analyzing sentiment for text length: {len(text)}")
 
         try:
+            import time
+
             start_time = time.time()
 
             # Perform sentiment analysis
@@ -102,11 +122,9 @@ class SentimentService:
             )
             return result
 
-        except SentimentAnalysisError:
-            raise
         except Exception as e:
-            logger.error(f"Unexpected error in sentiment analysis: {str(e)}")
-            raise SentimentAnalysisError(f"Sentiment analysis failed: {str(e)}")
+            logger.error(f"Sentiment analysis failed: {str(e)}")
+            raise SentimentAnalysisError(f"Analysis failed: {str(e)}")
 
     async def analyze_batch(
         self, requests: List[SentimentRequest], save_results: bool = True
@@ -124,34 +142,26 @@ class SentimentService:
         logger.info(f"Starting batch sentiment analysis for {len(requests)} items")
 
         try:
-            # Perform batch analysis
+            # Use the analyzer's batch processing capability
             results = await self.analyzer.analyze_batch(requests)
 
             # Save results if requested
             if save_results:
-                save_tasks = []
                 for i, (request, result) in enumerate(zip(requests, results)):
-                    if hasattr(request, "article_id") and request.article_id:
-                        save_tasks.append(
-                            self._save_sentiment_result(
-                                result=result,
-                                article_id=getattr(request, "article_id", f"batch_{i}"),
-                                text=request.text,
-                                title=request.title,
-                                source_url=(
-                                    str(request.source_url)
-                                    if request.source_url
-                                    else None
-                                ),
-                                processing_time=0.0,  # Not tracked for batch
-                            )
+                    try:
+                        article_id = f"batch_{i}_{int(datetime.now().timestamp())}"
+                        await self._save_sentiment_result(
+                            result=result,
+                            article_id=article_id,
+                            text=request.text,
+                            title=request.title,
+                            source_url=(
+                                str(request.source_url) if request.source_url else None
+                            ),
+                            processing_time=0.0,
                         )
-
-                # Execute save tasks concurrently
-                if save_tasks:
-                    import asyncio
-
-                    await asyncio.gather(*save_tasks, return_exceptions=True)
+                    except Exception as e:
+                        logger.warning(f"Failed to save batch result {i}: {str(e)}")
 
             logger.info(f"Batch sentiment analysis completed: {len(results)} results")
             return results
@@ -173,9 +183,17 @@ class SentimentService:
             Optional[ProcessedSentiment]: Stored sentiment or None
         """
         try:
-            return await self.repository.get_sentiment_by_article_id(article_id)
+            sentiment = await self.repository.get_sentiment_by_article_id(article_id)
+            if sentiment:
+                logger.debug(f"Retrieved sentiment for article: {article_id}")
+            else:
+                logger.debug(f"No sentiment found for article: {article_id}")
+            return sentiment
+
         except Exception as e:
-            logger.error(f"Failed to get sentiment by article ID: {str(e)}")
+            logger.error(
+                f"Failed to retrieve sentiment for article {article_id}: {str(e)}"
+            )
             return None
 
     async def search_sentiments(
@@ -191,7 +209,10 @@ class SentimentService:
             List[ProcessedSentiment]: Matching sentiments
         """
         try:
-            return await self.repository.search_sentiments(filter_params)
+            sentiments = await self.repository.search_sentiments(filter_params)
+            logger.info(f"Found {len(sentiments)} sentiments matching filters")
+            return sentiments
+
         except Exception as e:
             logger.error(f"Failed to search sentiments: {str(e)}")
             return []
@@ -214,9 +235,16 @@ class SentimentService:
             SentimentAggregation: Aggregated statistics
         """
         try:
-            return await self.repository.get_sentiment_aggregation(
-                date_from=date_from, date_to=date_to, source_domain=source_domain
+            aggregation = await self.repository.get_sentiment_aggregation(
+                date_from=date_from,
+                date_to=date_to,
+                source_domain=source_domain,
             )
+            logger.info(
+                f"Retrieved sentiment aggregation: {aggregation.total_count} total items"
+            )
+            return aggregation
+
         except Exception as e:
             logger.error(f"Failed to get sentiment aggregation: {str(e)}")
             # Return empty aggregation as fallback
@@ -253,13 +281,10 @@ class SentimentService:
             # Extract source domain from URL
             source_domain = None
             if source_url:
-                try:
-                    parsed_url = urlparse(source_url)
-                    source_domain = parsed_url.netloc
-                except Exception:
-                    pass
+                parsed_url = urlparse(source_url)
+                source_domain = parsed_url.netloc
 
-            # Create processed sentiment
+            # Create processed sentiment object
             processed_sentiment = ProcessedSentiment(
                 article_id=article_id,
                 url=source_url,
@@ -269,8 +294,9 @@ class SentimentService:
                 sentiment_scores=result.scores,
                 confidence=result.confidence,
                 reasoning=result.reasoning,
+                processed_at=datetime.utcnow(),
                 processing_time_ms=processing_time,
-                model_version=getattr(self.analyzer, "model", "unknown"),
+                model_version=settings.openai_model,
                 source_domain=source_domain,
             )
 
@@ -280,24 +306,47 @@ class SentimentService:
 
         except Exception as e:
             logger.error(f"Failed to save sentiment result: {str(e)}")
-            # Don't raise exception here to avoid breaking the main analysis flow
+            # Don't raise exception - saving failure shouldn't break analysis
 
     async def health_check(self) -> bool:
-        """Check service health."""
+        """
+        Check sentiment service health.
+
+        Returns:
+            bool: True if service is healthy
+        """
         try:
             # Check analyzer health
             analyzer_healthy = await self.analyzer.health_check()
+            logger.debug(f"Analyzer health: {analyzer_healthy}")
 
-            # Check repository health (simple test)
+            # Check repository health (try a simple operation)
             repository_healthy = True
             try:
-                test_filter = SentimentQueryFilter(limit=1)
-                await self.repository.search_sentiments(test_filter)
+                # Try to check if a non-existent sentiment exists
+                await self.repository.sentiment_exists("health_check_test")
             except Exception:
                 repository_healthy = False
 
-            is_healthy = analyzer_healthy and repository_healthy
-            logger.debug(f"Sentiment service health check: {is_healthy}")
+            logger.debug(f"Repository health: {repository_healthy}")
+
+            # Check cache health
+            cache_healthy = True
+            try:
+                test_key = "health_check_test"
+                test_value = {"test": True}
+                self._cache.set(test_key, test_value, ttl=60)
+                get_result = self._cache.get(test_key)
+                cache_healthy = get_result == test_value
+                self._cache.delete(test_key)
+            except Exception:
+                cache_healthy = False
+
+            logger.debug(f"Cache health: {cache_healthy}")
+
+            is_healthy = analyzer_healthy and repository_healthy and cache_healthy
+            logger.debug(f"Overall health: {is_healthy}")
+
             return is_healthy
 
         except Exception as e:

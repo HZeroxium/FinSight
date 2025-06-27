@@ -1,3 +1,5 @@
+# interfaces/sentiment_analyzer.py
+
 """
 Sentiment analyzer interface for text analysis.
 """

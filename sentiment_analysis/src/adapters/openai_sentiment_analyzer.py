@@ -1,3 +1,5 @@
+# adapters/openai_sentiment_analyzer.py
+
 """
 OpenAI-based sentiment analyzer using LangChain with structured output.
 """

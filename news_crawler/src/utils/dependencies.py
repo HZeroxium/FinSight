@@ -1,16 +1,16 @@
 # utils/dependencies.py
 
 """
-Dependency injection utilities.
+Dependency injection utilities for news crawler service.
 """
 
 from functools import lru_cache
 
 from ..adapters.tavily_search_engine import TavilySearchEngine
 from ..adapters.rabbitmq_broker import RabbitMQBroker
+from ..repositories.article_repository import ArticleRepository
 from ..services.search_service import SearchService
 from ..services.crawler_service import CrawlerService
-from ..repositories.article_repository import ArticleRepository
 from ..core.config import settings
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
@@ -54,7 +54,8 @@ def get_article_repository() -> ArticleRepository:
     """
     logger.info("Creating article repository instance")
     return ArticleRepository(
-        mongo_url=settings.mongodb_url, database_name=settings.mongodb_database
+        mongo_url=settings.mongodb_url,
+        database_name=settings.mongodb_database,
     )
 
 
@@ -67,13 +68,7 @@ def get_crawler_service() -> CrawlerService:
         CrawlerService: Configured crawler service
     """
     logger.info("Creating crawler service instance")
-    return CrawlerService(
-        article_repository=get_article_repository(),
-        message_broker=get_message_broker(),
-        max_concurrent=settings.max_concurrent_crawls,
-        timeout=settings.crawl_timeout,
-        retry_attempts=settings.crawl_retry_attempts,
-    )
+    return CrawlerService()
 
 
 @lru_cache()
@@ -85,7 +80,12 @@ def get_search_service() -> SearchService:
         SearchService: Configured search service
     """
     logger.info("Creating search service instance")
-    search_engine = get_search_engine()
+    return SearchService(
+        search_engine=get_search_engine(),
+        message_broker=get_message_broker(),
+        article_repository=get_article_repository(),
+        crawler_service=get_crawler_service(),
+    )
     message_broker = get_message_broker()
     article_repository = get_article_repository()
     crawler_service = get_crawler_service()

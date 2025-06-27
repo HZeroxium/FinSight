@@ -27,11 +27,11 @@ class Settings(BaseSettings):
     mongodb_collection_articles: str = "articles"
     mongodb_collection_sources: str = "sources"
 
-    # RabbitMQ configuration
+    # RabbitMQ configuration - synchronized with sentiment analysis
     rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
     rabbitmq_exchange: str = "news_crawler_exchange"
-    rabbitmq_queue_articles: str = "processed_articles_queue"
-    rabbitmq_queue_sentiment: str = "sentiment_analysis_queue"
+    rabbitmq_queue_raw_articles: str = "raw_articles_queue"
+    rabbitmq_queue_processed: str = "processed_sentiments_queue"
 
     # Crawler configuration
     enable_advanced_crawling: bool = True
@@ -76,7 +76,6 @@ class Settings(BaseSettings):
             raise ValueError("max_concurrent_crawls must be between 1 and 100")
         return v
 
-    # Config
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -85,4 +84,5 @@ class Settings(BaseSettings):
 
 
 # Global settings instance
+settings = Settings()
 settings = Settings()

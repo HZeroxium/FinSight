@@ -1,3 +1,5 @@
+# core/config.py
+
 """
 Configuration management for the sentiment analysis service.
 """
@@ -28,9 +30,9 @@ class Settings(BaseSettings):
     mongodb_collection_sentiments: str = "sentiments"
     mongodb_collection_articles: str = "processed_articles"
 
-    # RabbitMQ configuration
+    # RabbitMQ configuration - synchronized with news crawler
     rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
-    rabbitmq_exchange: str = "sentiment_analysis_exchange"
+    rabbitmq_exchange: str = "news_crawler_exchange"  # Same as news crawler
     rabbitmq_queue_raw_articles: str = "raw_articles_queue"
     rabbitmq_queue_processed: str = "processed_sentiments_queue"
 

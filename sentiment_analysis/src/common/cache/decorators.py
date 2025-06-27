@@ -3,10 +3,17 @@
 import functools
 import hashlib
 import json
+import asyncio
 from typing import Any, Optional, Callable
 
 from .cache_interface import CacheInterface
 from .cache_factory import CacheFactory, CacheType
+from ..logger import LoggerFactory, LoggerType, LogLevel
+
+# Create logger for cache decorators
+logger = LoggerFactory.get_logger(
+    name="cache-decorators", logger_type=LoggerType.STANDARD, level=LogLevel.DEBUG
+)
 
 
 def cache_result(
@@ -17,62 +24,171 @@ def cache_result(
     include_kwargs: bool = True,
     exclude_args: Optional[list] = None,
     exclude_kwargs: Optional[list] = None,
-    cache_type: CacheType = CacheType.MEMORY,
+    cache_type: CacheType = CacheType.REDIS,
     cache_name: str = "decorator_cache",
     **cache_kwargs,
 ):
     """
-    Decorator to cache function results with TTL support
-
-    Args:
-        cache: Cache instance to use (if None, creates one)
-        ttl: Time to live in seconds
-        key_prefix: Prefix for cache keys
-        include_args: Include positional arguments in cache key
-        include_kwargs: Include keyword arguments in cache key
-        exclude_args: List of positional argument indices to exclude
-        exclude_kwargs: List of keyword argument names to exclude
-        cache_type: Type of cache to create if cache is None
-        cache_name: Name for the cache instance
-        **cache_kwargs: Additional arguments for cache creation
-
-    Returns:
-        Decorated function
+    Decorator to cache function results with TTL support and enhanced logging.
+    Supports both sync and async functions.
     """
 
     def decorator(func: Callable) -> Callable:
         # Get or create cache instance
         if cache is not None:
             cache_instance = cache
+            logger.debug(f"Using provided cache instance for {func.__name__}")
         else:
-            cache_instance = CacheFactory.get_cache(
-                name=cache_name, cache_type=cache_type, **cache_kwargs
-            )
+            try:
+                cache_instance = CacheFactory.get_cache(
+                    name=cache_name, cache_type=cache_type, **cache_kwargs
+                )
+                logger.debug(
+                    f"Created {cache_type.value} cache instance for {func.__name__}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to create cache instance for {func.__name__}: {e}"
+                )
+                # Fallback to memory cache
+                cache_instance = CacheFactory.get_cache(
+                    name=f"{cache_name}_fallback", cache_type=CacheType.MEMORY
+                )
+                logger.warning(f"Using memory cache fallback for {func.__name__}")
 
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            # Generate cache key
-            cache_key = _generate_cache_key(
-                func=func,
-                args=args,
-                kwargs=kwargs,
-                key_prefix=key_prefix,
-                include_args=include_args,
-                include_kwargs=include_kwargs,
-                exclude_args=exclude_args or [],
-                exclude_kwargs=exclude_kwargs or [],
-            )
+        # Check if function is async
+        is_async = asyncio.iscoroutinefunction(func)
 
-            # Try to get from cache
-            cached_result = cache_instance.get(cache_key)
-            if cached_result is not None:
-                return cached_result
+        if is_async:
 
-            # Execute function and cache result
-            result = func(*args, **kwargs)
-            cache_instance.set(cache_key, result, ttl)
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                # Generate cache key
+                try:
+                    cache_key = _generate_cache_key(
+                        func=func,
+                        args=args,
+                        kwargs=kwargs,
+                        key_prefix=key_prefix,
+                        include_args=include_args,
+                        include_kwargs=include_kwargs,
+                        exclude_args=exclude_args or [],
+                        exclude_kwargs=exclude_kwargs or [],
+                    )
+                    logger.debug(
+                        f"Generated cache key for {func.__name__}: {cache_key}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to generate cache key for {func.__name__}: {e}"
+                    )
+                    # Execute function without caching
+                    return await func(*args, **kwargs)
 
-            return result
+                # Try to get from cache
+                try:
+                    cached_result = cache_instance.get(cache_key)
+                    if cached_result is not None:
+                        logger.debug(f"Cache hit for {func.__name__}: {cache_key}")
+                        return cached_result
+                    else:
+                        logger.debug(f"Cache miss for {func.__name__}: {cache_key}")
+                except Exception as e:
+                    logger.error(f"Cache get failed for {func.__name__}: {e}")
+                    # Continue to execute function
+
+                # Execute function and cache result
+                try:
+                    result = await func(*args, **kwargs)
+
+                    # Try to cache the result
+                    try:
+                        cache_success = cache_instance.set(cache_key, result, ttl)
+                        if cache_success:
+                            logger.debug(
+                                f"Cached result for {func.__name__}: {cache_key} (TTL: {ttl})"
+                            )
+                        else:
+                            logger.warning(
+                                f"Failed to cache result for {func.__name__}: {cache_key}"
+                            )
+                    except Exception as cache_error:
+                        logger.error(
+                            f"Cache set failed for {func.__name__}: {cache_error}"
+                        )
+
+                    return result
+
+                except Exception as e:
+                    logger.error(f"Function execution failed for {func.__name__}: {e}")
+                    raise
+
+            wrapper = async_wrapper
+        else:
+
+            @functools.wraps(func)
+            def sync_wrapper(*args, **kwargs):
+                # Generate cache key
+                try:
+                    cache_key = _generate_cache_key(
+                        func=func,
+                        args=args,
+                        kwargs=kwargs,
+                        key_prefix=key_prefix,
+                        include_args=include_args,
+                        include_kwargs=include_kwargs,
+                        exclude_args=exclude_args or [],
+                        exclude_kwargs=exclude_kwargs or [],
+                    )
+                    logger.debug(
+                        f"Generated cache key for {func.__name__}: {cache_key}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to generate cache key for {func.__name__}: {e}"
+                    )
+                    # Execute function without caching
+                    return func(*args, **kwargs)
+
+                # Try to get from cache
+                try:
+                    cached_result = cache_instance.get(cache_key)
+                    if cached_result is not None:
+                        logger.debug(f"Cache hit for {func.__name__}: {cache_key}")
+                        return cached_result
+                    else:
+                        logger.debug(f"Cache miss for {func.__name__}: {cache_key}")
+                except Exception as e:
+                    logger.error(f"Cache get failed for {func.__name__}: {e}")
+                    # Continue to execute function
+
+                # Execute function and cache result
+                try:
+                    result = func(*args, **kwargs)
+
+                    # Try to cache the result
+                    try:
+                        cache_success = cache_instance.set(cache_key, result, ttl)
+                        if cache_success:
+                            logger.debug(
+                                f"Cached result for {func.__name__}: {cache_key} (TTL: {ttl})"
+                            )
+                        else:
+                            logger.warning(
+                                f"Failed to cache result for {func.__name__}: {cache_key}"
+                            )
+                    except Exception as cache_error:
+                        logger.error(
+                            f"Cache set failed for {func.__name__}: {cache_error}"
+                        )
+
+                    return result
+
+                except Exception as e:
+                    logger.error(f"Function execution failed for {func.__name__}: {e}")
+                    raise
+
+            wrapper = sync_wrapper
 
         # Add cache management methods to wrapper
         wrapper._cache_instance = cache_instance
@@ -81,34 +197,60 @@ def cache_result(
 
         def clear_cache():
             """Clear all cached results for this function"""
-            prefix = f"{key_prefix}{func.__module__}.{func.__name__}"
-            keys = cache_instance.keys(f"{prefix}*")
-            for key in keys:
-                cache_instance.delete(key)
+            try:
+                prefix = f"{key_prefix}{func.__module__}.{func.__name__}"
+                keys = cache_instance.keys(f"{prefix}*")
+                cleared_count = 0
+                for key in keys:
+                    if cache_instance.delete(key):
+                        cleared_count += 1
+                logger.info(
+                    f"Cleared {cleared_count} cache entries for {func.__name__}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to clear cache for {func.__name__}: {e}")
 
         def get_cache_info():
             """Get cache information for this function"""
-            prefix = f"{key_prefix}{func.__module__}.{func.__name__}"
-            keys = cache_instance.keys(f"{prefix}*")
-            return {
-                "cached_entries": len(keys),
-                "cache_keys": keys,
-                "cache_stats": cache_instance.get_stats(),
-            }
+            try:
+                prefix = f"{key_prefix}{func.__module__}.{func.__name__}"
+                keys = cache_instance.keys(f"{prefix}*")
+                stats = cache_instance.get_stats()
+                info = {
+                    "cached_entries": len(keys),
+                    "cache_keys": keys,
+                    "cache_stats": stats,
+                    "cache_type": type(cache_instance).__name__,
+                }
+                logger.debug(
+                    f"Cache info for {func.__name__}: {info['cached_entries']} entries"
+                )
+                return info
+            except Exception as e:
+                logger.error(f"Failed to get cache info for {func.__name__}: {e}")
+                return {"error": str(e)}
 
         def invalidate_cache(*args, **kwargs):
             """Invalidate cache for specific arguments"""
-            cache_key = _generate_cache_key(
-                func=func,
-                args=args,
-                kwargs=kwargs,
-                key_prefix=key_prefix,
-                include_args=include_args,
-                include_kwargs=include_kwargs,
-                exclude_args=exclude_args or [],
-                exclude_kwargs=exclude_kwargs or [],
-            )
-            return cache_instance.delete(cache_key)
+            try:
+                cache_key = _generate_cache_key(
+                    func=func,
+                    args=args,
+                    kwargs=kwargs,
+                    key_prefix=key_prefix,
+                    include_args=include_args,
+                    include_kwargs=include_kwargs,
+                    exclude_args=exclude_args or [],
+                    exclude_kwargs=exclude_kwargs or [],
+                )
+                result = cache_instance.delete(cache_key)
+                logger.debug(
+                    f"Invalidated cache for {func.__name__}: {cache_key} (success: {result})"
+                )
+                return result
+            except Exception as e:
+                logger.error(f"Failed to invalidate cache for {func.__name__}: {e}")
+                return False
 
         wrapper.clear_cache = clear_cache
         wrapper.get_cache_info = get_cache_info
@@ -137,6 +279,7 @@ def _generate_cache_key(
     if include_args and args:
         filtered_args = [arg for i, arg in enumerate(args) if i not in exclude_args]
         if filtered_args:
+            # Serialize args safely for key generation
             args_str = _serialize_for_key(filtered_args)
             key_parts.append(f"args:{args_str}")
 
@@ -155,7 +298,9 @@ def _generate_cache_key(
     # Hash the key if it's too long
     if len(key) > 200:
         key_hash = hashlib.md5(key.encode("utf-8")).hexdigest()
-        return f"{key_prefix}hash:{key_hash}"
+        final_key = f"{key_prefix}hash:{key_hash}"
+        logger.debug(f"Generated hashed cache key (original too long): {final_key}")
+        return final_key
 
     return key
 
@@ -163,6 +308,12 @@ def _generate_cache_key(
 def _serialize_for_key(obj: Any) -> str:
     """Serialize object for use in cache key"""
     try:
+        # Handle Pydantic models
+        if hasattr(obj, "model_dump"):
+            return json.dumps(obj.model_dump(), sort_keys=True, default=str)
+        # Handle dict-like objects
+        elif hasattr(obj, "__dict__"):
+            return json.dumps(obj.__dict__, sort_keys=True, default=str)
         # Try JSON serialization first (fastest and most readable)
         return json.dumps(obj, sort_keys=True, default=str)
     except (TypeError, ValueError):

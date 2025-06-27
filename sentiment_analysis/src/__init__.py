@@ -1,4 +1,4 @@
-# sentiment_analysis/src/__init__.py
+# __init__.py
 """
 Sentiment Analysis Service - AI-powered sentiment analysis microservice.
 """

@@ -1,3 +1,5 @@
+# schemas/__init__.py
+
 """
 API schemas for request/response DTOs.
 """

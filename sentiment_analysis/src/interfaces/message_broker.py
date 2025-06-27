@@ -1,10 +1,11 @@
+# interfaces/message_broker.py
+
 """
 Message broker interface for async communication.
 """
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Callable
-from pydantic import BaseModel
 
 
 class MessageBrokerError(Exception):

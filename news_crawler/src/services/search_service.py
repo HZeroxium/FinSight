@@ -17,7 +17,8 @@ from ..schemas.search_schemas import (
 from ..services.crawler_service import CrawlerService
 from ..repositories.article_repository import ArticleRepository
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
-from ..common.cache import CacheFactory, CacheType, cache_result
+from ..common.cache import CacheFactory, CacheType
+from ..core.config import settings
 
 logger = LoggerFactory.get_logger(
     name="search-service", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
@@ -60,8 +61,6 @@ class SearchService:
                 db=0,
                 key_prefix="search:",
                 serialization="json",
-                max_size=1000,
-                default_ttl=300,  # 5 minutes
             )
             logger.info("Search service initialized with Redis cache")
         except Exception as cache_error:
@@ -70,15 +69,14 @@ class SearchService:
             )
             self._cache = CacheFactory.get_cache(
                 name="search_cache_memory",
-                cache_type=CacheType.REDIS,
+                cache_type=CacheType.MEMORY,
                 max_size=1000,
-                default_ttl=300,
+                default_ttl=settings.cache_ttl_seconds,
             )
             logger.info("Search service initialized with memory cache fallback")
 
         logger.info("Search service initialized successfully")
 
-    @cache_result(ttl=3600, cache_type=CacheType.REDIS, key_prefix="search_results:")
     async def search_news(self, request: SearchRequestSchema) -> SearchResponseSchema:
         """
         Search for news articles with business logic applied.
@@ -92,6 +90,23 @@ class SearchService:
         logger.info(
             f"Processing search request: {request.query} (crawler: {request.enable_crawler})"
         )
+
+        # Generate cache key for this request
+        cache_key = self._generate_cache_key(request)
+
+        # Try to get from cache
+        try:
+            cached_result = self._cache.get(cache_key)
+            if cached_result is not None:
+                logger.info(f"Cache hit for search request: {request.query}")
+                cached_response = SearchResponseSchema(**cached_result)
+
+                # Still publish to sentiment analysis queue for cached results
+                await self._publish_articles_for_sentiment_analysis(cached_response)
+
+                return cached_response
+        except Exception as e:
+            logger.warning(f"Cache get failed: {e}")
 
         # Validate and enhance request
         enhanced_request = self._enhance_search_request(request)
@@ -112,19 +127,31 @@ class SearchService:
             # Apply business logic filters
             filtered_response = self._filter_results(schema_response)
 
-            # Deep crawl if enabled and needed
-            if (
-                request.enable_crawler
-                and len(filtered_response.results) < request.max_results
-            ):
-                logger.info("Enabling deep crawler for additional results")
-                crawled_results = await self._deep_crawl_search(
-                    enhanced_request, filtered_response
-                )
-                filtered_response = self._merge_search_results(
-                    filtered_response, crawled_results
-                )
+            # Deep crawl if enabled and needed (temporarily disabled)
+            # if (
+            #     request.enable_crawler
+            #     and len(filtered_response.results) < request.max_results
+            # ):
+            #     logger.info("Enabling deep crawler for additional results")
+            #     crawled_results = await self._deep_crawl_search(
+            #         enhanced_request, filtered_response
+            #     )
+            #     filtered_response = self._merge_search_results(
+            #         filtered_response, crawled_results
+            #     )
 
+            # Cache the result
+            try:
+                cache_data = filtered_response.model_dump()
+                self._cache.set(cache_key, cache_data, ttl=300)
+                logger.debug(f"Cached search result for key: {cache_key}")
+            except Exception as e:
+                logger.warning(f"Failed to cache result: {e}")
+
+            # Publish articles for sentiment analysis
+            await self._publish_articles_for_sentiment_analysis(filtered_response)
+
+            # Publish search event for analytics
             await self._publish_search_event(request, filtered_response)
 
             logger.info(
@@ -156,46 +183,183 @@ class SearchService:
 
         # Construct financial sentiment query
         time_range = self._get_time_range(days)
-        query = f"{symbol} market sentiment analysis price movement"
+        query = f"{symbol} market sentiment analysis price movement news"
 
         request = SearchRequestSchema(
             query=query,
-            topic="news",
+            topic="finance",
             search_depth="advanced",
             time_range=time_range,
             include_answer=True,
             max_results=20,
-            chunks_per_source=5,
-            enable_crawler=False,  # Disable deep crawling for financial data
+            chunks_per_source=3,
+            enable_crawler=False,  # Disable crawler for financial sentiment
         )
 
-        return await self.search_news(request)
+        # Perform search
+        result = await self.search_news(request)
 
-    async def get_trending_topics(self, topic: str = "finance") -> SearchResponseSchema:
+        # Add metadata to indicate this is a financial sentiment search
+        for search_result in result.results:
+            if not search_result.metadata:
+                search_result.metadata = {}
+            search_result.metadata.update(
+                {
+                    "financial_symbol": symbol,
+                    "sentiment_search": True,
+                    "time_range_days": days,
+                }
+            )
+
+        return result
+
+    async def _publish_articles_for_sentiment_analysis(
+        self, response: SearchResponseSchema
+    ) -> None:
         """
-        Get trending topics in a specific domain.
+        Publish search results to sentiment analysis queue.
 
         Args:
-            topic: Topic category
-
-        Returns:
-            SearchResponseSchema: Trending topics
+            response: Search response containing articles to analyze
         """
-        logger.info(f"Fetching trending topics for: {topic}")
+        try:
+            if not response.results:
+                logger.debug("No results to publish for sentiment analysis")
+                return
 
-        query = f"trending {topic} news today market analysis"
+            # Ensure exchange exists
+            exchange_name = settings.rabbitmq_exchange
+            try:
+                await self.message_broker.create_exchange(exchange_name, "topic")
+                logger.debug(f"Exchange {exchange_name} created/verified successfully")
+            except Exception as exchange_error:
+                logger.warning(
+                    f"Failed to create exchange {exchange_name}: {exchange_error}"
+                )
 
-        request = SearchRequestSchema(
-            query=query,
-            topic=topic,
-            search_depth="advanced",
-            time_range="day",
-            include_answer=True,
-            max_results=15,
-            enable_crawler=False,  # Disable crawler for trending topics
-        )
+            # Publish each article for sentiment analysis
+            published_count = 0
+            for result in response.results:
+                try:
+                    # Create message for sentiment analysis using configured queue name
+                    article_message = {
+                        "id": f"search_{hash(result.url)}_{int(datetime.now().timestamp())}",
+                        "url": str(result.url),
+                        "title": result.title,
+                        "content": result.content,
+                        "source": result.source,
+                        "published_at": (
+                            result.published_at.isoformat()
+                            if result.published_at
+                            else None
+                        ),
+                        "score": result.score,
+                        "metadata": result.metadata or {},
+                        "search_query": response.query,
+                        "search_timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
 
-        return await self.search_news(request)
+                    # Publish to sentiment analysis queue using config
+                    success = await self.message_broker.publish(
+                        exchange=exchange_name,
+                        routing_key="article.sentiment_analysis",
+                        message=article_message,
+                    )
+
+                    if success:
+                        published_count += 1
+                        logger.debug(
+                            f"Published article for sentiment analysis: {result.title[:50]}..."
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to publish article: {result.title[:50]}..."
+                        )
+
+                except Exception as article_error:
+                    logger.error(
+                        f"Error publishing article {result.url}: {str(article_error)}"
+                    )
+                    continue
+
+            logger.info(
+                f"Published {published_count}/{len(response.results)} articles for sentiment analysis"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to publish articles for sentiment analysis: {str(e)}")
+
+    async def _publish_search_event(
+        self, request: SearchRequestSchema, response: SearchResponseSchema
+    ) -> None:
+        """
+        Publish search event for analytics with improved error handling.
+
+        Args:
+            request: Search request
+            response: Search response
+        """
+        try:
+            event = {
+                "event_type": "search_performed",
+                "query": request.query,
+                "topic": request.topic,
+                "results_count": len(response.results),
+                "response_time": response.response_time,
+                "crawler_used": response.crawler_used,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            # First ensure exchange exists
+            exchange_name = "analytics_exchange"
+            try:
+                logger.debug(f"Creating exchange: {exchange_name}")
+                await self.message_broker.create_exchange(exchange_name, "topic")
+                logger.debug(f"Exchange {exchange_name} created/verified successfully")
+            except Exception as exchange_error:
+                logger.warning(
+                    f"Failed to create exchange {exchange_name}: {exchange_error}"
+                )
+
+            # Try to publish the event
+            try:
+                success = await self.message_broker.publish(
+                    exchange=exchange_name,
+                    routing_key="search.event",
+                    message=event,
+                )
+                if success:
+                    logger.debug("Search event published successfully")
+                else:
+                    logger.warning("Search event publish returned False")
+
+            except Exception as pub_error:
+                logger.warning(f"Failed to publish search event: {str(pub_error)}")
+
+        except Exception as e:
+            logger.warning(f"Failed to prepare/publish search event: {str(e)}")
+
+    def _generate_cache_key(self, request: SearchRequestSchema) -> str:
+        """Generate cache key for search request"""
+        import hashlib
+        import json
+
+        # Create a normalized representation of the request
+        cache_data = {
+            "query": request.query,
+            "topic": request.topic,
+            "search_depth": request.search_depth,
+            "time_range": request.time_range,
+            "max_results": request.max_results,
+            "enable_crawler": request.enable_crawler,
+            "include_answer": request.include_answer,
+            "chunks_per_source": request.chunks_per_source,
+        }
+
+        # Sort keys for consistent hashing
+        normalized_str = json.dumps(cache_data, sort_keys=True)
+        cache_hash = hashlib.md5(normalized_str.encode()).hexdigest()
+        return f"search_result:{cache_hash}"
 
     def _convert_to_schema_response(
         self, search_engine_response: dict, request: SearchRequestSchema
@@ -334,146 +498,6 @@ class SearchService:
         original_response.crawler_used = len(crawled_results) > 0
 
         return original_response
-
-    async def _publish_search_event(
-        self, request: SearchRequestSchema, response: SearchResponseSchema
-    ) -> None:
-        """
-        Publish search event for analytics with improved error handling.
-
-        Args:
-            request: Search request
-            response: Search response
-        """
-        try:
-            event = {
-                "event_type": "search_performed",
-                "query": request.query,
-                "topic": request.topic,
-                "results_count": len(response.results),
-                "response_time": response.response_time,
-                "crawler_used": response.crawler_used,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-
-            # First ensure exchange exists
-            exchange_name = "analytics_exchange"
-            try:
-                logger.debug(f"Creating exchange: {exchange_name}")
-                await self.message_broker.create_exchange(exchange_name, "topic")
-                logger.debug(f"Exchange {exchange_name} created/verified successfully")
-            except Exception as exchange_error:
-                logger.warning(
-                    f"Failed to create exchange {exchange_name}: {exchange_error}"
-                )
-                # Continue with publish attempt anyway
-
-            # Try to publish the event
-            try:
-                success = await self.message_broker.publish(
-                    exchange=exchange_name,
-                    routing_key="search.event",
-                    message=event,
-                )
-                if success:
-                    logger.debug("Search event published successfully")
-                else:
-                    logger.warning("Search event publish returned False")
-
-            except Exception as pub_error:
-                logger.warning(f"Failed to publish search event: {str(pub_error)}")
-                # Don't fail the search operation for analytics issues
-
-        except Exception as e:
-            logger.warning(f"Failed to prepare/publish search event: {str(e)}")
-            # Analytics publishing should never fail the main search operation
-
-    def _enhance_search_request(
-        self, request: SearchRequestSchema
-    ) -> SearchRequestSchema:
-        """
-        Enhance search request with defaults and optimizations.
-
-        Args:
-            request: Original search request
-
-        Returns:
-            SearchRequestSchema: Enhanced request
-        """
-        # Create a copy to avoid mutating the original
-        enhanced_data = request.model_dump()
-
-        # Set default topic for financial queries
-        if not enhanced_data.get("topic") and any(
-            keyword in request.query.lower()
-            for keyword in ["btc", "bitcoin", "stock", "market", "trading"]
-        ):
-            enhanced_data["topic"] = "finance"
-
-        # Enhance query for better financial results
-        if (
-            enhanced_data.get("topic") == "finance"
-            and "sentiment" not in request.query.lower()
-        ):
-            enhanced_data["query"] = f"{request.query} market analysis"
-
-        return SearchRequestSchema(**enhanced_data)
-
-    def _filter_results(self, response: SearchResponseSchema) -> SearchResponseSchema:
-        """
-        Apply business logic filters to search results.
-
-        Args:
-            response: Original search response
-
-        Returns:
-            SearchResponseSchema: Filtered response
-        """
-        # Apply more lenient filtering to avoid empty results
-        min_score = 0.3  # Reduced from 0.7 to be more inclusive
-        min_content_length = 50  # Reduced from 100
-
-        filtered_results = [
-            result
-            for result in response.results
-            if result.score >= min_score
-            and len(result.content.strip()) > min_content_length
-        ]
-
-        # If filtering results in too few results, be more lenient
-        if len(filtered_results) < 3 and len(response.results) > 0:
-            # Use even more lenient criteria
-            filtered_results = [
-                result
-                for result in response.results
-                if result.score >= 0.1 and len(result.content.strip()) > 20
-            ]
-
-        # Sort by score and recency
-        filtered_results.sort(
-            key=lambda x: (
-                x.score,
-                x.published_at or datetime.min.replace(tzinfo=timezone.utc),
-            ),
-            reverse=True,
-        )
-
-        # Update response
-        response.results = filtered_results
-        response.total_results = len(filtered_results)
-
-        return response
-
-    def _get_time_range(self, days: int) -> str:
-        """Convert days to time range string."""
-        if days <= 1:
-            return "day"
-        elif days <= 7:
-            return "week"
-        elif days <= 30:
-            return "month"
-        else:
-            return "year"
 
     async def health_check(self) -> bool:
         """Check service health with cache health check."""

@@ -1,3 +1,5 @@
+# models/__init__.py
+
 """
 Data models for sentiment analysis service.
 """
@@ -16,7 +18,7 @@ from .sentiment import (
 
 __all__ = [
     "SentimentLabel",
-    "SentimentScore", 
+    "SentimentScore",
     "SentimentAnalysisResult",
     "ProcessedSentiment",
     "SentimentRequest",

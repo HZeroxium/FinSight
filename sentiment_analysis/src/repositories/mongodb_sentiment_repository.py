@@ -1,3 +1,5 @@
+# repositories/mongodb_sentiment_repository.py
+
 """
 MongoDB repository for sentiment data operations.
 """

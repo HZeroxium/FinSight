@@ -1,4 +1,4 @@
-# sentiment_analysis/src/main.py
+# main.py
 """
 FastAPI application for the sentiment analysis service.
 """

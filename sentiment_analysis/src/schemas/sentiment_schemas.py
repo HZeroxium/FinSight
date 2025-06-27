@@ -1,8 +1,10 @@
+# schemas/sentiment_schemas.py
+
 """
 Sentiment analysis API schemas for request/response DTOs.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -120,4 +122,4 @@ class SentimentErrorSchema(BaseModel):
     error: str
     message: str
     details: Optional[Dict[str, Any]] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.now(timezone.utc))

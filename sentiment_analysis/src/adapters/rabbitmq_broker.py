@@ -1,3 +1,5 @@
+# adapters/rabbitmq_broker.py
+
 """
 RabbitMQ message broker implementation.
 """
@@ -89,8 +91,13 @@ class RabbitMQBroker(MessageBroker):
                 delivery_mode=2 if persistent else 1,  # 2 = persistent
             )
 
-            # Get exchange
-            exchange_obj = await self._channel.get_exchange(exchange)
+            # Get exchange - if it doesn't exist, create it first
+            try:
+                exchange_obj = await self._channel.get_exchange(exchange)
+            except Exception:
+                logger.info(f"Exchange {exchange} not found, creating it...")
+                await self.create_exchange(exchange)
+                exchange_obj = await self._channel.get_exchange(exchange)
 
             # Publish message
             await exchange_obj.publish(aio_message, routing_key=routing_key)
@@ -122,8 +129,11 @@ class RabbitMQBroker(MessageBroker):
                         # Deserialize message
                         message_data = json.loads(message.body.decode("utf-8"))
 
-                        # Call callback
-                        await callback(message_data)
+                        # Call callback - handle both sync and async callbacks
+                        if asyncio.iscoroutinefunction(callback):
+                            await callback(message_data)
+                        else:
+                            callback(message_data)
 
                         if not auto_ack:
                             message.ack()
@@ -231,3 +241,36 @@ class RabbitMQBroker(MessageBroker):
         except Exception as e:
             logger.error(f"RabbitMQ health check failed: {str(e)}")
             return False
+
+    async def create_exchange(
+        self, exchange_name: str, exchange_type: str = "topic"
+    ) -> None:
+        """
+        Create an exchange if it doesn't exist.
+
+        Args:
+            exchange_name: Name of the exchange
+            exchange_type: Type of exchange (topic, direct, fanout, headers)
+        """
+        try:
+            if not self._channel:
+                await self.connect()
+
+            exchange_type_map = {
+                "topic": ExchangeType.TOPIC,
+                "direct": ExchangeType.DIRECT,
+                "fanout": ExchangeType.FANOUT,
+                "headers": ExchangeType.HEADERS,
+            }
+
+            await self._channel.declare_exchange(
+                exchange_name,
+                exchange_type_map.get(exchange_type, ExchangeType.TOPIC),
+                durable=True,
+            )
+
+            logger.info(f"Exchange '{exchange_name}' created successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to create exchange '{exchange_name}': {str(e)}")
+            raise MessageBrokerError(f"Exchange creation failed: {str(e)}")
