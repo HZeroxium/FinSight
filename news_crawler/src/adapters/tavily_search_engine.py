@@ -65,9 +65,23 @@ class TavilySearchEngine(SearchEngine):
                 "include_answer": request.get("include_answer", False),
             }
 
+            # Map and validate topic parameter
+            topic = request.get("topic")
+            if topic:
+                # Map our topics to Tavily's accepted topics
+                topic_mapping = {
+                    "news": "news",
+                    "finance": "finance",
+                    "financial": "finance",
+                    "general": "general",
+                    "technology": "general",
+                    "tech": "general",
+                    "business": "finance",
+                }
+                mapped_topic = topic_mapping.get(topic.lower(), "general")
+                search_params["topic"] = mapped_topic
+
             # Add optional parameters
-            if request.get("topic"):
-                search_params["topic"] = request["topic"]
             if request.get("time_range"):
                 search_params["time_range"] = request["time_range"]
             if request.get("chunks_per_source", 1) > 1:
@@ -173,6 +187,9 @@ class TavilySearchEngine(SearchEngine):
             "%Y-%m-%d",
             "%m/%d/%Y",
             "%d/%m/%Y",
+            # RFC 2822 format (like "Tue, 24 Jun 2025 20:10:53 GMT")
+            "%a, %d %b %Y %H:%M:%S %Z",
+            "%a, %d %b %Y %H:%M:%S GMT",
         ]
 
         for fmt in formats:

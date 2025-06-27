@@ -50,17 +50,35 @@ class SearchService:
         self.article_repository = article_repository
         self.crawler_service = crawler_service
 
-        # Initialize cache for search results
-        self._cache = CacheFactory.get_cache(
-            name="search_cache",
-            cache_type=CacheType.MEMORY,
-            max_size=1000,
-            default_ttl=300,  # 5 minutes
-        )
+        # Initialize cache for search results with enhanced configuration
+        try:
+            self._cache = CacheFactory.get_cache(
+                name="search_cache",
+                cache_type=CacheType.REDIS,
+                host="localhost",
+                port=6379,
+                db=0,
+                key_prefix="search:",
+                serialization="json",
+                max_size=1000,
+                default_ttl=300,  # 5 minutes
+            )
+            logger.info("Search service initialized with Redis cache")
+        except Exception as cache_error:
+            logger.warning(
+                f"Failed to initialize Redis cache: {cache_error}, falling back to memory cache"
+            )
+            self._cache = CacheFactory.get_cache(
+                name="search_cache_memory",
+                cache_type=CacheType.REDIS,
+                max_size=1000,
+                default_ttl=300,
+            )
+            logger.info("Search service initialized with memory cache fallback")
 
         logger.info("Search service initialized successfully")
 
-    @cache_result(ttl=300, key_prefix="search_")
+    @cache_result(ttl=300, cache_type=CacheType.REDIS, key_prefix="search_results:")
     async def search_news(self, request: SearchRequestSchema) -> SearchResponseSchema:
         """
         Search for news articles with business logic applied.
@@ -74,6 +92,19 @@ class SearchService:
         logger.info(
             f"Processing search request: {request.query} (crawler: {request.enable_crawler})"
         )
+
+        # Generate cache key for this request
+        cache_key = self._generate_cache_key(request)
+
+        # Try to get from cache
+        # try:
+        #     cached_result = self._cache.get(cache_key)
+        #     if cached_result is not None:
+        #         logger.info(f"Cache hit for search request: {request.query}")
+        #         # Convert dict back to schema
+        #         return SearchResponseSchema(**cached_result)
+        # except Exception as e:
+        #     logger.warning(f"Cache get failed: {e}")
 
         # Validate and enhance request
         enhanced_request = self._enhance_search_request(request)
@@ -107,7 +138,15 @@ class SearchService:
                     filtered_response, crawled_results
                 )
 
-            # Publish search event for analytics
+            # Cache the result
+            # try:
+            #     cache_data = filtered_response.model_dump()
+            #     self._cache.set(cache_key, cache_data, ttl=300)
+            #     logger.debug(f"Cached search result for key: {cache_key}")
+            # except Exception as e:
+            #     logger.warning(f"Failed to cache result: {e}")
+
+            # Publish search event for analytics - with better error handling
             await self._publish_search_event(request, filtered_response)
 
             logger.info(
@@ -121,6 +160,28 @@ class SearchService:
         except Exception as e:
             logger.error(f"Unexpected error in search service: {str(e)}")
             raise SearchEngineError(f"Search service error: {str(e)}")
+
+    def _generate_cache_key(self, request: SearchRequestSchema) -> str:
+        """Generate cache key for search request"""
+        import hashlib
+        import json
+
+        # Create a normalized representation of the request
+        cache_data = {
+            "query": request.query,
+            "topic": request.topic,
+            "search_depth": request.search_depth,
+            "time_range": request.time_range,
+            "max_results": request.max_results,
+            "enable_crawler": request.enable_crawler,
+            "include_answer": request.include_answer,
+            "chunks_per_source": request.chunks_per_source,
+        }
+
+        # Sort keys for consistent hashing
+        normalized_str = json.dumps(cache_data, sort_keys=True)
+        cache_hash = hashlib.md5(normalized_str.encode()).hexdigest()
+        return f"search_result:{cache_hash}"
 
     async def search_financial_sentiment(
         self, symbol: str, days: int = 7
@@ -322,7 +383,7 @@ class SearchService:
         self, request: SearchRequestSchema, response: SearchResponseSchema
     ) -> None:
         """
-        Publish search event for analytics.
+        Publish search event for analytics with improved error handling.
 
         Args:
             request: Search request
@@ -339,12 +400,37 @@ class SearchService:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-            await self.message_broker.publish(
-                exchange="analytics_exchange", routing_key="search.event", message=event
-            )
+            # First ensure exchange exists
+            exchange_name = "analytics_exchange"
+            try:
+                logger.debug(f"Creating exchange: {exchange_name}")
+                await self.message_broker.create_exchange(exchange_name, "topic")
+                logger.debug(f"Exchange {exchange_name} created/verified successfully")
+            except Exception as exchange_error:
+                logger.warning(
+                    f"Failed to create exchange {exchange_name}: {exchange_error}"
+                )
+                # Continue with publish attempt anyway
+
+            # Try to publish the event
+            try:
+                success = await self.message_broker.publish(
+                    exchange=exchange_name,
+                    routing_key="search.event",
+                    message=event,
+                )
+                if success:
+                    logger.debug("Search event published successfully")
+                else:
+                    logger.warning("Search event publish returned False")
+
+            except Exception as pub_error:
+                logger.warning(f"Failed to publish search event: {str(pub_error)}")
+                # Don't fail the search operation for analytics issues
 
         except Exception as e:
-            logger.warning(f"Failed to publish search event: {str(e)}")
+            logger.warning(f"Failed to prepare/publish search event: {str(e)}")
+            # Analytics publishing should never fail the main search operation
 
     def _enhance_search_request(
         self, request: SearchRequestSchema
@@ -387,17 +473,33 @@ class SearchService:
         Returns:
             SearchResponseSchema: Filtered response
         """
-        # Filter out low-quality results
-        min_score = 0.7
+        # Apply more lenient filtering to avoid empty results
+        min_score = 0.3  # Reduced from 0.7 to be more inclusive
+        min_content_length = 50  # Reduced from 100
+
         filtered_results = [
             result
             for result in response.results
-            if result.score >= min_score and len(result.content) > 100
+            if result.score >= min_score
+            and len(result.content.strip()) > min_content_length
         ]
+
+        # If filtering results in too few results, be more lenient
+        if len(filtered_results) < 3 and len(response.results) > 0:
+            # Use even more lenient criteria
+            filtered_results = [
+                result
+                for result in response.results
+                if result.score >= 0.1 and len(result.content.strip()) > 20
+            ]
 
         # Sort by score and recency
         filtered_results.sort(
-            key=lambda x: (x.score, x.published_at or datetime.min), reverse=True
+            key=lambda x: (
+                x.score,
+                x.published_at or datetime.min.replace(tzinfo=timezone.utc),
+            ),
+            reverse=True,
         )
 
         # Update response
@@ -418,22 +520,60 @@ class SearchService:
             return "year"
 
     async def health_check(self) -> bool:
-        """Check service health."""
+        """Check service health with cache health check."""
         try:
             # Check search engine health
             search_engine_healthy = await self.search_engine.health_check()
+            logger.debug(f"Search engine health: {search_engine_healthy}")
 
             # Check message broker health
             broker_healthy = await self.message_broker.health_check()
+            logger.debug(f"Message broker health: {broker_healthy}")
 
             # Check crawler service health
             crawler_healthy = (
                 self.crawler_service.get_crawler_stats()["total_crawlers"] >= 0
             )
+            logger.debug(f"Crawler service health: {crawler_healthy}")
 
-            is_healthy = search_engine_healthy and broker_healthy and crawler_healthy
+            # Check cache health
+            cache_healthy = True
+            try:
+                # Test cache operations
+                test_key = "health_check_test"
+                test_value = {"timestamp": datetime.now().isoformat()}
 
-            logger.debug(f"Health check completed: {is_healthy}")
+                # Test set
+                set_result = self._cache.set(test_key, test_value, ttl=60)
+                if not set_result:
+                    cache_healthy = False
+                    logger.warning("Cache set operation failed")
+
+                # Test get
+                get_result = self._cache.get(test_key)
+                if get_result != test_value:
+                    cache_healthy = False
+                    logger.warning("Cache get operation failed")
+
+                # Test delete
+                delete_result = self._cache.delete(test_key)
+                if not delete_result:
+                    logger.warning("Cache delete operation failed (non-critical)")
+
+                logger.debug(f"Cache health: {cache_healthy}")
+
+            except Exception as cache_error:
+                logger.warning(f"Cache health check failed: {cache_error}")
+                cache_healthy = False
+
+            is_healthy = (
+                search_engine_healthy
+                and broker_healthy
+                and crawler_healthy
+                and cache_healthy
+            )
+
+            logger.debug(f"Overall health check completed: {is_healthy}")
             return is_healthy
 
         except Exception as e:

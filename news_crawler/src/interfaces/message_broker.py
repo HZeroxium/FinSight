@@ -137,3 +137,16 @@ class MessageBroker(ABC):
             bool: True if healthy
         """
         pass
+
+    @abstractmethod
+    async def create_exchange(
+        self, exchange_name: str, exchange_type: str = "topic"
+    ) -> None:
+        """
+        Create an exchange if it doesn't exist.
+
+        Args:
+            exchange_name: Name of the exchange
+            exchange_type: Type of exchange (topic, direct, fanout, headers)
+        """
+        pass

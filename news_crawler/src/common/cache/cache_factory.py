@@ -7,6 +7,12 @@ from .cache_interface import CacheInterface
 from .in_memory_cache import InMemoryCache
 from .redis_cache import RedisCache
 from .file_cache import FileCache
+from ..logger import LoggerFactory, LoggerType, LogLevel
+
+# Create logger for cache factory
+logger = LoggerFactory.get_logger(
+    name="cache-factory", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
+)
 
 
 class CacheType(Enum):
@@ -41,11 +47,35 @@ class CacheFactory:
             Cache instance
         """
         cache_key = f"{name}_{cache_type.value}"
+        logger.debug(f"Requesting cache instance: {cache_key}")
 
         if cache_key not in cls._instances:
-            cls._instances[cache_key] = cls.create_cache(
-                name=name, cache_type=cache_type, **kwargs
-            )
+            logger.debug(f"Creating new cache instance: {cache_key}")
+            try:
+                cls._instances[cache_key] = cls.create_cache(
+                    name=name, cache_type=cache_type, **kwargs
+                )
+                logger.info(f"Created cache instance: {cache_key}")
+            except Exception as e:
+                logger.error(f"Failed to create cache instance {cache_key}: {e}")
+                # Fallback to memory cache if requested cache type fails
+                if cache_type != CacheType.MEMORY:
+                    logger.warning(f"Falling back to memory cache for {cache_key}")
+                    fallback_key = f"{name}_memory_fallback"
+                    try:
+                        cls._instances[cache_key] = cls.create_cache(
+                            name=fallback_key, cache_type=CacheType.MEMORY
+                        )
+                        logger.info(f"Created fallback memory cache for {cache_key}")
+                    except Exception as fallback_error:
+                        logger.error(
+                            f"Even fallback cache creation failed: {fallback_error}"
+                        )
+                        raise
+                else:
+                    raise
+        else:
+            logger.debug(f"Returning existing cache instance: {cache_key}")
 
         return cls._instances[cache_key]
 
@@ -67,14 +97,24 @@ class CacheFactory:
         Returns:
             New cache instance
         """
-        if cache_type == CacheType.MEMORY:
-            return cls._create_memory_cache(**kwargs)
-        elif cache_type == CacheType.REDIS:
-            return cls._create_redis_cache(**kwargs)
-        elif cache_type == CacheType.FILE:
-            return cls._create_file_cache(**kwargs)
-        else:
-            raise ValueError(f"Unknown cache type: {cache_type}")
+        logger.debug(f"Creating {cache_type.value} cache: {name}")
+
+        try:
+            if cache_type == CacheType.MEMORY:
+                cache_instance = cls._create_memory_cache(**kwargs)
+            elif cache_type == CacheType.REDIS:
+                cache_instance = cls._create_redis_cache(**kwargs)
+            elif cache_type == CacheType.FILE:
+                cache_instance = cls._create_file_cache(**kwargs)
+            else:
+                raise ValueError(f"Unknown cache type: {cache_type}")
+
+            logger.info(f"Successfully created {cache_type.value} cache: {name}")
+            return cache_instance
+
+        except Exception as e:
+            logger.error(f"Failed to create {cache_type.value} cache {name}: {e}")
+            raise
 
     @classmethod
     def _create_memory_cache(cls, **kwargs) -> InMemoryCache:
@@ -86,11 +126,40 @@ class CacheFactory:
             "enable_lru": True,
         }
         defaults.update(kwargs)
+        logger.debug(f"Creating memory cache with params: {defaults}")
         return InMemoryCache(**defaults)
 
     @classmethod
     def _create_redis_cache(cls, **kwargs) -> RedisCache:
         """Create Redis cache with default parameters"""
+        # Filter allowed parameters for Redis
+        allowed = {
+            "host",
+            "port",
+            "db",
+            "password",
+            "serialization",
+            "key_prefix",
+            "socket_timeout",
+            "socket_connect_timeout",
+            "socket_keepalive",
+            "socket_keepalive_options",
+            "connection_pool",
+            "unix_socket_path",
+            "encoding",
+            "encoding_errors",
+            "decode_responses",
+            "retry_on_timeout",
+            "ssl",
+            "ssl_keyfile",
+            "ssl_certfile",
+            "ssl_cert_reqs",
+            "ssl_ca_certs",
+            "ssl_check_hostname",
+            "max_connections",
+        }
+        params = {k: v for k, v in kwargs.items() if k in allowed}
+
         defaults = {
             "host": "localhost",
             "port": 6379,
@@ -99,7 +168,9 @@ class CacheFactory:
             "serialization": "json",
             "key_prefix": "",
         }
-        defaults.update(kwargs)
+        defaults.update(params)
+
+        logger.debug(f"Creating Redis cache with params: {defaults}")
         return RedisCache(**defaults)
 
     @classmethod
@@ -115,6 +186,7 @@ class CacheFactory:
             "safe_filenames": True,
         }
         defaults.update(kwargs)
+        logger.debug(f"Creating file cache with params: {defaults}")
         return FileCache(**defaults)
 
     @classmethod
@@ -219,11 +291,39 @@ class CacheFactory:
     @classmethod
     def clear_cache_instances(cls) -> None:
         """Clear cached instances"""
+        logger.info(f"Clearing {len(cls._instances)} cached instances")
         cls._instances.clear()
 
     @classmethod
     def get_cache_instance_info(cls) -> Dict[str, str]:
         """Get information about cached instances"""
-        return {
+        info = {
             key: type(instance).__name__ for key, instance in cls._instances.items()
         }
+        logger.debug(f"Cache instance info: {info}")
+        return info
+
+    @classmethod
+    def health_check_all_caches(cls) -> Dict[str, bool]:
+        """Perform health check on all cached instances"""
+        results = {}
+        for cache_key, cache_instance in cls._instances.items():
+            try:
+                # Basic health check - try to set and get a test value
+                test_key = "health_check_test"
+                test_value = {"test": True}
+
+                set_success = cache_instance.set(test_key, test_value, ttl=30)
+                get_result = cache_instance.get(test_key)
+                delete_success = cache_instance.delete(test_key)
+
+                is_healthy = set_success and get_result == test_value and delete_success
+
+                results[cache_key] = is_healthy
+                logger.debug(f"Health check for {cache_key}: {is_healthy}")
+
+            except Exception as e:
+                logger.error(f"Health check failed for {cache_key}: {e}")
+                results[cache_key] = False
+
+        return results
