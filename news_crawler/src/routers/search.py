@@ -141,18 +141,7 @@ async def health_check(
             status_code=503,
             content=ErrorResponseSchema(
                 error="ServiceUnavailable", message=f"Health check failed: {str(e)}"
-            ).dict(),
-        )
-        dependencies = {
-            "search_engine": "healthy" if is_healthy else "unhealthy",
-            "message_broker": "healthy" if is_healthy else "unhealthy",
-            "crawler_service": "healthy" if is_healthy else "unhealthy",
-        }
-
-        return HealthCheckSchema(
-            status="healthy" if is_healthy else "unhealthy",
-            service="news-crawler-service",
-            dependencies=dependencies,
+            ).model_dump(),
         )
 
     except Exception as e:
@@ -161,5 +150,5 @@ async def health_check(
             status_code=503,
             content=ErrorResponseSchema(
                 error="ServiceUnavailable", message=f"Health check failed: {str(e)}"
-            ).dict(),
+            ).model_dump(),
         )

@@ -7,7 +7,7 @@ Crawler service layer for managing news crawling operations.
 import asyncio
 import time
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from ..interfaces.message_broker import MessageBroker
@@ -208,8 +208,8 @@ class CrawlerService:
                     duration=0.0,
                     status="failed",
                     errors=[str(result)],
-                    started_at=datetime.utcnow(),
-                    completed_at=datetime.utcnow(),
+                    started_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(timezone.utc),
                 )
             else:
                 results[source_name] = result
@@ -243,8 +243,8 @@ class CrawlerService:
                 duration=0.0,
                 status="failed",
                 errors=[f"Unknown source: {source_name}"],
-                started_at=datetime.utcnow(),
-                completed_at=datetime.utcnow(),
+                started_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(timezone.utc),
             )
 
         crawler = self.crawlers[source_name]
@@ -264,7 +264,7 @@ class CrawlerService:
             CrawlResult: Detailed crawl results
         """
         start_time = time.time()
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
         errors = []
 
         try:
@@ -286,7 +286,7 @@ class CrawlerService:
                     status="completed",
                     errors=["No URLs found"],
                     started_at=started_at,
-                    completed_at=datetime.utcnow(),
+                    completed_at=datetime.now(timezone.utc),
                 )
 
             # Filter out already crawled articles
@@ -339,7 +339,7 @@ class CrawlerService:
                 status=status,
                 errors=errors[:10],  # Limit errors to avoid huge payloads
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
             logger.info(
@@ -360,7 +360,7 @@ class CrawlerService:
                 status="failed",
                 errors=[str(e)],
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
     async def _crawl_article_with_retry(
@@ -410,7 +410,7 @@ class CrawlerService:
                     article.published_at.isoformat() if article.published_at else None
                 ),
                 "crawled_at": article.created_at.isoformat(),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             await self.message_broker.publish(
@@ -448,9 +448,9 @@ class CrawlerService:
                     total_saved / total_crawled if total_crawled > 0 else 0.0
                 ),
                 "source_results": {
-                    name: result.dict() for name, result in results.items()
+                    name: result.model_dump() for name, result in results.items()
                 },
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             await self.message_broker.publish(

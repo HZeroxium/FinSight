@@ -2,8 +2,7 @@
 REST API routes for sentiment analysis operations.
 """
 
-from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
 
@@ -331,5 +330,5 @@ async def health_check(
             status_code=503,
             content=ErrorResponseSchema(
                 error="ServiceUnavailable", message=f"Health check failed: {str(e)}"
-            ).dict(),
+            ).model_dump(),
         )

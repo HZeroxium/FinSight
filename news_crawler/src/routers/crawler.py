@@ -4,7 +4,7 @@
 REST API routes for crawler operations.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 
@@ -54,14 +54,14 @@ async def start_crawl_job(
         background_tasks.add_task(background_crawl)
 
         return CrawlResultSchema(
-            job_id=f"crawl_{job.source_name}_{int(datetime.utcnow().timestamp())}",
+            job_id=f"crawl_{job.source_name}_{int(datetime.now(timezone.utc).timestamp())}",
             source_name=job.source_name,
             articles_found=0,
             articles_crawled=0,
             articles_saved=0,
             duration=0.0,
             status="started",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
 
     except Exception as e:
@@ -99,14 +99,14 @@ async def start_crawl_all_sources(
 
         for source_name in stats["enabled_crawler_names"]:
             results[source_name] = CrawlResultSchema(
-                job_id=f"crawl_all_{source_name}_{int(datetime.utcnow().timestamp())}",
+                job_id=f"crawl_all_{source_name}_{int(datetime.now(timezone.utc).timestamp())}",
                 source_name=source_name,
                 articles_found=0,
                 articles_crawled=0,
                 articles_saved=0,
                 duration=0.0,
                 status="started",
-                started_at=datetime.utcnow(),
+                started_at=datetime.now(timezone.utc),
             )
 
         return results
@@ -171,7 +171,7 @@ async def get_detailed_crawler_stats(
     """
     try:
         detailed_stats = crawler_service.get_detailed_crawler_stats()
-        return [stat.dict() for stat in detailed_stats]
+        return [stat.model_dump() for stat in detailed_stats]
 
     except Exception as e:
         logger.error(f"Failed to get detailed crawler stats: {str(e)}")

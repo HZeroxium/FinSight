@@ -78,7 +78,7 @@ class SearchService:
 
         logger.info("Search service initialized successfully")
 
-    @cache_result(ttl=300, cache_type=CacheType.REDIS, key_prefix="search_results:")
+    @cache_result(ttl=3600, cache_type=CacheType.REDIS, key_prefix="search_results:")
     async def search_news(self, request: SearchRequestSchema) -> SearchResponseSchema:
         """
         Search for news articles with business logic applied.
@@ -92,19 +92,6 @@ class SearchService:
         logger.info(
             f"Processing search request: {request.query} (crawler: {request.enable_crawler})"
         )
-
-        # Generate cache key for this request
-        cache_key = self._generate_cache_key(request)
-
-        # Try to get from cache
-        # try:
-        #     cached_result = self._cache.get(cache_key)
-        #     if cached_result is not None:
-        #         logger.info(f"Cache hit for search request: {request.query}")
-        #         # Convert dict back to schema
-        #         return SearchResponseSchema(**cached_result)
-        # except Exception as e:
-        #     logger.warning(f"Cache get failed: {e}")
 
         # Validate and enhance request
         enhanced_request = self._enhance_search_request(request)
@@ -138,15 +125,6 @@ class SearchService:
                     filtered_response, crawled_results
                 )
 
-            # Cache the result
-            # try:
-            #     cache_data = filtered_response.model_dump()
-            #     self._cache.set(cache_key, cache_data, ttl=300)
-            #     logger.debug(f"Cached search result for key: {cache_key}")
-            # except Exception as e:
-            #     logger.warning(f"Failed to cache result: {e}")
-
-            # Publish search event for analytics - with better error handling
             await self._publish_search_event(request, filtered_response)
 
             logger.info(
@@ -160,28 +138,6 @@ class SearchService:
         except Exception as e:
             logger.error(f"Unexpected error in search service: {str(e)}")
             raise SearchEngineError(f"Search service error: {str(e)}")
-
-    def _generate_cache_key(self, request: SearchRequestSchema) -> str:
-        """Generate cache key for search request"""
-        import hashlib
-        import json
-
-        # Create a normalized representation of the request
-        cache_data = {
-            "query": request.query,
-            "topic": request.topic,
-            "search_depth": request.search_depth,
-            "time_range": request.time_range,
-            "max_results": request.max_results,
-            "enable_crawler": request.enable_crawler,
-            "include_answer": request.include_answer,
-            "chunks_per_source": request.chunks_per_source,
-        }
-
-        # Sort keys for consistent hashing
-        normalized_str = json.dumps(cache_data, sort_keys=True)
-        cache_hash = hashlib.md5(normalized_str.encode()).hexdigest()
-        return f"search_result:{cache_hash}"
 
     async def search_financial_sentiment(
         self, symbol: str, days: int = 7
@@ -204,13 +160,13 @@ class SearchService:
 
         request = SearchRequestSchema(
             query=query,
-            topic="finance",
+            topic="news",
             search_depth="advanced",
             time_range=time_range,
             include_answer=True,
             max_results=20,
             chunks_per_source=5,
-            enable_crawler=True,  # Enable deep crawling for financial data
+            enable_crawler=False,  # Disable deep crawling for financial data
         )
 
         return await self.search_news(request)

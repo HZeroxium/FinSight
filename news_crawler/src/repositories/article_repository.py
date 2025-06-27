@@ -276,7 +276,7 @@ class ArticleRepository:
             List[ProcessedArticle]
         """
         try:
-            since = datetime.utcnow() - timedelta(hours=hours)
+            since = datetime.now(timezone.utc) - timedelta(hours=hours)
             cursor = (
                 self.processed_collection.find({"published_at": {"$gte": since}})
                 .sort("published_at", DESCENDING)
