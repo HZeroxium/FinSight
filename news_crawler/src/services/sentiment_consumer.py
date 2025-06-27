@@ -4,7 +4,6 @@
 Sentiment consumer service for processing sentiment analysis results from RabbitMQ.
 """
 
-import asyncio
 from typing import Dict, Any
 
 from ..schemas.message_schemas import SentimentResultMessageSchema
@@ -152,7 +151,5 @@ class SentimentConsumerService:
             # Don't raise exception to avoid requeue loops
 
     def is_running(self) -> bool:
-        """Check if consumer is running."""
-        return self._running
         """Check if consumer is running."""
         return self._running

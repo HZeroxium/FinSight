@@ -5,11 +5,12 @@ Sentiment analysis service layer for business logic.
 """
 
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from ..interfaces.sentiment_analyzer import SentimentAnalyzer, SentimentAnalysisError
 from ..interfaces.sentiment_repository import SentimentRepository
+from ..interfaces.message_broker import MessageBroker
 from ..models.sentiment import (
     SentimentRequest,
     SentimentAnalysisResult,
@@ -19,12 +20,13 @@ from ..models.sentiment import (
     SentimentLabel,
     SentimentScore,
 )
+from ..schemas.message_schemas import SentimentResultMessageSchema
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
-from ..common.cache import CacheFactory, CacheType, cache_result
+from ..common.cache import CacheFactory, CacheType
 from ..core.config import settings
 
 logger = LoggerFactory.get_logger(
-    name="sentiment-service", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
+    name="sentiment-service", logger_type=LoggerType.STANDARD, level=LogLevel.DEBUG
 )
 
 
@@ -37,6 +39,7 @@ class SentimentService:
         self,
         analyzer: SentimentAnalyzer,
         repository: SentimentRepository,
+        message_broker: Optional[MessageBroker] = None,
     ):
         """
         Initialize sentiment service.
@@ -44,9 +47,11 @@ class SentimentService:
         Args:
             analyzer: Sentiment analyzer implementation
             repository: Sentiment repository for storage
+            message_broker: Optional message broker for publishing results
         """
         self.analyzer = analyzer
         self.repository = repository
+        self.message_broker = message_broker
 
         # Initialize cache for sentiment results
         try:
@@ -55,7 +60,7 @@ class SentimentService:
                 cache_type=CacheType.REDIS,
                 host="localhost",
                 port=6379,
-                db=1,  # Different DB from news crawler
+                db=0,  # Different DB from news crawler
                 key_prefix="sentiment:",
                 serialization="json",
             )
@@ -74,7 +79,6 @@ class SentimentService:
 
         logger.info("Sentiment service initialized successfully")
 
-    @cache_result(ttl=3600, key_prefix="sentiment_")
     async def analyze_text(
         self,
         text: str,
@@ -82,9 +86,12 @@ class SentimentService:
         article_id: Optional[str] = None,
         source_url: Optional[str] = None,
         save_result: bool = True,
+        publish_result: Optional[bool] = None,  # Changed to Optional
+        search_query: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ) -> SentimentAnalysisResult:
         """
-        Analyze sentiment of a single text.
+        Analyze sentiment of a single text with proper caching and optional message publishing.
 
         Args:
             text: Text content to analyze
@@ -92,6 +99,9 @@ class SentimentService:
             article_id: Optional article ID for storage
             source_url: Optional source URL
             save_result: Whether to save the result
+            publish_result: Whether to publish result to message broker (None = use config default)
+            search_query: Optional search query for context
+            metadata: Optional metadata
 
         Returns:
             SentimentAnalysisResult: Analysis results
@@ -100,13 +110,42 @@ class SentimentService:
 
         try:
             import time
+            import hashlib
 
             start_time = time.time()
+
+            # Create cache key from text content and title
+            cache_content = f"{text}||{title or ''}"
+            cache_key = (
+                f"sentiment_analysis:{hashlib.md5(cache_content.encode()).hexdigest()}"
+            )
+
+            # Try to get from cache first
+            try:
+                cached_result = self._cache.get(cache_key)
+                if cached_result:
+                    logger.debug(f"Cache hit for sentiment analysis: {cache_key}")
+                    # Reconstruct SentimentAnalysisResult from cached dict
+                    if isinstance(cached_result, dict):
+                        return SentimentAnalysisResult.from_dict(cached_result)
+                    return cached_result
+                else:
+                    logger.debug(f"Cache miss for sentiment analysis: {cache_key}")
+            except Exception as cache_error:
+                logger.warning(f"Cache get failed: {cache_error}")
 
             # Perform sentiment analysis
             result = await self.analyzer.analyze(text, title)
 
             processing_time = (time.time() - start_time) * 1000
+
+            # Cache the result (serialize to dict)
+            try:
+                cache_data = result.model_dump()
+                self._cache.set(cache_key, cache_data, ttl=3600)
+                logger.debug(f"Cached sentiment result: {cache_key}")
+            except Exception as cache_error:
+                logger.warning(f"Cache set failed: {cache_error}")
 
             # Save result if requested and article_id is provided
             if save_result and article_id:
@@ -117,6 +156,40 @@ class SentimentService:
                     title=title,
                     source_url=source_url,
                     processing_time=processing_time,
+                )
+
+            # Determine if should publish based on parameter or config
+            should_publish = publish_result
+            if should_publish is None:
+                should_publish = (
+                    settings.enable_analyze_text_publishing
+                    and settings.enable_message_publishing
+                )
+
+            # Publish result if enabled and configured
+            if should_publish and self.message_broker and article_id:
+                try:
+                    await self._publish_sentiment_result(
+                        result=result,
+                        article_id=article_id,
+                        title=title,
+                        source_url=source_url,
+                        search_query=search_query,
+                        text=text,
+                        metadata=metadata,
+                    )
+                    logger.debug(
+                        f"Successfully published sentiment result for article {article_id}"
+                    )
+                except Exception as publish_error:
+                    logger.warning(
+                        f"Failed to publish sentiment result: {publish_error}"
+                    )
+            elif not should_publish:
+                logger.debug(f"Message publishing disabled for article {article_id}")
+            elif not self.message_broker:
+                logger.debug(
+                    f"No message broker available for publishing article {article_id}"
                 )
 
             logger.info(
@@ -318,14 +391,14 @@ class SentimentService:
             # Create processed sentiment object
             processed_sentiment = ProcessedSentiment(
                 article_id=article_id,
-                url=source_url,
+                url=source_url,  # Store as string
                 title=title,
                 content_preview=text[:200] if text else None,
                 sentiment_label=result.label,
                 sentiment_scores=result.scores,
                 confidence=result.confidence,
                 reasoning=result.reasoning,
-                processed_at=datetime.utcnow(),
+                processed_at=datetime.now(timezone.utc),
                 processing_time_ms=processing_time,
                 model_version=settings.openai_model,
                 source_domain=source_domain,
@@ -338,6 +411,80 @@ class SentimentService:
         except Exception as e:
             logger.error(f"Failed to save sentiment result: {str(e)}")
             # Don't raise exception - saving failure shouldn't break analysis
+
+    async def _publish_sentiment_result(
+        self,
+        result: SentimentAnalysisResult,
+        article_id: str,
+        title: Optional[str] = None,
+        source_url: Optional[str] = None,
+        search_query: Optional[str] = None,
+        text: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> None:
+        """
+        Publish sentiment analysis result to message broker.
+
+        Args:
+            result: Sentiment analysis result
+            article_id: Article ID
+            title: Optional title
+            source_url: Optional source URL
+            search_query: Optional search query
+            text: Original text for preview
+            metadata: Optional metadata
+        """
+        try:
+            if not self.message_broker:
+                logger.warning("Message broker not available for publishing")
+                return
+
+            # Check if message broker is healthy
+            is_healthy = await self.message_broker.health_check()
+            if not is_healthy:
+                logger.warning("Message broker is not healthy, skipping publish")
+                return
+
+            # Create response message using schema
+            sentiment_message = SentimentResultMessageSchema(
+                article_id=article_id,
+                url=source_url,
+                title=title,
+                content_preview=(text[:200] if text else ""),
+                search_query=search_query,
+                sentiment_label=result.label.value,
+                scores={
+                    "positive": result.scores.positive,
+                    "negative": result.scores.negative,
+                    "neutral": result.scores.neutral,
+                },
+                confidence=result.confidence,
+                reasoning=result.reasoning,
+                processed_at=datetime.now(timezone.utc).isoformat(),
+                metadata=metadata or {},
+            )
+
+            # Publish to processed sentiments queue using config
+            success = await self.message_broker.publish(
+                exchange=settings.rabbitmq_sentiment_exchange,
+                routing_key=settings.rabbitmq_routing_key_sentiment_processed,
+                message=sentiment_message.model_dump(),
+            )
+
+            if success:
+                logger.debug(
+                    f"Published sentiment result for article {article_id} from analyze_text"
+                )
+            else:
+                logger.warning(
+                    f"Failed to publish sentiment result for article {article_id}"
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to publish sentiment result from analyze_text: {str(e)}"
+            )
+            # Don't raise - publishing failure shouldn't break analysis
 
     async def health_check(self) -> bool:
         """

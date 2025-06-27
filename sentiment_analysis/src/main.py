@@ -55,19 +55,28 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
 
-    # Initialize message consumer
+    # Initialize message consumer only if RabbitMQ is available
+    consumer_task = None
     try:
         message_consumer = MessageConsumerService(
             message_broker=message_broker,
             sentiment_service=sentiment_service,
         )
 
-        # Start consuming in background task
-        asyncio.create_task(message_consumer.start_consuming())
-        logger.info("Message consumer started")
+        # Start consuming in background task and keep reference
+        consumer_task = asyncio.create_task(message_consumer.start_consuming())
+
+        # Give some time for connection to establish
+        await asyncio.sleep(1)
+
+        if message_consumer.is_running():
+            logger.info("Message consumer started successfully")
+        else:
+            logger.warning("Message consumer failed to start properly")
 
     except Exception as e:
         logger.error(f"Failed to start message consumer: {str(e)}")
+        message_consumer = None
 
     # Verify service health
     try:
@@ -83,8 +92,16 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     try:
+        if consumer_task and not consumer_task.done():
+            consumer_task.cancel()
+            try:
+                await consumer_task
+            except asyncio.CancelledError:
+                logger.info("Consumer task cancelled successfully")
+
         if message_consumer:
             await message_consumer.stop_consuming()
+
         await sentiment_repository.close()
         logger.info("All services cleaned up successfully")
     except Exception as e:

@@ -72,13 +72,20 @@ class SentimentAnalysisResult(BaseModel):
 
     model_config = ConfigDict()
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "SentimentAnalysisResult":
+        """Create instance from dictionary (for cache deserialization)."""
+        if isinstance(data.get("scores"), dict):
+            data["scores"] = SentimentScore(**data["scores"])
+        return cls(**data)
+
 
 class ProcessedSentiment(BaseModel):
     """Processed sentiment data stored in database."""
 
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     article_id: str = Field(..., description="Reference to original article")
-    url: Optional[HttpUrl] = Field(None, description="Article URL")
+    url: Optional[str] = Field(None, description="Article URL as string")
     title: Optional[str] = Field(None, description="Article title")
     content_preview: Optional[str] = Field(
         None, description="First 200 chars of content"
@@ -141,19 +148,5 @@ class SentimentAggregation(BaseModel):
     source_category: Optional[str] = None
     limit: int = Field(10, ge=1, le=100)
     offset: int = Field(0, ge=0)
-
-    model_config = ConfigDict()
-
-
-class SentimentAggregation(BaseModel):
-    """Aggregated sentiment statistics."""
-
-    total_count: int
-    positive_count: int
-    negative_count: int
-    neutral_count: int
-    average_confidence: float
-    sentiment_distribution: Dict[str, float]
-    time_period: Optional[str] = None
 
     model_config = ConfigDict()

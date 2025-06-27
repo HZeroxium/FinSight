@@ -66,7 +66,7 @@ class ProcessedSentimentSchema(BaseModel):
 
     id: str
     article_id: str
-    url: Optional[HttpUrl] = None
+    url: Optional[str] = None  # Changed from HttpUrl to str for consistency
     title: Optional[str] = None
     content_preview: Optional[str] = None
     sentiment_label: SentimentLabel

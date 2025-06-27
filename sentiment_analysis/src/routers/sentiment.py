@@ -48,10 +48,24 @@ def _convert_analysis_result_to_schema(
 
 def _convert_processed_sentiment_to_schema(sentiment) -> ProcessedSentimentSchema:
     """Convert processed sentiment model to schema."""
+    # Handle URL conversion - convert string back to HttpUrl for response
+    url = None
+    if sentiment.url:
+        try:
+            from pydantic import HttpUrl
+
+            url = (
+                HttpUrl(sentiment.url)
+                if isinstance(sentiment.url, str)
+                else sentiment.url
+            )
+        except Exception:
+            url = sentiment.url  # Keep as string if conversion fails
+
     return ProcessedSentimentSchema(
         id=str(sentiment.id),
         article_id=sentiment.article_id,
-        url=sentiment.url,
+        url=url,
         title=sentiment.title,
         content_preview=sentiment.content_preview,
         sentiment_label=sentiment.sentiment_label,
@@ -316,13 +330,6 @@ async def health_check(
         )
 
     except Exception as e:
-        logger.error(f"Sentiment health check failed: {str(e)}")
-        return JSONResponse(
-            status_code=503,
-            content=ErrorResponseSchema(
-                error="ServiceUnavailable", message=f"Health check failed: {str(e)}"
-            ).model_dump(),
-        )
         logger.error(f"Sentiment health check failed: {str(e)}")
         return JSONResponse(
             status_code=503,

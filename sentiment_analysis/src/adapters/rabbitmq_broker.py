@@ -47,7 +47,15 @@ class RabbitMQBroker(MessageBroker):
         """Establish robust connection and channel."""
         try:
             logger.info("Connecting to RabbitMQ...")
-            self._connection = await connect_robust(self.connection_url)
+
+            # Close existing connections if any
+            if self._connection and not self._connection.is_closed:
+                await self._connection.close()
+
+            self._connection = await connect_robust(
+                self.connection_url,
+                timeout=10,  # Connection timeout
+            )
             self._channel = await self._connection.channel()
 
             # Set QoS for fair message distribution
@@ -227,7 +235,10 @@ class RabbitMQBroker(MessageBroker):
         """Check RabbitMQ health."""
         try:
             if not self._connection or self._connection.is_closed:
-                await self.connect()
+                try:
+                    await self.connect()
+                except Exception:
+                    return False
 
             # Simple health check - declare a temporary queue
             temp_queue = await self._channel.declare_queue(

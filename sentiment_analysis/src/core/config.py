@@ -61,6 +61,24 @@ class Settings(BaseSettings):
     log_file_path: str = "logs/"
     enable_structured_logging: bool = True
 
+    # Message Publishing Toggle
+    enable_message_publishing: bool = Field(
+        default=True, env="ENABLE_MESSAGE_PUBLISHING"
+    )
+
+    # Message Publishing for analyze_text method
+    enable_analyze_text_publishing: bool = Field(
+        default=True,
+        env="ENABLE_ANALYZE_TEXT_PUBLISHING",
+    )
+
+    # RabbitMQ Connection Settings
+    rabbitmq_connection_timeout: int = Field(
+        default=10, env="RABBITMQ_CONNECTION_TIMEOUT"
+    )
+
+    rabbitmq_retry_attempts: int = Field(default=3, env="RABBITMQ_RETRY_ATTEMPTS")
+
     # Validators
     @field_validator("openai_api_key", mode="before")
     @classmethod

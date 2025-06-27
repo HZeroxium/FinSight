@@ -4,7 +4,7 @@
 Search service layer for business logic.
 """
 
-from typing import List
+from typing import List, Dict, Any
 from datetime import datetime, timezone
 
 from ..interfaces.search_engine import SearchEngine, SearchEngineError
@@ -128,6 +128,20 @@ class SearchService:
             # Apply business logic filters
             filtered_response = self._filter_results(schema_response)
 
+            # Perform deep crawling if enabled
+            if enhanced_request.enable_crawler and filtered_response.results:
+                try:
+                    crawled_results = await self._deep_crawl_search(
+                        enhanced_request, filtered_response
+                    )
+                    if crawled_results:
+                        filtered_response = self._merge_search_results(
+                            filtered_response, crawled_results
+                        )
+                        logger.info(f"Added {len(crawled_results)} crawled results")
+                except Exception as crawl_error:
+                    logger.warning(f"Deep crawling failed: {crawl_error}")
+
             # Cache the result
             try:
                 cache_data = filtered_response.model_dump()
@@ -200,6 +214,144 @@ class SearchService:
             )
 
         return result
+
+    def _enhance_search_request(
+        self, request: SearchRequestSchema
+    ) -> SearchRequestSchema:
+        """
+        Enhance and validate search request with business logic.
+
+        Args:
+            request: Original search request
+
+        Returns:
+            SearchRequestSchema: Enhanced request
+        """
+        # Create a copy to avoid modifying the original
+        enhanced_data = request.model_dump()
+
+        # Apply default values and business logic
+        if not enhanced_data.get("search_depth"):
+            enhanced_data["search_depth"] = "basic"
+
+        if not enhanced_data.get("topic"):
+            enhanced_data["topic"] = "general"
+
+        # Limit max results for performance
+        if enhanced_data.get("max_results", 0) > 50:
+            enhanced_data["max_results"] = 50
+            logger.info("Limited max_results to 50 for performance")
+
+        # Set default chunks per source
+        if not enhanced_data.get("chunks_per_source"):
+            enhanced_data["chunks_per_source"] = 3
+
+        # Auto-detect financial queries
+        query_lower = enhanced_data["query"].lower()
+        financial_keywords = [
+            "btc",
+            "bitcoin",
+            "stock",
+            "market",
+            "price",
+            "trading",
+            "finance",
+            "crypto",
+        ]
+        if any(keyword in query_lower for keyword in financial_keywords):
+            if enhanced_data["topic"] == "general":
+                enhanced_data["topic"] = "finance"
+                logger.info("Auto-detected financial topic")
+
+        # Set time range if not provided
+        if not enhanced_data.get("time_range"):
+            enhanced_data["time_range"] = "week"
+
+        return SearchRequestSchema(**enhanced_data)
+
+    def _filter_results(self, response: SearchResponseSchema) -> SearchResponseSchema:
+        """
+        Apply business logic filters to search results.
+
+        Args:
+            response: Raw search response
+
+        Returns:
+            SearchResponseSchema: Filtered response
+        """
+        if not response.results:
+            return response
+
+        filtered_results = []
+
+        for result in response.results:
+            # Skip results with very low scores
+            if result.score < 0.1:
+                logger.debug(f"Filtered out low score result: {result.title[:50]}")
+                continue
+
+            # Skip results with no content
+            if not result.content or len(result.content.strip()) < 50:
+                logger.debug(f"Filtered out low content result: {result.title[:50]}")
+                continue
+
+            # Skip results that are too old (configurable)
+            if result.published_at:
+                days_old = (datetime.now(timezone.utc) - result.published_at).days
+                if days_old > 30:  # Skip articles older than 30 days
+                    logger.debug(f"Filtered out old result: {result.title[:50]}")
+                    continue
+
+            # Enhance result metadata
+            if not result.metadata:
+                result.metadata = {}
+
+            result.metadata.update(
+                {
+                    "filtered_at": datetime.now(timezone.utc).isoformat(),
+                    "content_length": len(result.content),
+                    "days_old": days_old if result.published_at else None,
+                }
+            )
+
+            filtered_results.append(result)
+
+        # Sort by relevance score and recency
+        filtered_results.sort(
+            key=lambda x: (
+                x.score,
+                x.published_at.timestamp() if x.published_at else 0,
+            ),
+            reverse=True,
+        )
+
+        # Update response
+        response.results = filtered_results
+        response.total_results = len(filtered_results)
+
+        logger.info(
+            f"Filtered {len(response.results)} results from {response.total_results} original"
+        )
+        return response
+
+    def _get_time_range(self, days: int) -> str:
+        """
+        Convert days to time range string.
+
+        Args:
+            days: Number of days
+
+        Returns:
+            str: Time range string
+        """
+        if days <= 1:
+            return "day"
+        elif days <= 7:
+            return "week"
+        elif days <= 30:
+            return "month"
+        else:
+            return "year"
 
     async def _publish_articles_for_sentiment_analysis(
         self, response: SearchResponseSchema
@@ -337,17 +489,17 @@ class SearchService:
             logger.warning(f"Failed to prepare/publish search event: {str(e)}")
 
     def _generate_cache_key(self, request: SearchRequestSchema) -> str:
-        """Generate cache key for search request"""
+        """Generate cache key for search request with improved hashing."""
         import hashlib
         import json
 
         # Create a normalized representation of the request
         cache_data = {
-            "query": request.query,
+            "query": request.query.lower().strip(),  # Normalize query
             "topic": request.topic,
             "search_depth": request.search_depth,
             "time_range": request.time_range,
-            "max_results": request.max_results,
+            "max_results": min(request.max_results, 50),  # Cap for consistency
             "enable_crawler": request.enable_crawler,
             "include_answer": request.include_answer,
             "chunks_per_source": request.chunks_per_source,
@@ -374,25 +526,39 @@ class SearchService:
         # Convert results to schema format
         results = []
         for result_data in search_engine_response.get("results", []):
-            result = SearchResultSchema(
-                url=result_data["url"],
-                title=result_data["title"],
-                content=result_data["content"],
-                score=result_data["score"],
-                published_at=result_data.get("published_at"),
-                source=result_data.get("source"),
-                is_crawled=result_data.get("is_crawled", False),
-                metadata=result_data.get("metadata"),
-            )
-            results.append(result)
+            try:
+                # Parse published_at if it's a string
+                published_at = result_data.get("published_at")
+                if published_at and isinstance(published_at, str):
+                    try:
+                        published_at = datetime.fromisoformat(
+                            published_at.replace("Z", "+00:00")
+                        )
+                    except ValueError:
+                        published_at = None
+
+                result = SearchResultSchema(
+                    url=result_data["url"],
+                    title=result_data.get("title", "Untitled"),
+                    content=result_data.get("content", ""),
+                    score=float(result_data.get("score", 0.0)),
+                    published_at=published_at,
+                    source=result_data.get("source", "Unknown"),
+                    is_crawled=result_data.get("is_crawled", False),
+                    metadata=result_data.get("metadata", {}),
+                )
+                results.append(result)
+            except Exception as e:
+                logger.warning(f"Failed to convert search result: {e}")
+                continue
 
         return SearchResponseSchema(
-            query=search_engine_response["query"],
-            total_results=search_engine_response["total_results"],
+            query=search_engine_response.get("query", request.query),
+            total_results=search_engine_response.get("total_results", len(results)),
             results=results,
             answer=search_engine_response.get("answer"),
-            follow_up_questions=search_engine_response.get("follow_up_questions"),
-            response_time=search_engine_response["response_time"],
+            follow_up_questions=search_engine_response.get("follow_up_questions", []),
+            response_time=search_engine_response.get("response_time", 0.0),
             search_depth=request.search_depth,
             topic=request.topic,
             time_range=request.time_range,
@@ -555,4 +721,69 @@ class SearchService:
 
         except Exception as e:
             logger.error(f"Health check failed: {str(e)}")
+            return False
+
+    def get_search_stats(self) -> Dict[str, Any]:
+        """
+        Get search service statistics.
+
+        Returns:
+            Dict[str, Any]: Service statistics
+        """
+        try:
+            cache_stats = {
+                "cache_type": type(self._cache).__name__,
+                "cache_healthy": True,
+            }
+
+            # Try to get cache-specific stats if available
+            if hasattr(self._cache, "get_stats"):
+                cache_stats.update(self._cache.get_stats())
+
+            return {
+                "service": "search_service",
+                "status": "running",
+                "cache": cache_stats,
+                "search_engine_connected": True,  # Would check in production
+                "message_broker_connected": True,  # Would check in production
+            }
+        except Exception as e:
+            logger.error(f"Failed to get search stats: {e}")
+            return {
+                "service": "search_service",
+                "status": "error",
+                "error": str(e),
+            }
+
+    async def clear_cache(self, pattern: str = None) -> bool:
+        """
+        Clear search cache with optional pattern.
+
+        Args:
+            pattern: Optional pattern to match keys
+
+        Returns:
+            bool: Success status
+        """
+        try:
+            if pattern:
+                # If cache supports pattern-based deletion
+                if hasattr(self._cache, "delete_pattern"):
+                    result = self._cache.delete_pattern(pattern)
+                    logger.info(f"Cleared cache with pattern: {pattern}")
+                    return result
+                else:
+                    logger.warning("Cache doesn't support pattern-based deletion")
+                    return False
+            else:
+                # Clear all cache
+                if hasattr(self._cache, "clear"):
+                    result = self._cache.clear()
+                    logger.info("Cleared all search cache")
+                    return result
+                else:
+                    logger.warning("Cache doesn't support clear operation")
+                    return False
+        except Exception as e:
+            logger.error(f"Failed to clear cache: {e}")
             return False

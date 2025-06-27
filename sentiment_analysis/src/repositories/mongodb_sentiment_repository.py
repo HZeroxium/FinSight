@@ -5,7 +5,7 @@ MongoDB repository for sentiment data operations.
 """
 
 from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
@@ -99,7 +99,41 @@ class MongoDBSentimentRepository(SentimentRepository):
             str: Saved sentiment ID
         """
         try:
-            doc = sentiment.dict(by_alias=True, exclude_unset=True)
+            # Convert Pydantic model to dict with proper serialization
+            doc = sentiment.model_dump(by_alias=True, exclude_unset=True)
+
+            # Convert enum values to strings
+            if "sentiment_label" in doc:
+                doc["sentiment_label"] = (
+                    doc["sentiment_label"].value
+                    if hasattr(doc["sentiment_label"], "value")
+                    else str(doc["sentiment_label"])
+                )
+
+            # Convert datetime objects to ensure they're timezone-aware
+            if "processed_at" in doc and doc["processed_at"]:
+                if (
+                    isinstance(doc["processed_at"], datetime)
+                    and doc["processed_at"].tzinfo is None
+                ):
+                    doc["processed_at"] = doc["processed_at"].replace(
+                        tzinfo=timezone.utc
+                    )
+
+            if "published_at" in doc and doc["published_at"]:
+                if (
+                    isinstance(doc["published_at"], datetime)
+                    and doc["published_at"].tzinfo is None
+                ):
+                    doc["published_at"] = doc["published_at"].replace(
+                        tzinfo=timezone.utc
+                    )
+
+            # Ensure sentiment_scores is a dict
+            if "sentiment_scores" in doc and hasattr(
+                doc["sentiment_scores"], "model_dump"
+            ):
+                doc["sentiment_scores"] = doc["sentiment_scores"].model_dump()
 
             # Upsert based on article_id
             result = await self.collection.replace_one(
@@ -130,7 +164,13 @@ class MongoDBSentimentRepository(SentimentRepository):
         """
         try:
             doc = await self.collection.find_one({"_id": ObjectId(sentiment_id)})
-            return ProcessedSentiment(**doc) if doc else None
+            if doc:
+                # Convert url string back to HttpUrl for schema compatibility
+                if "url" in doc and doc["url"]:
+                    # Keep as string since we changed the model
+                    pass
+                return ProcessedSentiment(**doc)
+            return None
 
         except Exception as e:
             logger.error(f"Failed to get sentiment: {e}")
@@ -150,7 +190,13 @@ class MongoDBSentimentRepository(SentimentRepository):
         """
         try:
             doc = await self.collection.find_one({"article_id": article_id})
-            return ProcessedSentiment(**doc) if doc else None
+            if doc:
+                # Convert url string back for schema compatibility
+                if "url" in doc and doc["url"]:
+                    # Keep as string since we changed the model
+                    pass
+                return ProcessedSentiment(**doc)
+            return None
 
         except Exception as e:
             logger.error(f"Failed to get sentiment by article ID: {e}")

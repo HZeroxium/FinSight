@@ -51,16 +51,6 @@ def get_message_broker() -> RabbitMQBroker:
 
 @lru_cache()
 def get_sentiment_service() -> SentimentService:
-    """Get sentiment service instance."""
-    logger.info("Creating sentiment service instance")
-    return SentimentService(
-        analyzer=get_sentiment_analyzer(),
-        repository=get_sentiment_repository(),
-    )
-
-
-@lru_cache()
-def get_sentiment_service() -> SentimentService:
     """
     Get singleton sentiment service instance.
 
@@ -70,8 +60,8 @@ def get_sentiment_service() -> SentimentService:
     logger.info("Creating sentiment service instance")
     analyzer = get_sentiment_analyzer()
     repository = get_sentiment_repository()
+    message_broker = get_message_broker()
 
     return SentimentService(
-        analyzer=analyzer,
-        repository=repository,
+        analyzer=analyzer, repository=repository, message_broker=message_broker
     )

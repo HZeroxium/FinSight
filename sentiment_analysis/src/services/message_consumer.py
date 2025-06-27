@@ -5,7 +5,8 @@ Message consumer service for processing messages from RabbitMQ.
 """
 
 from typing import Dict, Any
-
+from datetime import datetime, timezone
+import asyncio
 
 from ..interfaces.message_broker import MessageBroker
 from ..services.sentiment_service import SentimentService
@@ -44,8 +45,15 @@ class MessageConsumerService:
         try:
             logger.info("Starting message consumer service")
 
-            # Connect to message broker
-            await self.message_broker.connect()
+            # Connect to message broker with timeout
+            connection_timeout = 5  # seconds
+            try:
+                await asyncio.wait_for(
+                    self.message_broker.connect(), timeout=connection_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"RabbitMQ connection timeout after {connection_timeout}s")
+                raise Exception("RabbitMQ connection timeout")
 
             # Declare necessary exchanges and queues
             await self._setup_message_infrastructure()
@@ -62,7 +70,8 @@ class MessageConsumerService:
 
         except Exception as e:
             logger.error(f"Failed to start message consumer: {str(e)}")
-            raise
+            self._running = False
+            # Don't re-raise to prevent task destruction issues
 
     async def stop_consuming(self) -> None:
         """Stop consuming messages."""
@@ -152,6 +161,33 @@ class MessageConsumerService:
                 save_result=True,
             )
 
+            # Only publish if enabled in settings
+            if settings.enable_message_publishing:
+                await self._publish_sentiment_result(article_message, result)
+            else:
+                logger.debug(
+                    f"Message publishing disabled - skipping publish for article {article_message.id}"
+                )
+
+            logger.info(
+                f"Successfully processed sentiment for article {article_message.id}: {result.label} (confidence: {result.confidence:.2f})"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to process article sentiment message: {str(e)}")
+            # Don't raise exception to avoid requeue loops
+
+    async def _publish_sentiment_result(
+        self, article_message: ArticleMessageSchema, result
+    ) -> None:
+        """
+        Publish sentiment analysis result back to message broker.
+
+        Args:
+            article_message: Original article message
+            result: Sentiment analysis result
+        """
+        try:
             # Create response message using schema
             sentiment_message = SentimentResultMessageSchema(
                 article_id=article_message.id,
@@ -169,8 +205,8 @@ class MessageConsumerService:
                 },
                 confidence=result.confidence,
                 reasoning=result.reasoning,
-                processed_at=article_message.search_timestamp,
-                metadata=article_message.metadata,
+                processed_at=datetime.now(timezone.utc).isoformat(),
+                metadata=article_message.metadata or {},
             )
 
             # Publish to processed sentiments queue using config
@@ -180,13 +216,11 @@ class MessageConsumerService:
                 message=sentiment_message.model_dump(),
             )
 
-            logger.info(
-                f"Successfully processed sentiment for article {article_message.id}: {result.label} (confidence: {result.confidence:.2f})"
-            )
+            logger.debug(f"Published sentiment result for article {article_message.id}")
 
         except Exception as e:
-            logger.error(f"Failed to process article sentiment message: {str(e)}")
-            # Don't raise exception to avoid requeue loops
+            logger.error(f"Failed to publish sentiment result: {str(e)}")
+            # Don't raise - publishing failure shouldn't break processing
 
     def is_running(self) -> bool:
         """Check if consumer is running."""
