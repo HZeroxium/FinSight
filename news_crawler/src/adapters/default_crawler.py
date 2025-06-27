@@ -1,7 +1,7 @@
-# news_crawler/src/adapters/default_crawler.py
+# adapters/default_crawler.py
 
 """
-news_crawler/src/adapters/default_crawler.py: Default NewsCrawler implementation using HTTPX + BeautifulSoup.
+adapters/default_crawler.py: Default NewsCrawler implementation using HTTPX + BeautifulSoup.
 """
 
 from typing import List, Optional
@@ -11,8 +11,8 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup
 
-from common.interfaces.crawler import NewsCrawler
-from common.models.article import RawArticle
+from interfaces.crawler import NewsCrawler
+from models.article import RawArticle
 
 
 class DefaultNewsCrawler(NewsCrawler):

@@ -1,9 +1,11 @@
+# schemas/__init__.py
+
 from .search_schemas import *
 from .crawler_schemas import *
 from .common_schemas import *
 
 __all__ = [
-    # Search schemas
+    # Search schemas (primary API DTOs)
     "SearchRequestSchema",
     "SearchResponseSchema",
     "SearchResultSchema",
@@ -17,4 +19,5 @@ __all__ = [
     "HealthCheckSchema",
     "ErrorResponseSchema",
     "PaginationSchema",
+    "MetricsSchema",
 ]

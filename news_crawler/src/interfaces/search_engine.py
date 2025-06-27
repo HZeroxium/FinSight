@@ -1,25 +1,26 @@
+# interfaces/search_engine.py
+
 """
 Search engine interface for news and content discovery.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
-from ..models.search import SearchRequest, SearchResponse
+from typing import Optional, Dict, Any
 
 
 class SearchEngine(ABC):
     """Abstract base class for search engines."""
 
     @abstractmethod
-    async def search(self, request: SearchRequest) -> SearchResponse:
+    async def search(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """
         Perform a search query.
 
         Args:
-            request: Search parameters and configuration
+            request: Search parameters as dictionary
 
         Returns:
-            SearchResponse: Search results and metadata
+            Dict[str, Any]: Search results and metadata as dictionary
 
         Raises:
             SearchEngineError: When search operation fails
@@ -43,4 +44,5 @@ class SearchEngineError(Exception):
     def __init__(self, message: str, details: Optional[dict] = None):
         super().__init__(message)
         self.message = message
+        self.details = details or {}
         self.details = details or {}

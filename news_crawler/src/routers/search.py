@@ -1,8 +1,9 @@
+# routers/search.py
+
 """
 REST API routes for search operations.
 """
 
-from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import JSONResponse
 
@@ -40,18 +41,8 @@ async def search_content(
             f"Search request: {request.query} (crawler: {request.enable_crawler})"
         )
 
-        # Convert schema to domain model
-        from ..models.search import SearchRequest
-
-        domain_request = SearchRequest(**request.dict())
-
-        result = await search_service.search_news(domain_request)
-
-        # Convert domain model to schema
-        response_data = result.dict()
-        response_data["crawler_used"] = getattr(result, "crawler_used", False)
-
-        return SearchResponseSchema(**response_data)
+        result = await search_service.search_news(request)
+        return result
 
     except SearchEngineError as e:
         logger.error(f"Search engine error: {e.message}")
@@ -81,12 +72,7 @@ async def get_financial_sentiment(
     try:
         logger.info(f"Financial sentiment search for {symbol} ({days} days)")
         result = await search_service.search_financial_sentiment(symbol, days)
-
-        # Convert domain model to schema
-        response_data = result.dict()
-        response_data["crawler_used"] = getattr(result, "crawler_used", False)
-
-        return SearchResponseSchema(**response_data)
+        return result
 
     except SearchEngineError as e:
         logger.error(f"Financial sentiment search failed: {e.message}")
@@ -114,12 +100,7 @@ async def get_trending_topics(
     try:
         logger.info(f"Trending topics search for {topic}")
         result = await search_service.get_trending_topics(topic)
-
-        # Convert domain model to schema
-        response_data = result.dict()
-        response_data["crawler_used"] = getattr(result, "crawler_used", False)
-
-        return SearchResponseSchema(**response_data)
+        return result
 
     except SearchEngineError as e:
         logger.error(f"Trending topics search failed: {e.message}")
@@ -142,6 +123,26 @@ async def health_check(
     try:
         is_healthy = await search_service.health_check()
 
+        dependencies = {
+            "search_engine": "healthy" if is_healthy else "unhealthy",
+            "message_broker": "healthy" if is_healthy else "unhealthy",
+            "crawler_service": "healthy" if is_healthy else "unhealthy",
+        }
+
+        return HealthCheckSchema(
+            status="healthy" if is_healthy else "unhealthy",
+            service="news-crawler-service",
+            dependencies=dependencies,
+        )
+
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content=ErrorResponseSchema(
+                error="ServiceUnavailable", message=f"Health check failed: {str(e)}"
+            ).dict(),
+        )
         dependencies = {
             "search_engine": "healthy" if is_healthy else "unhealthy",
             "message_broker": "healthy" if is_healthy else "unhealthy",

@@ -1,9 +1,11 @@
+# adapters/tavily_search_engine.py
+
 """
 Tavily search engine implementation.
 """
 
 import time
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -11,7 +13,6 @@ from tavily import TavilyClient
 from pydantic import HttpUrl
 
 from ..interfaces.search_engine import SearchEngine, SearchEngineError
-from ..models.search import SearchRequest, SearchResponse, SearchResult
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
@@ -38,15 +39,15 @@ class TavilySearchEngine(SearchEngine):
         self._api_key = api_key
         logger.info("Tavily search engine initialized")
 
-    async def search(self, request: SearchRequest) -> SearchResponse:
+    async def search(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """
         Perform search using Tavily API.
 
         Args:
-            request: Search parameters
+            request: Search parameters as dictionary
 
         Returns:
-            SearchResponse: Processed search results
+            Dict[str, Any]: Processed search results as dictionary
 
         Raises:
             SearchEngineError: When search fails
@@ -54,23 +55,23 @@ class TavilySearchEngine(SearchEngine):
         start_time = time.time()
 
         try:
-            logger.info(f"Performing Tavily search: {request.query}")
+            logger.info(f"Performing Tavily search: {request.get('query')}")
 
             # Prepare Tavily search parameters
             search_params = {
-                "query": request.query,
-                "search_depth": request.search_depth,
-                "max_results": request.max_results,
-                "include_answer": request.include_answer,
+                "query": request.get("query"),
+                "search_depth": request.get("search_depth", "basic"),
+                "max_results": request.get("max_results", 10),
+                "include_answer": request.get("include_answer", False),
             }
 
             # Add optional parameters
-            if request.topic:
-                search_params["topic"] = request.topic
-            if request.time_range:
-                search_params["time_range"] = request.time_range
-            if request.chunks_per_source > 1:
-                search_params["chunks_per_source"] = request.chunks_per_source
+            if request.get("topic"):
+                search_params["topic"] = request["topic"]
+            if request.get("time_range"):
+                search_params["time_range"] = request["time_range"]
+            if request.get("chunks_per_source", 1) > 1:
+                search_params["chunks_per_source"] = request["chunks_per_source"]
 
             # Execute search
             response = self.client.search(**search_params)
@@ -83,35 +84,35 @@ class TavilySearchEngine(SearchEngine):
                 f"Tavily search completed in {response_time:.2f}s with {len(search_results)} results"
             )
 
-            return SearchResponse(
-                query=request.query,
-                total_results=len(search_results),
-                results=search_results,
-                answer=response.get("answer"),
-                follow_up_questions=response.get("follow_up_questions"),
-                response_time=response_time,
-                search_depth=request.search_depth,
-                topic=request.topic,
-                time_range=request.time_range,
-                crawler_used=False,  # Tavily doesn't use our crawler
-            )
+            return {
+                "query": request.get("query"),
+                "total_results": len(search_results),
+                "results": search_results,
+                "answer": response.get("answer"),
+                "follow_up_questions": response.get("follow_up_questions"),
+                "response_time": response_time,
+                "search_depth": request.get("search_depth", "basic"),
+                "topic": request.get("topic"),
+                "time_range": request.get("time_range"),
+                "crawler_used": False,  # Tavily doesn't use our crawler
+            }
 
         except Exception as e:
             logger.error(f"Tavily search failed: {str(e)}")
             raise SearchEngineError(
                 message=f"Search operation failed: {str(e)}",
-                details={"query": request.query, "error_type": type(e).__name__},
+                details={"query": request.get("query"), "error_type": type(e).__name__},
             )
 
-    def _process_tavily_response(self, response: dict) -> List[SearchResult]:
+    def _process_tavily_response(self, response: dict) -> List[Dict[str, Any]]:
         """
-        Convert Tavily API response to our SearchResult format.
+        Convert Tavily API response to our search result format.
 
         Args:
             response: Raw Tavily API response
 
         Returns:
-            List[SearchResult]: Processed search results
+            List[Dict[str, Any]]: Processed search results as dictionaries
         """
         results = []
 
@@ -126,20 +127,22 @@ class TavilySearchEngine(SearchEngine):
                 parsed_url = urlparse(url)
                 source = parsed_url.netloc
 
-                # Create search result
-                result = SearchResult(
-                    url=HttpUrl(url),
-                    title=item.get("title", "").strip(),
-                    content=item.get("content", "").strip(),
-                    score=float(item.get("score", 0.0)),
-                    source=source,
-                    published_at=self._parse_published_date(item.get("published_date")),
-                    is_crawled=False,  # Tavily results are not crawled by us
-                    metadata={
+                # Create search result as dictionary
+                result = {
+                    "url": url,
+                    "title": item.get("title", "").strip(),
+                    "content": item.get("content", "").strip(),
+                    "score": float(item.get("score", 0.0)),
+                    "source": source,
+                    "published_at": self._parse_published_date(
+                        item.get("published_date")
+                    ),
+                    "is_crawled": False,  # Tavily results are not crawled by us
+                    "metadata": {
                         "tavily_score": item.get("score", 0.0),
                         "raw_published_date": item.get("published_date"),
                     },
-                )
+                }
 
                 results.append(result)
 
@@ -149,7 +152,7 @@ class TavilySearchEngine(SearchEngine):
 
         return results
 
-    def _parse_published_date(self, date_str: Optional[str]) -> Optional[datetime]:
+    def _parse_published_date(self, date_str: Optional[str]) -> Optional[str]:
         """
         Parse published date from various formats.
 
@@ -157,7 +160,7 @@ class TavilySearchEngine(SearchEngine):
             date_str: Date string in various formats
 
         Returns:
-            Optional[datetime]: Parsed datetime or None
+            Optional[str]: Parsed datetime as ISO string or None
         """
         if not date_str:
             return None
@@ -174,7 +177,8 @@ class TavilySearchEngine(SearchEngine):
 
         for fmt in formats:
             try:
-                return datetime.strptime(date_str, fmt)
+                parsed_date = datetime.strptime(date_str, fmt)
+                return parsed_date.isoformat()
             except ValueError:
                 continue
 

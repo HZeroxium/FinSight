@@ -121,12 +121,3 @@ class ArticleSearchQuery(BaseModel):
     model_config = ConfigDict()
 
 
-class ArticleSearchResponse(BaseModel):
-    """Article search response."""
-
-    articles: List[ProcessedArticle]
-    total_count: int
-    query: ArticleSearchQuery
-    response_time: float
-
-    model_config = ConfigDict()

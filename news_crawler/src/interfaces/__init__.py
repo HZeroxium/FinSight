@@ -1,3 +1,5 @@
+# interfaces/__init__.py
+
 """
 Interface definitions for the news crawler service.
 """

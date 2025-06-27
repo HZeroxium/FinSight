@@ -1,3 +1,5 @@
+# adapters/rabbitmq_broker.py
+
 """
 RabbitMQ message broker implementation.
 """

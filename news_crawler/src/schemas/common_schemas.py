@@ -1,3 +1,5 @@
+# schemas/common_schemas.py
+
 """
 Common API schemas used across the service.
 """

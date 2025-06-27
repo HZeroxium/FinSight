@@ -1,3 +1,5 @@
+# schemas/search_schemas.py
+
 """
 Search API schemas for request/response DTOs.
 """

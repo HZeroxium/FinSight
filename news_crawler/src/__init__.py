@@ -1,4 +1,4 @@
-# news_crawler/src/__init__.py
+# __init__.py
 """
 News Crawler Service - AI-powered news crawling and sentiment analysis service.
 """

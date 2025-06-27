@@ -1,3 +1,5 @@
+# interfaces/message_broker.py
+
 """
 Message broker interface for async communication.
 """

@@ -1,3 +1,5 @@
+# models/__init__.py
+
 """
 Data models for persistence and domain logic.
 """
@@ -8,15 +10,11 @@ from .article import (
     CrawledArticle,
     ProcessedArticle,
     ArticleSearchQuery,
-    ArticleSearchResponse,
     PyObjectId,
 )
-from .search import (
-    SearchResult,
-    SearchResponse,
-    SearchRequest,
-    SearchError,
-)
+
+# Search models have been moved to schemas/search_schemas.py
+# since they are API DTOs, not data persistence models
 
 __all__ = [
     # Article models
@@ -25,7 +23,8 @@ __all__ = [
     "CrawledArticle",
     "ProcessedArticle",
     "ArticleSearchQuery",
-    "ArticleSearchResponse",
+    "PyObjectId",
+    "ArticleSearchQuery",
     "PyObjectId",
     # Search models
     "SearchResult",

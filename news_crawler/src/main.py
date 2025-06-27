@@ -1,4 +1,5 @@
-# news_crawler/src/main.py
+# main.py
+
 """
 FastAPI application for the news crawler service.
 """

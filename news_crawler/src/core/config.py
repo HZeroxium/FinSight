@@ -1,3 +1,5 @@
+# core/config.py
+
 """
 Configuration management for the news crawler service.
 """

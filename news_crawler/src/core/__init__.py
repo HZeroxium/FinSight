@@ -1,3 +1,5 @@
+# core/__init__.py
+
 """
 Core configuration and settings.
 """

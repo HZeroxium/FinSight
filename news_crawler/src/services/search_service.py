@@ -1,13 +1,19 @@
+# services/search_service.py
+
 """
 Search service layer for business logic.
 """
 
-from typing import Optional, List
-from datetime import datetime, timedelta
+from typing import List
+from datetime import datetime, timezone
 
 from ..interfaces.search_engine import SearchEngine, SearchEngineError
 from ..interfaces.message_broker import MessageBroker
-from ..models.search import SearchRequest, SearchResponse, SearchResult
+from ..schemas.search_schemas import (
+    SearchRequestSchema,
+    SearchResponseSchema,
+    SearchResultSchema,
+)
 from ..services.crawler_service import CrawlerService
 from ..repositories.article_repository import ArticleRepository
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
@@ -55,7 +61,7 @@ class SearchService:
         logger.info("Search service initialized successfully")
 
     @cache_result(ttl=300, key_prefix="search_")
-    async def search_news(self, request: SearchRequest) -> SearchResponse:
+    async def search_news(self, request: SearchRequestSchema) -> SearchResponseSchema:
         """
         Search for news articles with business logic applied.
 
@@ -63,7 +69,7 @@ class SearchService:
             request: Search parameters
 
         Returns:
-            SearchResponse: Search results
+            SearchResponseSchema: Search results
         """
         logger.info(
             f"Processing search request: {request.query} (crawler: {request.enable_crawler})"
@@ -73,12 +79,20 @@ class SearchService:
         enhanced_request = self._enhance_search_request(request)
 
         try:
-            # Perform initial search
-            response = await self.search_engine.search(enhanced_request)
-            logger.info(f"Initial search returned {len(response.results)} results")
+            # Perform initial search - Convert schema to dict for search engine
+            search_engine_request = enhanced_request.model_dump()
+            response = await self.search_engine.search(search_engine_request)
+            logger.info(
+                f"Initial search returned {response.get('total_results', 0)} results"
+            )
+
+            # Convert search engine response to schema
+            schema_response = self._convert_to_schema_response(
+                response, enhanced_request
+            )
 
             # Apply business logic filters
-            filtered_response = self._filter_results(response)
+            filtered_response = self._filter_results(schema_response)
 
             # Deep crawl if enabled and needed
             if (
@@ -110,7 +124,7 @@ class SearchService:
 
     async def search_financial_sentiment(
         self, symbol: str, days: int = 7
-    ) -> SearchResponse:
+    ) -> SearchResponseSchema:
         """
         Search for financial sentiment about a specific symbol.
 
@@ -119,7 +133,7 @@ class SearchService:
             days: Number of days to look back
 
         Returns:
-            SearchResponse: Sentiment-related search results
+            SearchResponseSchema: Sentiment-related search results
         """
         logger.info(f"Searching financial sentiment for {symbol} ({days} days)")
 
@@ -127,7 +141,7 @@ class SearchService:
         time_range = self._get_time_range(days)
         query = f"{symbol} market sentiment analysis price movement"
 
-        request = SearchRequest(
+        request = SearchRequestSchema(
             query=query,
             topic="finance",
             search_depth="advanced",
@@ -140,7 +154,7 @@ class SearchService:
 
         return await self.search_news(request)
 
-    async def get_trending_topics(self, topic: str = "finance") -> SearchResponse:
+    async def get_trending_topics(self, topic: str = "finance") -> SearchResponseSchema:
         """
         Get trending topics in a specific domain.
 
@@ -148,13 +162,13 @@ class SearchService:
             topic: Topic category
 
         Returns:
-            SearchResponse: Trending topics
+            SearchResponseSchema: Trending topics
         """
         logger.info(f"Fetching trending topics for: {topic}")
 
         query = f"trending {topic} news today market analysis"
 
-        request = SearchRequest(
+        request = SearchRequestSchema(
             query=query,
             topic=topic,
             search_depth="advanced",
@@ -166,9 +180,50 @@ class SearchService:
 
         return await self.search_news(request)
 
+    def _convert_to_schema_response(
+        self, search_engine_response: dict, request: SearchRequestSchema
+    ) -> SearchResponseSchema:
+        """
+        Convert search engine response to our schema format.
+
+        Args:
+            search_engine_response: Raw response from search engine
+            request: Original request for context
+
+        Returns:
+            SearchResponseSchema: Converted response
+        """
+        # Convert results to schema format
+        results = []
+        for result_data in search_engine_response.get("results", []):
+            result = SearchResultSchema(
+                url=result_data["url"],
+                title=result_data["title"],
+                content=result_data["content"],
+                score=result_data["score"],
+                published_at=result_data.get("published_at"),
+                source=result_data.get("source"),
+                is_crawled=result_data.get("is_crawled", False),
+                metadata=result_data.get("metadata"),
+            )
+            results.append(result)
+
+        return SearchResponseSchema(
+            query=search_engine_response["query"],
+            total_results=search_engine_response["total_results"],
+            results=results,
+            answer=search_engine_response.get("answer"),
+            follow_up_questions=search_engine_response.get("follow_up_questions"),
+            response_time=search_engine_response["response_time"],
+            search_depth=request.search_depth,
+            topic=request.topic,
+            time_range=request.time_range,
+            crawler_used=search_engine_response.get("crawler_used", False),
+        )
+
     async def _deep_crawl_search(
-        self, request: SearchRequest, initial_response: SearchResponse
-    ) -> List[SearchResult]:
+        self, request: SearchRequestSchema, initial_response: SearchResponseSchema
+    ) -> List[SearchResultSchema]:
         """
         Perform deep crawling on search results for additional content.
 
@@ -177,24 +232,24 @@ class SearchService:
             initial_response: Initial search response
 
         Returns:
-            List[SearchResult]: Additional crawled results
+            List[SearchResultSchema]: Additional crawled results
         """
         logger.info("Starting deep crawl for additional content")
 
         try:
             # Extract URLs from initial results for crawling
-            urls_to_crawl = [result.url for result in initial_response.results]
+            urls_to_crawl = [str(result.url) for result in initial_response.results]
 
             # Perform deep crawling
             crawled_articles = []
             for url in urls_to_crawl[:5]:  # Limit to top 5 for performance
                 try:
                     # Check if already crawled
-                    if await self.article_repository.article_exists(str(url)):
+                    if await self.article_repository.article_exists(url):
                         continue
 
                     # Use crawler service to get enhanced content
-                    article = await self.crawler_service.crawl_single_url(str(url))
+                    article = await self.crawler_service.crawl_single_url(url)
                     if article:
                         crawled_articles.append(article)
 
@@ -205,7 +260,7 @@ class SearchService:
             # Convert crawled articles to search results
             search_results = []
             for article in crawled_articles:
-                result = SearchResult(
+                result = SearchResultSchema(
                     url=article.url,
                     title=article.title,
                     content=article.content[:1000],  # Truncate for response
@@ -226,8 +281,10 @@ class SearchService:
             return []
 
     def _merge_search_results(
-        self, original_response: SearchResponse, crawled_results: List[SearchResult]
-    ) -> SearchResponse:
+        self,
+        original_response: SearchResponseSchema,
+        crawled_results: List[SearchResultSchema],
+    ) -> SearchResponseSchema:
         """
         Merge original search results with crawled results.
 
@@ -236,7 +293,7 @@ class SearchService:
             crawled_results: Additional crawled results
 
         Returns:
-            SearchResponse: Merged response
+            SearchResponseSchema: Merged response
         """
         # Combine results and remove duplicates
         all_results = list(original_response.results) + crawled_results
@@ -262,7 +319,7 @@ class SearchService:
         return original_response
 
     async def _publish_search_event(
-        self, request: SearchRequest, response: SearchResponse
+        self, request: SearchRequestSchema, response: SearchResponseSchema
     ) -> None:
         """
         Publish search event for analytics.
@@ -278,8 +335,8 @@ class SearchService:
                 "topic": request.topic,
                 "results_count": len(response.results),
                 "response_time": response.response_time,
-                "crawler_used": getattr(response, "crawler_used", False),
-                "timestamp": datetime.utcnow().isoformat(),
+                "crawler_used": response.crawler_used,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             await self.message_broker.publish(
@@ -289,7 +346,9 @@ class SearchService:
         except Exception as e:
             logger.warning(f"Failed to publish search event: {str(e)}")
 
-    def _enhance_search_request(self, request: SearchRequest) -> SearchRequest:
+    def _enhance_search_request(
+        self, request: SearchRequestSchema
+    ) -> SearchRequestSchema:
         """
         Enhance search request with defaults and optimizations.
 
@@ -297,22 +356,28 @@ class SearchService:
             request: Original search request
 
         Returns:
-            SearchRequest: Enhanced request
+            SearchRequestSchema: Enhanced request
         """
+        # Create a copy to avoid mutating the original
+        enhanced_data = request.model_dump()
+
         # Set default topic for financial queries
-        if not request.topic and any(
+        if not enhanced_data.get("topic") and any(
             keyword in request.query.lower()
             for keyword in ["btc", "bitcoin", "stock", "market", "trading"]
         ):
-            request.topic = "finance"
+            enhanced_data["topic"] = "finance"
 
         # Enhance query for better financial results
-        if request.topic == "finance" and "sentiment" not in request.query.lower():
-            request.query = f"{request.query} market analysis"
+        if (
+            enhanced_data.get("topic") == "finance"
+            and "sentiment" not in request.query.lower()
+        ):
+            enhanced_data["query"] = f"{request.query} market analysis"
 
-        return request
+        return SearchRequestSchema(**enhanced_data)
 
-    def _filter_results(self, response: SearchResponse) -> SearchResponse:
+    def _filter_results(self, response: SearchResponseSchema) -> SearchResponseSchema:
         """
         Apply business logic filters to search results.
 
@@ -320,7 +385,7 @@ class SearchService:
             response: Original search response
 
         Returns:
-            SearchResponse: Filtered response
+            SearchResponseSchema: Filtered response
         """
         # Filter out low-quality results
         min_score = 0.7

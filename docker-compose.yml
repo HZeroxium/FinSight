@@ -1,0 +1,41 @@
+# docker-compose.yml
+
+services:
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    ports:
+      - "5672:5672" # AMQP
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  # news_crawler:
+  #   build:
+  #     context: ./news_crawler
+  #     dockerfile: Dockerfile
+  #   command: uvicorn news_crawler.src.main:app --host 0.0.0.0 --port 8000 --reload
+  #   volumes:
+  #     - ./news_crawler:/app/news_crawler
+  #     - /app/news_crawler/.venv
+  #   environment:
+  #     - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+  #   depends_on:
+  #     - rabbitmq
+  #   ports:
+  #     - "8000:8000"
+
+  # sentiment_analysis:
+  #   build:
+  #     context: ./sentiment_analysis
+  #     dockerfile: Dockerfile
+  #   command: uvicorn sentiment_analysis.src.main:app --host 0.0.0.0 --port 8001 --reload
+  #   volumes:
+  #     - ./sentiment_analysis:/app/sentiment_analysis
+  #     - /app/sentiment_analysis/.venv
+  #   environment:
+  #     - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+  #   depends_on:
+  #     - rabbitmq
+  #   ports:
+  #     - "8001:8001"

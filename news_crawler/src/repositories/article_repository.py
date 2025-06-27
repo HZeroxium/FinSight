@@ -1,9 +1,11 @@
+# repositores/article_repository.py
+
 """
 MongoDB repository for article operations using Motor only.
 """
 
 from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
@@ -105,8 +107,8 @@ class ArticleRepository:
         Returns:
             str: The MongoDB document _id as a string.
         """
-        article.updated_at = datetime.utcnow()
-        doc = article.dict(by_alias=True, exclude_unset=True)
+        article.updated_at = datetime.now(timezone.utc)
+        doc = article.model_dump(by_alias=True, exclude_unset=True)
 
         try:
             result = await self.crawled_collection.replace_one(
@@ -131,7 +133,7 @@ class ArticleRepository:
         Returns:
             str: The MongoDB document _id as a string.
         """
-        doc = article.dict(by_alias=True, exclude_unset=True)
+        doc = article.model_dump(by_alias=True, exclude_unset=True)
 
         try:
             result = await self.processed_collection.replace_one(

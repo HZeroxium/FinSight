@@ -1,4 +1,5 @@
 # interfaces/crawler.py
+
 """
 Defines the abstract interface for news crawler services.
 """
