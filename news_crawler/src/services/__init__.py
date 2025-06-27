@@ -5,11 +5,13 @@ Business logic services.
 """
 
 from .search_service import SearchService
-from .crawler_service import CrawlerService, EnhancedNewsCrawler, CrawlerConfig
+from .crawler_service import CrawlerService
 
 __all__ = [
     "SearchService",
     "CrawlerService",
-    "EnhancedNewsCrawler",
     "CrawlerConfig",
+    "CrawlerStats",
+    "CrawlJob",
+    "CrawlResult",
 ]

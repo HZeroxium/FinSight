@@ -12,9 +12,13 @@ from .article import (
     ArticleSearchQuery,
     PyObjectId,
 )
-
-# Search models have been moved to schemas/search_schemas.py
-# since they are API DTOs, not data persistence models
+from .crawler import (
+    CrawlerConfig,
+    CrawlerStats,
+    CrawlJob,
+    CrawlResult,
+    CrawlerStatus,
+)
 
 __all__ = [
     # Article models
@@ -24,11 +28,10 @@ __all__ = [
     "ProcessedArticle",
     "ArticleSearchQuery",
     "PyObjectId",
-    "ArticleSearchQuery",
-    "PyObjectId",
-    # Search models
-    "SearchResult",
-    "SearchResponse",
-    "SearchRequest",
-    "SearchError",
+    # Crawler models
+    "CrawlerConfig",
+    "CrawlerStats",
+    "CrawlJob",
+    "CrawlResult",
+    "CrawlerStatus",
 ]

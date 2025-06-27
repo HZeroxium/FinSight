@@ -1,0 +1,982 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "News Crawler Service",
+    "description": "AI-powered news and content search service using Tavily with MongoDB storage",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/search/": {
+      "post": {
+        "tags": ["search"],
+        "summary": "Search Content",
+        "description": "Perform a general content search.\n\nArgs:\n    request: Search parameters\n    search_service: Injected search service\n\nReturns:\n    SearchResponseSchema: Search results",
+        "operationId": "search_content_api_v1_search__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequestSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponseSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/search/financial-sentiment/{symbol}": {
+      "get": {
+        "tags": ["search"],
+        "summary": "Get Financial Sentiment",
+        "description": "Get financial sentiment for a specific symbol.\n\nArgs:\n    symbol: Financial symbol (e.g., BTC, AAPL)\n    days: Number of days to analyze\n    search_service: Injected search service\n\nReturns:\n    SearchResponseSchema: Financial sentiment results",
+        "operationId": "get_financial_sentiment_api_v1_search_financial_sentiment__symbol__get",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "description": "Number of days to look back",
+              "default": 7,
+              "title": "Days"
+            },
+            "description": "Number of days to look back"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponseSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/search/trending": {
+      "get": {
+        "tags": ["search"],
+        "summary": "Get Trending Topics",
+        "description": "Get trending topics in a specific category.\n\nArgs:\n    topic: Topic category\n    search_service: Injected search service\n\nReturns:\n    SearchResponseSchema: Trending topics",
+        "operationId": "get_trending_topics_api_v1_search_trending_get",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Topic category",
+              "default": "finance",
+              "title": "Topic"
+            },
+            "description": "Topic category"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponseSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/search/health": {
+      "get": {
+        "tags": ["search"],
+        "summary": "Health Check",
+        "description": "Health check endpoint.\n\nReturns:\n    HealthCheckSchema: Health status",
+        "operationId": "health_check_api_v1_search_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crawler/crawl": {
+      "post": {
+        "tags": ["crawler"],
+        "summary": "Start Crawl Job",
+        "description": "Start a crawl job for a specific source.\n\nArgs:\n    job: Crawl job configuration\n    background_tasks: FastAPI background tasks\n    crawler_service: Injected crawler service\n\nReturns:\n    CrawlResultSchema: Job status and initial results",
+        "operationId": "start_crawl_job_api_v1_crawler_crawl_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlJobSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlResultSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crawler/crawl/all": {
+      "post": {
+        "tags": ["crawler"],
+        "summary": "Start Crawl All Sources",
+        "description": "Start crawl jobs for all configured sources.\n\nArgs:\n    background_tasks: FastAPI background tasks\n    crawler_service: Injected crawler service\n\nReturns:\n    Dict[str, CrawlResultSchema]: Results keyed by source name",
+        "operationId": "start_crawl_all_sources_api_v1_crawler_crawl_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/CrawlResultSchema"
+                  },
+                  "type": "object",
+                  "title": "Response Start Crawl All Sources Api V1 Crawler Crawl All Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crawler/stats": {
+      "get": {
+        "tags": ["crawler"],
+        "summary": "Get Crawler Stats",
+        "description": "Get crawler statistics.\n\nReturns:\n    CrawlStatsSchema: Current crawler statistics",
+        "operationId": "get_crawler_stats_api_v1_crawler_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlStatsSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crawler/stats/detailed": {
+      "get": {
+        "tags": ["crawler"],
+        "summary": "Get Detailed Crawler Stats",
+        "description": "Get detailed statistics for each crawler.\n\nReturns:\n    List[Dict]: Detailed statistics per crawler",
+        "operationId": "get_detailed_crawler_stats_api_v1_crawler_stats_detailed_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Detailed Crawler Stats Api V1 Crawler Stats Detailed Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crawler/sources": {
+      "post": {
+        "tags": ["crawler"],
+        "summary": "Add Crawler Source",
+        "description": "Add a new crawler source configuration.\n\nArgs:\n    config: Crawler configuration\n    crawler_service: Injected crawler service\n\nReturns:\n    Dict[str, str]: Success message",
+        "operationId": "add_crawler_source_api_v1_crawler_sources_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlerConfigSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Add Crawler Source Api V1 Crawler Sources Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crawler/health": {
+      "get": {
+        "tags": ["crawler"],
+        "summary": "Health Check",
+        "description": "Health check endpoint for crawler service.\n\nReturns:\n    HealthCheckSchema: Health status",
+        "operationId": "health_check_api_v1_crawler_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "description": "Root endpoint.",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Health check endpoint.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CrawlJobSchema": {
+        "properties": {
+          "source_name": {
+            "type": "string",
+            "title": "Source Name",
+            "description": "Source name to crawl"
+          },
+          "max_articles": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Articles",
+            "description": "Maximum articles to crawl"
+          },
+          "priority": {
+            "type": "integer",
+            "maximum": 10,
+            "minimum": 1,
+            "title": "Priority",
+            "description": "Job priority (1=highest)",
+            "default": 1
+          },
+          "filters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filters",
+            "description": "Additional filters"
+          }
+        },
+        "type": "object",
+        "required": ["source_name"],
+        "title": "CrawlJobSchema",
+        "description": "Crawl job DTO."
+      },
+      "CrawlResultSchema": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "source_name": {
+            "type": "string",
+            "title": "Source Name"
+          },
+          "articles_found": {
+            "type": "integer",
+            "title": "Articles Found"
+          },
+          "articles_crawled": {
+            "type": "integer",
+            "title": "Articles Crawled"
+          },
+          "articles_saved": {
+            "type": "integer",
+            "title": "Articles Saved"
+          },
+          "duration": {
+            "type": "number",
+            "title": "Duration"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "source_name",
+          "articles_found",
+          "articles_crawled",
+          "articles_saved",
+          "duration",
+          "status",
+          "started_at"
+        ],
+        "title": "CrawlResultSchema",
+        "description": "Crawl result DTO."
+      },
+      "CrawlStatsSchema": {
+        "properties": {
+          "total_crawlers": {
+            "type": "integer",
+            "title": "Total Crawlers"
+          },
+          "active_crawlers": {
+            "type": "integer",
+            "title": "Active Crawlers"
+          },
+          "total_articles_crawled": {
+            "type": "integer",
+            "title": "Total Articles Crawled"
+          },
+          "total_articles_saved": {
+            "type": "integer",
+            "title": "Total Articles Saved"
+          },
+          "success_rate": {
+            "type": "number",
+            "title": "Success Rate"
+          },
+          "average_crawl_time": {
+            "type": "number",
+            "title": "Average Crawl Time"
+          },
+          "last_crawl_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Crawl Time"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_crawlers",
+          "active_crawlers",
+          "total_articles_crawled",
+          "total_articles_saved",
+          "success_rate",
+          "average_crawl_time",
+          "sources"
+        ],
+        "title": "CrawlStatsSchema",
+        "description": "Crawler statistics DTO."
+      },
+      "CrawlerConfigSchema": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Crawler name"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url",
+            "description": "Base URL for the crawler"
+          },
+          "listing_url": {
+            "type": "string",
+            "title": "Listing Url",
+            "description": "URL for article listings"
+          },
+          "listing_selector": {
+            "type": "string",
+            "title": "Listing Selector",
+            "description": "CSS selector for article links"
+          },
+          "title_selector": {
+            "type": "string",
+            "title": "Title Selector",
+            "description": "CSS selector for article title"
+          },
+          "content_selector": {
+            "type": "string",
+            "title": "Content Selector",
+            "description": "CSS selector for article content"
+          },
+          "date_selector": {
+            "type": "string",
+            "title": "Date Selector",
+            "description": "CSS selector for publication date"
+          },
+          "author_selector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Selector",
+            "description": "CSS selector for author"
+          },
+          "date_format": {
+            "type": "string",
+            "title": "Date Format",
+            "description": "Date format for parsing",
+            "default": "%Y-%m-%d"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category",
+            "description": "Article category"
+          },
+          "credibility_score": {
+            "type": "number",
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Credibility Score",
+            "description": "Source credibility score",
+            "default": 0.8
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Whether crawler is enabled",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "base_url",
+          "listing_url",
+          "listing_selector",
+          "title_selector",
+          "content_selector",
+          "date_selector"
+        ],
+        "title": "CrawlerConfigSchema",
+        "description": "Crawler configuration DTO."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthCheckSchema": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Service health status"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Service name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Service version",
+            "default": "1.0.0"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "dependencies": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dependencies",
+            "description": "Dependency health status"
+          },
+          "uptime": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime",
+            "description": "Service uptime in seconds"
+          }
+        },
+        "type": "object",
+        "required": ["status", "service"],
+        "title": "HealthCheckSchema",
+        "description": "Health check response DTO."
+      },
+      "SearchRequestSchema": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "description": "Search query"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic",
+            "description": "Search topic (e.g., 'finance', 'news')"
+          },
+          "search_depth": {
+            "type": "string",
+            "title": "Search Depth",
+            "description": "Search depth: 'basic' or 'advanced'",
+            "default": "basic"
+          },
+          "time_range": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Range",
+            "description": "Time range: 'day', 'week', 'month', 'year'"
+          },
+          "include_answer": {
+            "type": "boolean",
+            "title": "Include Answer",
+            "description": "Include AI-generated answer",
+            "default": false
+          },
+          "max_results": {
+            "type": "integer",
+            "maximum": 50,
+            "minimum": 1,
+            "title": "Max Results",
+            "description": "Maximum number of results",
+            "default": 10
+          },
+          "chunks_per_source": {
+            "type": "integer",
+            "maximum": 10,
+            "minimum": 1,
+            "title": "Chunks Per Source",
+            "description": "Content chunks per source",
+            "default": 3
+          },
+          "enable_crawler": {
+            "type": "boolean",
+            "title": "Enable Crawler",
+            "description": "Enable deep crawling for results",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["query"],
+        "title": "SearchRequestSchema",
+        "description": "Search request DTO."
+      },
+      "SearchResponseSchema": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "total_results": {
+            "type": "integer",
+            "title": "Total Results"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchResultSchema"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "follow_up_questions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follow Up Questions"
+          },
+          "response_time": {
+            "type": "number",
+            "title": "Response Time"
+          },
+          "search_depth": {
+            "type": "string",
+            "title": "Search Depth"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
+          },
+          "time_range": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Range"
+          },
+          "crawler_used": {
+            "type": "boolean",
+            "title": "Crawler Used",
+            "description": "Whether crawler was used",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "total_results",
+          "results",
+          "response_time",
+          "search_depth"
+        ],
+        "title": "SearchResponseSchema",
+        "description": "Search response DTO."
+      },
+      "SearchResultSchema": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Url"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "score": {
+            "type": "number",
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Score"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "is_crawled": {
+            "type": "boolean",
+            "title": "Is Crawled",
+            "description": "Whether result was deep crawled",
+            "default": false
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": ["url", "title", "content", "score"],
+        "title": "SearchResultSchema",
+        "description": "Individual search result DTO."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

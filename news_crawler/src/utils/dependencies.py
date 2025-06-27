@@ -69,6 +69,7 @@ def get_crawler_service() -> CrawlerService:
     logger.info("Creating crawler service instance")
     return CrawlerService(
         article_repository=get_article_repository(),
+        message_broker=get_message_broker(),
         max_concurrent=settings.max_concurrent_crawls,
         timeout=settings.crawl_timeout,
         retry_attempts=settings.crawl_retry_attempts,
