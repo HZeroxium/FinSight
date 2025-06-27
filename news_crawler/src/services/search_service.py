@@ -19,6 +19,7 @@ from ..repositories.article_repository import ArticleRepository
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 from ..common.cache import CacheFactory, CacheType
 from ..core.config import settings
+from ..schemas.message_schemas import ArticleMessageSchema, SearchEventMessageSchema
 
 logger = LoggerFactory.get_logger(
     name="search-service", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
@@ -127,19 +128,6 @@ class SearchService:
             # Apply business logic filters
             filtered_response = self._filter_results(schema_response)
 
-            # Deep crawl if enabled and needed (temporarily disabled)
-            # if (
-            #     request.enable_crawler
-            #     and len(filtered_response.results) < request.max_results
-            # ):
-            #     logger.info("Enabling deep crawler for additional results")
-            #     crawled_results = await self._deep_crawl_search(
-            #         enhanced_request, filtered_response
-            #     )
-            #     filtered_response = self._merge_search_results(
-            #         filtered_response, crawled_results
-            #     )
-
             # Cache the result
             try:
                 cache_data = filtered_response.model_dump()
@@ -217,7 +205,7 @@ class SearchService:
         self, response: SearchResponseSchema
     ) -> None:
         """
-        Publish search results to sentiment analysis queue.
+        Publish search results to sentiment analysis queue using schemas.
 
         Args:
             response: Search response containing articles to analyze
@@ -228,42 +216,45 @@ class SearchService:
                 return
 
             # Ensure exchange exists
-            exchange_name = settings.rabbitmq_exchange
             try:
-                await self.message_broker.create_exchange(exchange_name, "topic")
-                logger.debug(f"Exchange {exchange_name} created/verified successfully")
+                await self.message_broker.create_exchange(
+                    settings.rabbitmq_exchange, "topic"
+                )
+                logger.debug(
+                    f"Exchange {settings.rabbitmq_exchange} created/verified successfully"
+                )
             except Exception as exchange_error:
                 logger.warning(
-                    f"Failed to create exchange {exchange_name}: {exchange_error}"
+                    f"Failed to create exchange {settings.rabbitmq_exchange}: {exchange_error}"
                 )
 
-            # Publish each article for sentiment analysis
+            # Publish each article for sentiment analysis using schema
             published_count = 0
             for result in response.results:
                 try:
-                    # Create message for sentiment analysis using configured queue name
-                    article_message = {
-                        "id": f"search_{hash(result.url)}_{int(datetime.now().timestamp())}",
-                        "url": str(result.url),
-                        "title": result.title,
-                        "content": result.content,
-                        "source": result.source,
-                        "published_at": (
+                    # Create article message using schema
+                    article_message = ArticleMessageSchema(
+                        id=f"search_{hash(result.url)}_{int(datetime.now().timestamp())}",
+                        url=str(result.url),
+                        title=result.title,
+                        content=result.content,
+                        source=result.source,
+                        published_at=(
                             result.published_at.isoformat()
                             if result.published_at
                             else None
                         ),
-                        "score": result.score,
-                        "metadata": result.metadata or {},
-                        "search_query": response.query,
-                        "search_timestamp": datetime.now(timezone.utc).isoformat(),
-                    }
+                        score=result.score,
+                        metadata=result.metadata or {},
+                        search_query=response.query,
+                        search_timestamp=datetime.now(timezone.utc).isoformat(),
+                    )
 
                     # Publish to sentiment analysis queue using config
                     success = await self.message_broker.publish(
-                        exchange=exchange_name,
-                        routing_key="article.sentiment_analysis",
-                        message=article_message,
+                        exchange=settings.rabbitmq_exchange,
+                        routing_key=settings.rabbitmq_routing_key_article_sentiment,
+                        message=article_message.model_dump(),
                     )
 
                     if success:
@@ -293,40 +284,46 @@ class SearchService:
         self, request: SearchRequestSchema, response: SearchResponseSchema
     ) -> None:
         """
-        Publish search event for analytics with improved error handling.
+        Publish search event for analytics using schema.
 
         Args:
             request: Search request
             response: Search response
         """
         try:
-            event = {
-                "event_type": "search_performed",
-                "query": request.query,
-                "topic": request.topic,
-                "results_count": len(response.results),
-                "response_time": response.response_time,
-                "crawler_used": response.crawler_used,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+            # Create search event using schema
+            event = SearchEventMessageSchema(
+                event_type="search_performed",
+                query=request.query,
+                topic=request.topic,
+                results_count=len(response.results),
+                response_time=response.response_time,
+                crawler_used=response.crawler_used,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            )
 
-            # First ensure exchange exists
-            exchange_name = "analytics_exchange"
+            # Ensure analytics exchange exists
             try:
-                logger.debug(f"Creating exchange: {exchange_name}")
-                await self.message_broker.create_exchange(exchange_name, "topic")
-                logger.debug(f"Exchange {exchange_name} created/verified successfully")
+                logger.debug(
+                    f"Creating exchange: {settings.rabbitmq_analytics_exchange}"
+                )
+                await self.message_broker.create_exchange(
+                    settings.rabbitmq_analytics_exchange, "topic"
+                )
+                logger.debug(
+                    f"Exchange {settings.rabbitmq_analytics_exchange} created/verified successfully"
+                )
             except Exception as exchange_error:
                 logger.warning(
-                    f"Failed to create exchange {exchange_name}: {exchange_error}"
+                    f"Failed to create exchange {settings.rabbitmq_analytics_exchange}: {exchange_error}"
                 )
 
             # Try to publish the event
             try:
                 success = await self.message_broker.publish(
-                    exchange=exchange_name,
-                    routing_key="search.event",
-                    message=event,
+                    exchange=settings.rabbitmq_analytics_exchange,
+                    routing_key=settings.rabbitmq_routing_key_search_event,
+                    message=event.model_dump(),
                 )
                 if success:
                     logger.debug("Search event published successfully")

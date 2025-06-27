@@ -68,7 +68,7 @@ def get_crawler_service() -> CrawlerService:
         CrawlerService: Configured crawler service
     """
     logger.info("Creating crawler service instance")
-    return CrawlerService()
+    return CrawlerService(article_repository=get_article_repository(), message_broker=get_message_broker())
 
 
 @lru_cache()

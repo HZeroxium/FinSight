@@ -4,8 +4,10 @@
 Sentiment consumer service for processing sentiment analysis results from RabbitMQ.
 """
 
+import asyncio
 from typing import Dict, Any
 
+from ..schemas.message_schemas import SentimentResultMessageSchema
 from ..interfaces.message_broker import MessageBroker
 from ..core.config import settings
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
@@ -43,7 +45,7 @@ class SentimentConsumerService:
 
             # Start consuming from processed sentiment queue
             await self.message_broker.consume(
-                queue=settings.rabbitmq_queue_processed,
+                queue=settings.rabbitmq_queue_processed_sentiments,
                 callback=self._process_sentiment_result_message,
                 auto_ack=False,
             )
@@ -65,29 +67,31 @@ class SentimentConsumerService:
             logger.error(f"Error stopping sentiment consumer: {str(e)}")
 
     async def _setup_message_infrastructure(self) -> None:
-        """Setup RabbitMQ exchanges and queues."""
+        """Setup RabbitMQ exchanges and queues using config."""
         try:
-            # Declare exchanges
+            # Declare exchanges using config
             await self.message_broker.declare_exchange(
                 settings.rabbitmq_exchange, "topic", durable=True
             )
+
+            # Declare sentiment analysis exchange
             await self.message_broker.declare_exchange(
                 "sentiment_analysis_exchange", "topic", durable=True
             )
 
-            # Declare queues
+            # Declare queues using config
             await self.message_broker.declare_queue(
                 settings.rabbitmq_queue_raw_articles, durable=True
             )
             await self.message_broker.declare_queue(
-                settings.rabbitmq_queue_processed, durable=True
+                settings.rabbitmq_queue_processed_sentiments, durable=True
             )
 
-            # Bind processed sentiments queue to sentiment analysis exchange
+            # Bind processed sentiments queue to sentiment analysis exchange using config
             await self.message_broker.bind_queue(
-                settings.rabbitmq_queue_processed,
+                settings.rabbitmq_queue_processed_sentiments,
                 "sentiment_analysis_exchange",
-                "sentiment.processed",
+                settings.rabbitmq_routing_key_sentiment_processed,
             )
 
             logger.info("Sentiment consumer infrastructure setup completed")
@@ -98,45 +102,38 @@ class SentimentConsumerService:
 
     async def _process_sentiment_result_message(self, message: Dict[str, Any]) -> None:
         """
-        Process a sentiment analysis result message.
+        Process a sentiment analysis result message using schemas.
 
         Args:
             message: Sentiment analysis result message from sentiment service
         """
         try:
-            article_id = message.get("article_id")
-            url = message.get("url")
-            title = message.get("title", "")
-            sentiment_label = message.get("sentiment_label")
-            scores = message.get("scores", {})
-            confidence = message.get("confidence", 0.0)
-            reasoning = message.get("reasoning", "")
-            processed_at = message.get("processed_at", "")
-            search_query = message.get("search_query", "")
+            # Validate message using schema
+            sentiment_result = SentimentResultMessageSchema(**message)
 
             logger.info(
-                f"Processing sentiment result for article: {article_id} | "
-                f"Title: '{title[:50]}...' | "
-                f"Sentiment: {sentiment_label} | "
-                f"Confidence: {confidence:.2f} | "
-                f"URL: {url}"
+                f"Processing sentiment result for article: {sentiment_result.article_id} | "
+                f"Title: '{sentiment_result.title[:50] if sentiment_result.title else 'N/A'}...' | "
+                f"Sentiment: {sentiment_result.sentiment_label} | "
+                f"Confidence: {sentiment_result.confidence:.2f} | "
+                f"URL: {sentiment_result.url}"
             )
 
             # Log detailed sentiment analysis results
             logger.info(
                 f"Sentiment Analysis Results:\n"
-                f"  Article ID: {article_id}\n"
-                f"  URL: {url}\n"
-                f"  Title: {title}\n"
-                f"  Search Query: {search_query}\n"
-                f"  Sentiment Label: {sentiment_label}\n"
-                f"  Confidence: {confidence:.2f}\n"
-                f"  Scores: Positive={scores.get('positive', 0):.2f}, "
-                f"Negative={scores.get('negative', 0):.2f}, "
-                f"Neutral={scores.get('neutral', 0):.2f}\n"
-                f"  Reasoning: {reasoning}\n"
-                f"  Processed At: {processed_at}\n"
-                f"  Content Preview: {message.get('content_preview', '')[:100]}..."
+                f"  Article ID: {sentiment_result.article_id}\n"
+                f"  URL: {sentiment_result.url}\n"
+                f"  Title: {sentiment_result.title}\n"
+                f"  Search Query: {sentiment_result.search_query}\n"
+                f"  Sentiment Label: {sentiment_result.sentiment_label}\n"
+                f"  Confidence: {sentiment_result.confidence:.2f}\n"
+                f"  Scores: Positive={sentiment_result.scores.get('positive', 0):.2f}, "
+                f"Negative={sentiment_result.scores.get('negative', 0):.2f}, "
+                f"Neutral={sentiment_result.scores.get('neutral', 0):.2f}\n"
+                f"  Reasoning: {sentiment_result.reasoning}\n"
+                f"  Processed At: {sentiment_result.processed_at}\n"
+                f"  Content Preview: {sentiment_result.content_preview[:100] if sentiment_result.content_preview else 'N/A'}..."
             )
 
             # Here you could add additional processing logic such as:
@@ -146,9 +143,16 @@ class SentimentConsumerService:
             # - Publishing to other services or dashboards
 
             # For now, we just log the successful processing
-            logger.info(f"Successfully processed sentiment for article: {article_id}")
+            logger.info(
+                f"Successfully processed sentiment for article: {sentiment_result.article_id}"
+            )
 
         except Exception as e:
             logger.error(f"Failed to process sentiment result message: {str(e)}")
             # Don't raise exception to avoid requeue loops
-            # In production, might want to send to dead letter queue
+
+    def is_running(self) -> bool:
+        """Check if consumer is running."""
+        return self._running
+        """Check if consumer is running."""
+        return self._running

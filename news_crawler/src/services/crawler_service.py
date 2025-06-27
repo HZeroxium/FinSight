@@ -22,6 +22,7 @@ from ..models.article import CrawledArticle
 from ..repositories.article_repository import ArticleRepository
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 from ..common.cache import CacheFactory, CacheType, cache_result
+from ..core.config import settings
 
 logger = LoggerFactory.get_logger(
     name="crawler-service", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
@@ -414,7 +415,7 @@ class CrawlerService:
             }
 
             await self.message_broker.publish(
-                exchange="news_crawler_exchange",
+                exchange=settings.rabbitmq_exchange,
                 routing_key="article.crawled",
                 message=event,
             )
@@ -454,7 +455,7 @@ class CrawlerService:
             }
 
             await self.message_broker.publish(
-                exchange="news_crawler_exchange",
+                exchange=settings.rabbitmq_exchange,
                 routing_key="crawl.summary",
                 message=event,
             )

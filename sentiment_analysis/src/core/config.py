@@ -28,13 +28,19 @@ class Settings(BaseSettings):
     mongodb_url: str = "mongodb://localhost:27017"
     mongodb_database: str = "sentiment_analysis"
     mongodb_collection_sentiments: str = "sentiments"
-    mongodb_collection_articles: str = "processed_articles"
 
     # RabbitMQ configuration - synchronized with news crawler
     rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
-    rabbitmq_exchange: str = "news_crawler_exchange"  # Same as news crawler
+    rabbitmq_exchange: str = "news_crawler_exchange"
+    rabbitmq_sentiment_exchange: str = "sentiment_analysis_exchange"
+
+    # Queue names
     rabbitmq_queue_raw_articles: str = "raw_articles_queue"
-    rabbitmq_queue_processed: str = "processed_sentiments_queue"
+    rabbitmq_queue_processed_sentiments: str = "processed_sentiments_queue"
+
+    # Routing keys
+    rabbitmq_routing_key_article_sentiment: str = "article.sentiment_analysis"
+    rabbitmq_routing_key_sentiment_processed: str = "sentiment.processed"
 
     # Processing configuration
     enable_batch_processing: bool = True

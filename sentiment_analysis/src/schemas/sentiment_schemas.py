@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, HttpUrl
 
-from ..models.sentiment import SentimentLabel
+from ..models.sentiment import SentimentLabel, SentimentScore
 
 
 class SentimentAnalysisRequestSchema(BaseModel):
@@ -25,26 +25,26 @@ class SentimentAnalysisRequestSchema(BaseModel):
     save_result: bool = Field(True, description="Whether to save the analysis result")
 
 
+class SentimentBatchItemSchema(BaseModel):
+    """Single item in batch sentiment analysis request."""
+
+    text: str = Field(..., min_length=1, max_length=10000)
+    title: Optional[str] = Field(None, max_length=500)
+    source_url: Optional[HttpUrl] = Field(None)
+
+
 class SentimentBatchRequestSchema(BaseModel):
     """Batch sentiment analysis request DTO."""
 
-    items: List[SentimentAnalysisRequestSchema] = Field(..., min_items=1, max_items=50)
+    items: List[SentimentBatchItemSchema] = Field(..., min_items=1, max_items=50)
     save_results: bool = Field(True, description="Whether to save analysis results")
-
-
-class SentimentScoreSchema(BaseModel):
-    """Sentiment scores DTO."""
-
-    positive: float = Field(..., ge=0.0, le=1.0, description="Positive sentiment score")
-    negative: float = Field(..., ge=0.0, le=1.0, description="Negative sentiment score")
-    neutral: float = Field(..., ge=0.0, le=1.0, description="Neutral sentiment score")
 
 
 class SentimentAnalysisResponseSchema(BaseModel):
     """Sentiment analysis response DTO."""
 
     sentiment_label: SentimentLabel
-    scores: SentimentScoreSchema
+    scores: SentimentScore
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
     reasoning: Optional[str] = Field(None, description="Analysis reasoning")
     processing_time_ms: Optional[float] = Field(
@@ -62,7 +62,7 @@ class SentimentBatchResponseSchema(BaseModel):
 
 
 class ProcessedSentimentSchema(BaseModel):
-    """Processed sentiment DTO."""
+    """Processed sentiment DTO for API responses."""
 
     id: str
     article_id: str
@@ -70,7 +70,7 @@ class ProcessedSentimentSchema(BaseModel):
     title: Optional[str] = None
     content_preview: Optional[str] = None
     sentiment_label: SentimentLabel
-    scores: SentimentScoreSchema
+    scores: SentimentScore
     confidence: float
     reasoning: Optional[str] = None
     processed_at: datetime
@@ -122,4 +122,20 @@ class SentimentErrorSchema(BaseModel):
     error: str
     message: str
     details: Optional[Dict[str, Any]] = None
-    timestamp: datetime = Field(default_factory=datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class HealthCheckSchema(BaseModel):
+    """Health check response DTO."""
+
+    status: str
+    service: str
+    dependencies: Optional[Dict[str, str]] = None
+
+
+class ErrorResponseSchema(BaseModel):
+    """Generic error response DTO."""
+
+    error: str
+    message: str
+    details: Optional[Dict[str, Any]] = None

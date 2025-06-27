@@ -6,11 +6,11 @@ OpenAI-based sentiment analyzer using LangChain with structured output.
 
 import time
 import asyncio
-from typing import List, Optional
+from typing import List
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.pydantic_v1 import BaseModel as LangChainBaseModel, Field
+from pydantic import BaseModel, Field
 
 from ..interfaces.sentiment_analyzer import SentimentAnalyzer, SentimentAnalysisError
 from ..models.sentiment import (
@@ -28,7 +28,7 @@ logger = LoggerFactory.get_logger(
 )
 
 
-class SentimentOutput(LangChainBaseModel):
+class SentimentOutput(BaseModel):
     """Structured output for sentiment analysis."""
 
     sentiment_label: str = Field(

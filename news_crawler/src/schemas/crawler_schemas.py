@@ -6,7 +6,7 @@ Crawler API schemas for request/response DTOs.
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 
 
 class CrawlerConfigSchema(BaseModel):

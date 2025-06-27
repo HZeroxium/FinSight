@@ -16,6 +16,8 @@ from ..models.sentiment import (
     ProcessedSentiment,
     SentimentQueryFilter,
     SentimentAggregation,
+    SentimentLabel,
+    SentimentScore,
 )
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 from ..common.cache import CacheFactory, CacheType, cache_result
@@ -169,6 +171,35 @@ class SentimentService:
         except Exception as e:
             logger.error(f"Batch sentiment analysis failed: {str(e)}")
             raise SentimentAnalysisError(f"Batch analysis failed: {str(e)}")
+
+    async def analyze_batch_simple(
+        self, requests: List[dict], save_results: bool = True
+    ) -> List[SentimentAnalysisResult]:
+        """
+        Simplified batch analysis for simple dictionary requests.
+
+        Args:
+            requests: List of simple dictionary requests
+            save_results: Whether to save results
+
+        Returns:
+            List[SentimentAnalysisResult]: Analysis results
+        """
+        logger.info(
+            f"Starting simple batch sentiment analysis for {len(requests)} items"
+        )
+
+        # Convert simple dicts to SentimentRequest objects
+        sentiment_requests = []
+        for req in requests:
+            sentiment_req = SentimentRequest(
+                text=req["text"],
+                title=req.get("title"),
+                source_url=req.get("source_url"),
+            )
+            sentiment_requests.append(sentiment_req)
+
+        return await self.analyze_batch(sentiment_requests, save_results)
 
     async def get_sentiment_by_article_id(
         self, article_id: str

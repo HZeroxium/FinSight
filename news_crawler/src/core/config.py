@@ -27,11 +27,19 @@ class Settings(BaseSettings):
     mongodb_collection_articles: str = "articles"
     mongodb_collection_sources: str = "sources"
 
-    # RabbitMQ configuration - synchronized with sentiment analysis
+    # RabbitMQ configuration - centralized messaging settings
     rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
     rabbitmq_exchange: str = "news_crawler_exchange"
+    rabbitmq_analytics_exchange: str = "analytics_exchange"
+
+    # Queue names
     rabbitmq_queue_raw_articles: str = "raw_articles_queue"
-    rabbitmq_queue_processed: str = "processed_sentiments_queue"
+    rabbitmq_queue_processed_sentiments: str = "processed_sentiments_queue"
+
+    # Routing keys
+    rabbitmq_routing_key_article_sentiment: str = "article.sentiment_analysis"
+    rabbitmq_routing_key_sentiment_processed: str = "sentiment.processed"
+    rabbitmq_routing_key_search_event: str = "search.event"
 
     # Crawler configuration
     enable_advanced_crawling: bool = True
@@ -84,5 +92,4 @@ class Settings(BaseSettings):
 
 
 # Global settings instance
-settings = Settings()
 settings = Settings()

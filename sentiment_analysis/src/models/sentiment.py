@@ -1,11 +1,11 @@
 # models/sentiment.py
 
 """
-Data models for sentiment analysis operations and persistence.
+Data models for sentiment analysis persistence and domain logic.
 """
 
-from datetime import datetime
-from typing import Optional, Dict, Any, List
+from datetime import datetime, timezone
+from typing import Optional, Dict
 from enum import Enum
 
 from bson import ObjectId
@@ -50,6 +50,16 @@ class SentimentScore(BaseModel):
     model_config = ConfigDict()
 
 
+class SentimentRequest(BaseModel):
+    """Request for sentiment analysis - domain model."""
+
+    text: str = Field(..., min_length=1, description="Text to analyze")
+    title: Optional[str] = Field(None, description="Optional title for context")
+    source_url: Optional[HttpUrl] = Field(None, description="Source URL")
+
+    model_config = ConfigDict()
+
+
 class SentimentAnalysisResult(BaseModel):
     """Result of sentiment analysis for a piece of text."""
 
@@ -81,7 +91,7 @@ class ProcessedSentiment(BaseModel):
     reasoning: Optional[str] = None
 
     # Metadata
-    processed_at: datetime = Field(default_factory=datetime.utcnow)
+    processed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     processing_time_ms: Optional[float] = Field(
         None, description="Processing time in milliseconds"
     )
@@ -99,28 +109,6 @@ class ProcessedSentiment(BaseModel):
     )
 
 
-class SentimentRequest(BaseModel):
-    """Request model for sentiment analysis."""
-
-    text: str = Field(
-        ..., min_length=1, max_length=10000, description="Text to analyze"
-    )
-    title: Optional[str] = Field(
-        None, max_length=500, description="Optional title context"
-    )
-    source_url: Optional[HttpUrl] = Field(None, description="Source URL for context")
-
-    model_config = ConfigDict()
-
-
-class SentimentBatchRequest(BaseModel):
-    """Batch request for multiple sentiment analyses."""
-
-    items: List[SentimentRequest] = Field(..., min_items=1, max_items=50)
-
-    model_config = ConfigDict()
-
-
 class SentimentQueryFilter(BaseModel):
     """Filter parameters for sentiment queries."""
 
@@ -129,6 +117,26 @@ class SentimentQueryFilter(BaseModel):
     max_confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
+    source_domain: Optional[str] = None
+    source_category: Optional[str] = None
+    limit: int = Field(10, ge=1, le=100)
+    offset: int = Field(0, ge=0)
+
+    model_config = ConfigDict()
+
+
+class SentimentAggregation(BaseModel):
+    """Aggregated sentiment statistics."""
+
+    total_count: int
+    positive_count: int
+    negative_count: int
+    neutral_count: int
+    average_confidence: float
+    sentiment_distribution: Dict[str, float]
+    time_period: Optional[str] = None
+
+    model_config = ConfigDict()
     source_domain: Optional[str] = None
     source_category: Optional[str] = None
     limit: int = Field(10, ge=1, le=100)

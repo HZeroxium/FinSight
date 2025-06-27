@@ -5,6 +5,7 @@ FastAPI application for the sentiment analysis service.
 
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -183,5 +184,6 @@ async def global_exception_handler(request, exc):
         content={
             "error": "Internal server error",
             "detail": "An unexpected error occurred. Please try again later.",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         },
     )

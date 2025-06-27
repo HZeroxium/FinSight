@@ -17,10 +17,11 @@ from ..schemas.sentiment_schemas import (
     SentimentSearchRequestSchema,
     SentimentSearchResponseSchema,
     SentimentAggregationSchema,
+    HealthCheckSchema,
+    ErrorResponseSchema,
 )
-from ..schemas import HealthCheckSchema, ErrorResponseSchema
 from ..services.sentiment_service import SentimentService
-from ..models.sentiment import SentimentQueryFilter
+from ..models.sentiment import SentimentQueryFilter, SentimentAnalysisResult
 from ..interfaces.sentiment_analyzer import SentimentAnalysisError
 from ..utils.dependencies import get_sentiment_service
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
@@ -30,6 +31,40 @@ logger = LoggerFactory.get_logger(
 )
 
 router = APIRouter(prefix="/api/v1/sentiment", tags=["sentiment"])
+
+
+def _convert_analysis_result_to_schema(
+    result: SentimentAnalysisResult,
+) -> SentimentAnalysisResponseSchema:
+    """Convert domain model to response schema."""
+    return SentimentAnalysisResponseSchema(
+        sentiment_label=result.label,
+        scores=result.scores,
+        confidence=result.confidence,
+        reasoning=result.reasoning,
+        processing_time_ms=None,  # Would track in production
+    )
+
+
+def _convert_processed_sentiment_to_schema(sentiment) -> ProcessedSentimentSchema:
+    """Convert processed sentiment model to schema."""
+    return ProcessedSentimentSchema(
+        id=str(sentiment.id),
+        article_id=sentiment.article_id,
+        url=sentiment.url,
+        title=sentiment.title,
+        content_preview=sentiment.content_preview,
+        sentiment_label=sentiment.sentiment_label,
+        scores=sentiment.sentiment_scores,
+        confidence=sentiment.confidence,
+        reasoning=sentiment.reasoning,
+        processed_at=sentiment.processed_at,
+        processing_time_ms=sentiment.processing_time_ms,
+        model_version=sentiment.model_version,
+        source_domain=sentiment.source_domain,
+        source_category=sentiment.source_category,
+        published_at=sentiment.published_at,
+    )
 
 
 @router.post("/analyze", response_model=SentimentAnalysisResponseSchema)
@@ -60,13 +95,7 @@ async def analyze_sentiment(
             save_result=request.save_result,
         )
 
-        return SentimentAnalysisResponseSchema(
-            sentiment_label=result.label,
-            scores=result.scores,
-            confidence=result.confidence,
-            reasoning=result.reasoning,
-            processing_time_ms=None,  # Would track in production
-        )
+        return _convert_analysis_result_to_schema(result)
 
     except SentimentAnalysisError as e:
         logger.error(f"Sentiment analysis error: {e.message}")
@@ -96,31 +125,24 @@ async def analyze_sentiment_batch(
     try:
         logger.info(f"Batch sentiment analysis request for {len(request.items)} items")
 
-        # Convert schema requests to domain models
-        from ..models.sentiment import SentimentRequest
-
-        domain_requests = [
-            SentimentRequest(
-                text=item.text,
-                title=item.title,
-                source_url=item.source_url,
+        # Create simple domain requests from schemas
+        domain_requests = []
+        for item in request.items:
+            domain_requests.append(
+                {
+                    "text": item.text,
+                    "title": item.title,
+                    "source_url": str(item.source_url) if item.source_url else None,
+                }
             )
-            for item in request.items
-        ]
 
-        results = await sentiment_service.analyze_batch(
+        results = await sentiment_service.analyze_batch_simple(
             requests=domain_requests, save_results=request.save_results
         )
 
         # Convert domain results to schema
         response_results = [
-            SentimentAnalysisResponseSchema(
-                sentiment_label=result.label,
-                scores=result.scores,
-                confidence=result.confidence,
-                reasoning=result.reasoning,
-            )
-            for result in results
+            _convert_analysis_result_to_schema(result) for result in results
         ]
 
         success_count = len([r for r in results if r.confidence > 0.0])
@@ -162,23 +184,7 @@ async def get_sentiment_by_article(
         if not sentiment:
             raise HTTPException(status_code=404, detail="Sentiment not found")
 
-        return ProcessedSentimentSchema(
-            id=str(sentiment.id),
-            article_id=sentiment.article_id,
-            url=sentiment.url,
-            title=sentiment.title,
-            content_preview=sentiment.content_preview,
-            sentiment_label=sentiment.sentiment_label,
-            scores=sentiment.sentiment_scores,
-            confidence=sentiment.confidence,
-            reasoning=sentiment.reasoning,
-            processed_at=sentiment.processed_at,
-            processing_time_ms=sentiment.processing_time_ms,
-            model_version=sentiment.model_version,
-            source_domain=sentiment.source_domain,
-            source_category=sentiment.source_category,
-            published_at=sentiment.published_at,
-        )
+        return _convert_processed_sentiment_to_schema(sentiment)
 
     except HTTPException:
         raise
@@ -220,23 +226,7 @@ async def search_sentiments(
 
         # Convert to schema
         sentiment_schemas = [
-            ProcessedSentimentSchema(
-                id=str(sentiment.id),
-                article_id=sentiment.article_id,
-                url=sentiment.url,
-                title=sentiment.title,
-                content_preview=sentiment.content_preview,
-                sentiment_label=sentiment.sentiment_label,
-                scores=sentiment.sentiment_scores,
-                confidence=sentiment.confidence,
-                reasoning=sentiment.reasoning,
-                processed_at=sentiment.processed_at,
-                processing_time_ms=sentiment.processing_time_ms,
-                model_version=sentiment.model_version,
-                source_domain=sentiment.source_domain,
-                source_category=sentiment.source_category,
-                published_at=sentiment.published_at,
-            )
+            _convert_processed_sentiment_to_schema(sentiment)
             for sentiment in sentiments
         ]
 
@@ -326,6 +316,13 @@ async def health_check(
         )
 
     except Exception as e:
+        logger.error(f"Sentiment health check failed: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content=ErrorResponseSchema(
+                error="ServiceUnavailable", message=f"Health check failed: {str(e)}"
+            ).model_dump(),
+        )
         logger.error(f"Sentiment health check failed: {str(e)}")
         return JSONResponse(
             status_code=503,
