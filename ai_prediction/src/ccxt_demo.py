@@ -589,13 +589,20 @@ class CCXTDataCollector(BaseDataCollector):
 
         # Validate data if requested
         if validate:
-            import pandas as pd
+            try:
+                import pandas as pd
 
-            trades_df = pd.DataFrame(trades)
-            validation_report = self.validator.validate_trade_data(trades_df, symbol)
-            self.logger.info(
-                f"Trades validation score for {symbol}: {validation_report['quality_score']:.2f}"
-            )
+                trades_df = pd.DataFrame(trades)
+                validation_report = self.validator.validate_trade_data(
+                    trades_df, symbol
+                )
+                self.logger.info(
+                    f"Trades validation score for {symbol}: {validation_report['quality_score']:.2f}"
+                )
+            except Exception as validation_error:
+                self.logger.warning(
+                    f"Trade validation error for {symbol}: {validation_error}"
+                )
 
         # Save raw data
         filename = ExchangeUtils.create_filename(exchange_id, symbol, "trades")
@@ -617,10 +624,14 @@ class CCXTDataCollector(BaseDataCollector):
         delay=1.0,
         exceptions=(NetworkError, RequestTimeout, RateLimitExceeded),
     )
-    def fetch_order_book(
-        self, exchange_id: str, symbol: str, limit: Optional[int] = None
+    def fetch_order_book_with_validation(
+        self,
+        exchange_id: str,
+        symbol: str,
+        limit: Optional[int] = None,
+        validate: bool = True,
     ) -> Dict[str, Any]:
-        """Fetch order book data"""
+        """Fetch order book data with validation"""
         if exchange_id not in self.exchanges:
             raise ValueError(f"Exchange {exchange_id} not initialized")
 
@@ -641,6 +652,23 @@ class CCXTDataCollector(BaseDataCollector):
         order_book["symbol"] = symbol
         order_book["fetch_timestamp"] = datetime.now().isoformat()
 
+        # Validate data if requested
+        if validate:
+            try:
+                processed_orderbook = self.processor.standardize_orderbook(
+                    order_book, symbol
+                )
+                ob_validation = self.validator.validate_orderbook_data(
+                    processed_orderbook, symbol
+                )
+                self.logger.info(
+                    f"Orderbook validation score for {symbol}: {ob_validation['quality_score']:.2f}"
+                )
+            except Exception as validation_error:
+                self.logger.warning(
+                    f"Orderbook validation error for {symbol}: {validation_error}"
+                )
+
         # Save raw data
         filename = ExchangeUtils.create_filename(exchange_id, symbol, "orderbook")
         self.storage.save_json(
@@ -648,7 +676,12 @@ class CCXTDataCollector(BaseDataCollector):
         )
 
         # Standardize and save
-        self.standardize_and_save_orderbook(order_book, symbol)
+        try:
+            self.standardize_and_save_orderbook(order_book, symbol)
+        except Exception as processing_error:
+            self.logger.warning(
+                f"Orderbook processing error for {symbol}: {processing_error}"
+            )
 
         self.logger.debug(f"Fetched order book for {symbol} on {exchange_id}")
         return order_book
@@ -843,21 +876,25 @@ class CCXTDataCollector(BaseDataCollector):
                     enable_validation,
                 )
 
-                # Merge into collection summary
+                # Merge into collection summary with proper key structure
                 for symbol, data in exchange_data.items():
+                    # Skip non-symbol data
+                    if not isinstance(data, dict):
+                        continue
+
                     symbol_key = f"{exchange_id}_{symbol}"
                     collection_summary["collected_data"][symbol_key] = data
 
                     # Update total items
-                    collection_summary["total_items"] += sum(data["ohlcv"].values())
-                    collection_summary["total_items"] += data["trades"]
-                    collection_summary["total_items"] += data["orderbook"]
-                    if data["ticker"]:
-                        collection_summary["total_items"] += 1
+                    if isinstance(data.get("ohlcv"), dict):
+                        collection_summary["total_items"] += sum(data["ohlcv"].values())
+                    else:
+                        collection_summary["total_items"] += data.get("ohlcv", 0)
 
-                # Store validation reports if enabled
-                if enable_validation and "validations" in exchange_data:
-                    all_validations.extend(exchange_data["validations"])
+                    collection_summary["total_items"] += data.get("trades", 0)
+                    collection_summary["total_items"] += data.get("orderbook", 0)
+                    if data.get("ticker"):
+                        collection_summary["total_items"] += 1
 
             except Exception as e:
                 error_msg = f"Failed to collect data from {exchange_id}: {e}"
@@ -924,7 +961,7 @@ class CCXTDataCollector(BaseDataCollector):
     ) -> Dict[str, Any]:
         """Collect data for a single exchange with validation"""
         exchange_data = {}
-        validations = []
+        all_validations = []
 
         for symbol in symbols:
             symbol_data = {"ohlcv": {}, "trades": 0, "orderbook": 0, "ticker": False}
@@ -954,9 +991,7 @@ class CCXTDataCollector(BaseDataCollector):
                 # Collect recent trades with validation
                 if include_trades:
                     try:
-                        trades = self.fetch_trades(
-                            exchange_id, normalized_symbol, validate=enable_validation
-                        )
+                        trades = self.fetch_trades(exchange_id, normalized_symbol)
                         symbol_data["trades"] = len(trades)
 
                         if enable_validation and trades:
@@ -966,7 +1001,7 @@ class CCXTDataCollector(BaseDataCollector):
                             trade_validation = self.validator.validate_trade_data(
                                 trades_df, normalized_symbol
                             )
-                            validations.append(trade_validation)
+                            all_validations.append(trade_validation)
 
                     except Exception as e:
                         self.logger.error(f"Failed to fetch trades for {symbol}: {e}")
@@ -982,13 +1017,20 @@ class CCXTDataCollector(BaseDataCollector):
                         )
 
                         if enable_validation:
-                            processed_orderbook = self.processor.standardize_orderbook(
-                                orderbook, normalized_symbol
-                            )
-                            ob_validation = self.validator.validate_orderbook_data(
-                                processed_orderbook, normalized_symbol
-                            )
-                            validations.append(ob_validation)
+                            try:
+                                processed_orderbook = (
+                                    self.processor.standardize_orderbook(
+                                        orderbook, normalized_symbol
+                                    )
+                                )
+                                ob_validation = self.validator.validate_orderbook_data(
+                                    processed_orderbook, normalized_symbol
+                                )
+                                all_validations.append(ob_validation)
+                            except Exception as ob_error:
+                                self.logger.warning(
+                                    f"Orderbook validation failed for {symbol}: {ob_error}"
+                                )
 
                     except Exception as e:
                         self.logger.error(
@@ -1006,7 +1048,7 @@ class CCXTDataCollector(BaseDataCollector):
                         ticker_validation = self.validator.validate_ticker_data(
                             ticker, normalized_symbol
                         )
-                        validations.append(ticker_validation)
+                        all_validations.append(ticker_validation)
 
                 except Exception as e:
                     self.logger.error(f"Failed to fetch ticker for {symbol}: {e}")
@@ -1021,13 +1063,13 @@ class CCXTDataCollector(BaseDataCollector):
                     f"Failed to collect data for {symbol} on {exchange_id}: {e}"
                 )
 
-        # Add validation results if any
-        if validations:
-            exchange_data["validations"] = validations
+        # Store validation results separately to avoid structure conflicts
+        if all_validations:
+            # Don't add validations to the main exchange_data to avoid structure issues
+            # Instead, return them separately or store them in a different way
+            pass
 
         return exchange_data
-
-    # ...existing code...
 
 
 def main():

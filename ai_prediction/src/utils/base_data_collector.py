@@ -151,6 +151,10 @@ class BaseDataCollector(ABC):
         self.logger.info(f"  Errors encountered: {len(summary.get('errors', []))}")
 
         for symbol, data in summary.get("collected_data", {}).items():
+            # Skip non-symbol data like validations
+            if not isinstance(data, dict) or symbol.endswith("_validations"):
+                continue
+
             self.logger.info(f"  {symbol}:")
             if isinstance(data.get("ohlcv"), dict):
                 self.logger.info(f"    - OHLCV: {data['ohlcv']}")

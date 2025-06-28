@@ -206,7 +206,7 @@ class ExchangeUtils:
             Statistics summary
         """
         stats = {
-            "total_symbols": len(collected_data),
+            "total_symbols": 0,
             "total_ohlcv_candles": 0,
             "total_trades": 0,
             "total_orderbook_levels": 0,
@@ -220,6 +220,16 @@ class ExchangeUtils:
         }
 
         for symbol, data in collected_data.items():
+            # Skip validation data and other non-symbol entries
+            if (
+                symbol.endswith("_validations")
+                or not isinstance(data, dict)
+                or "ohlcv" not in data
+            ):
+                continue
+
+            stats["total_symbols"] += 1
+
             # Count OHLCV data
             if isinstance(data.get("ohlcv"), dict):
                 for timeframe, count in data["ohlcv"].items():

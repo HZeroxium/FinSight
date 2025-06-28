@@ -349,8 +349,49 @@ class MarketDataProcessor:
 
             for side in ["bids", "asks"]:
                 if side in raw_orderbook and raw_orderbook[side]:
-                    # Convert to DataFrame
-                    df = pd.DataFrame(raw_orderbook[side], columns=["price", "amount"])
+                    # Check if orderbook data is in list format
+                    orderbook_data = raw_orderbook[side]
+
+                    # Handle different orderbook formats
+                    if isinstance(orderbook_data, list) and len(orderbook_data) > 0:
+                        # Check the structure of the first item
+                        first_item = orderbook_data[0]
+
+                        if isinstance(first_item, list):
+                            # Handle different list lengths (some exchanges include timestamp)
+                            if len(first_item) >= 2:
+                                # Take only price and amount (first 2 columns)
+                                clean_data = [
+                                    [item[0], item[1]] for item in orderbook_data
+                                ]
+                                df = pd.DataFrame(
+                                    clean_data, columns=["price", "amount"]
+                                )
+                            else:
+                                continue  # Skip invalid data
+                        else:
+                            # Handle dict format
+                            df = pd.DataFrame(orderbook_data)
+                            if "price" not in df.columns or "amount" not in df.columns:
+                                # Try common alternative column names
+                                column_mapping = {
+                                    "0": "price",
+                                    "1": "amount",
+                                    "Price": "price",
+                                    "Amount": "amount",
+                                    "size": "amount",
+                                    "qty": "amount",
+                                }
+                                df = df.rename(columns=column_mapping)
+
+                                # If still missing required columns, skip
+                                if (
+                                    "price" not in df.columns
+                                    or "amount" not in df.columns
+                                ):
+                                    continue
+                    else:
+                        continue
 
                     # Ensure numeric types
                     df["price"] = pd.to_numeric(df["price"], errors="coerce")
