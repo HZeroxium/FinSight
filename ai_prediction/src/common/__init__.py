@@ -1,3 +1,7 @@
+"""
+Common utilities package for AI Prediction service.
+"""
+
 from .logger import (
     LoggerInterface,
     LogLevel,

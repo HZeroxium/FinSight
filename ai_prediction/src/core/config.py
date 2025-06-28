@@ -296,7 +296,12 @@ class ConfigManager:
             self.logger.warning(f"No config found for {exchange_name}, using defaults")
             return ExchangeConfig(name=exchange_name)
 
-        return ExchangeConfig(name=exchange_name, **exchange_data)
+        # Remove 'name' from exchange_data if it exists to avoid duplicate parameter
+        exchange_data_copy = exchange_data.copy()
+        if "name" in exchange_data_copy:
+            exchange_data_copy.pop("name")
+
+        return ExchangeConfig(name=exchange_name, **exchange_data_copy)
 
     def get_data_collection_config(self) -> DataCollectionConfig:
         """Get data collection configuration"""
