@@ -1,3 +1,5 @@
+# utils/base_data_collector.py
+
 """
 Base data collector class providing common functionality for market data collection.
 This class serves as a foundation for exchange-specific implementations.
@@ -12,7 +14,7 @@ from functools import wraps
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 from .data_storage import DataStorage
 from .market_data_processor import MarketDataProcessor
-from .config import ConfigManager
+from ..core.config import ConfigManager
 
 
 def retry_on_error(

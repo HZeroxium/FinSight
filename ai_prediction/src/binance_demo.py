@@ -1,3 +1,5 @@
+# binance_demo.py
+
 """
 Comprehensive Binance API Demo using python-binance library.
 
@@ -24,7 +26,6 @@ import pandas as pd
 
 from binance.client import Client
 from binance.exceptions import BinanceAPIException, BinanceRequestException
-from binance import ThreadedWebSocketManager
 
 from .common.logger import LoggerFactory, LoggerType, LogLevel
 from .utils import (
@@ -86,7 +87,7 @@ class BinanceDataCollector(BaseDataCollector):
             )
 
             if self.rate_limit:
-                self.client.API_URL = "https://api.binance.com/api"
+                self.client.API_URL = "https://api.binance.com/api/v3"
 
             self.logger.info(f"Initialized Binance client (testnet: {self.testnet})")
 
@@ -612,7 +613,7 @@ def main():
             include_trades=True,
             include_orderbook=True,
             enable_validation=True,
-            realtime_duration=30,  # 30 seconds of real-time data
+            # realtime_duration=30,  # 30 seconds of real-time data
         )
 
         # Display enhanced summary

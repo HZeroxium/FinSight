@@ -1,3 +1,5 @@
+# utils/__init__.py
+
 """
 Utilities package for market data collection and processing.
 Provides common functionality for data storage, processing, and configuration.
@@ -5,7 +7,7 @@ Provides common functionality for data storage, processing, and configuration.
 
 from .data_storage import DataStorage
 from .market_data_processor import MarketDataProcessor
-from .config import ConfigManager, ExchangeConfig, DataCollectionConfig, StorageConfig
+from ..core.config import ConfigManager, ExchangeConfig, DataCollectionConfig, StorageConfig
 from .base_data_collector import BaseDataCollector, retry_on_error
 from .exchange_utils import ExchangeUtils
 from .real_time_storage import RealTimeDataStorage, RealTimeDataBuffer

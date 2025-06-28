@@ -1,3 +1,5 @@
+# ccxt_demo.py
+
 """
 Comprehensive CCXT Demo for Market Data Collection
 
