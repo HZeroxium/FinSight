@@ -242,23 +242,34 @@ class BinanceDataCollector(BaseDataCollector):
     )
     def fetch_orderbook(self, symbol: str, limit: int = 100) -> Dict[str, Any]:
         """Fetch order book for a symbol"""
-        orderbook = self.client.get_order_book(symbol=symbol, limit=limit)
+        try:
+            orderbook = self.client.get_order_book(symbol=symbol, limit=limit)
 
-        # Add metadata
-        orderbook["symbol"] = symbol
-        orderbook["timestamp"] = pd.Timestamp.now(tz="UTC").isoformat()
-        orderbook["limit"] = limit
+            # Add metadata
+            orderbook["symbol"] = symbol
+            orderbook["timestamp"] = pd.Timestamp.now(tz="UTC").isoformat()
+            orderbook["limit"] = limit
 
-        # Save raw data
-        self.storage.save_json(
-            orderbook, f"orderbook_{symbol}_raw", subfolder="orderbook"
-        )
+            # Save raw data
+            self.storage.save_json(
+                orderbook, f"orderbook_{symbol}_raw", subfolder="orderbook"
+            )
 
-        # Standardize and save
-        self.standardize_and_save_orderbook(orderbook, symbol)
+            # Standardize and save - fix the orderbook processing
+            try:
+                self.standardize_and_save_orderbook(orderbook, symbol)
+            except Exception as processing_error:
+                self.logger.warning(
+                    f"Orderbook processing error for {symbol}: {processing_error}"
+                )
+                # Continue execution even if processing fails
 
-        self.logger.debug(f"Fetched orderbook for {symbol} with {limit} levels")
-        return orderbook
+            self.logger.debug(f"Fetched orderbook for {symbol} with {limit} levels")
+            return orderbook
+
+        except Exception as e:
+            self.logger.error(f"Failed to fetch orderbook for {symbol}: {e}")
+            raise
 
     @retry_on_error(
         max_retries=3,
@@ -269,39 +280,51 @@ class BinanceDataCollector(BaseDataCollector):
         self, symbol: str, limit: int = 500, validate: bool = True
     ) -> List[Dict[str, Any]]:
         """Fetch recent trades for a symbol with validation"""
-        # Normalize symbol format
-        symbol = ExchangeUtils.normalize_symbol(symbol, "binance")
+        try:
+            # Normalize symbol format
+            symbol = ExchangeUtils.normalize_symbol(symbol, "binance")
 
-        trades = self.client.get_recent_trades(symbol=symbol, limit=limit)
+            trades = self.client.get_recent_trades(symbol=symbol, limit=limit)
 
-        # Add metadata
-        for trade in trades:
-            trade["exchange_id"] = "binance"
-            trade["symbol"] = symbol
-
-        # Validate data if requested
-        if validate and trades:
-            trades_df = pd.DataFrame(trades)
-            validation_report = self.validator.validate_trade_data(trades_df, symbol)
-            if not validation_report["is_valid"]:
-                self.logger.warning(
-                    f"Trades validation failed for {symbol}: {validation_report['issues']}"
-                )
-
-        # Save raw data
-        filename = ExchangeUtils.create_filename("binance", symbol, "trades")
-        self.storage.save_json(trades, f"{filename}_raw", subfolder="trades")
-
-        # Standardize and save
-        self.standardize_and_save_trades(trades, symbol, "recent_trades")
-
-        # Store in real-time storage if enabled
-        if self.realtime_storage:
+            # Add metadata
             for trade in trades:
-                self.realtime_storage.store_trade(trade)
+                trade["exchange_id"] = "binance"
+                trade["symbol"] = symbol
 
-        self.logger.debug(f"Fetched {len(trades)} recent trades for {symbol}")
-        return trades
+            # Validate data if requested
+            if validate and trades:
+                try:
+                    trades_df = pd.DataFrame(trades)
+                    validation_report = self.validator.validate_trade_data(
+                        trades_df, symbol
+                    )
+                    if not validation_report["is_valid"]:
+                        self.logger.warning(
+                            f"Trades validation failed for {symbol}: {validation_report['issues']}"
+                        )
+                except Exception as validation_error:
+                    self.logger.warning(
+                        f"Trade validation error for {symbol}: {validation_error}"
+                    )
+
+            # Save raw data
+            filename = ExchangeUtils.create_filename("binance", symbol, "trades")
+            self.storage.save_json(trades, f"{filename}_raw", subfolder="trades")
+
+            # Standardize and save
+            self.standardize_and_save_trades(trades, symbol, "recent_trades")
+
+            # Store in real-time storage if enabled
+            if self.realtime_storage:
+                for trade in trades:
+                    self.realtime_storage.store_trade(trade)
+
+            self.logger.debug(f"Fetched {len(trades)} recent trades for {symbol}")
+            return trades
+
+        except Exception as e:
+            self.logger.error(f"Failed to fetch trades for {symbol}: {e}")
+            raise
 
     @retry_on_error(
         max_retries=3,
@@ -563,7 +586,7 @@ class BinanceDataCollector(BaseDataCollector):
                         self.logger.error(error_msg)
                         collection_summary["errors"].append(error_msg)
 
-                # Collect recent trades
+                # Collect recent trades with improved error handling
                 if include_trades:
                     try:
                         trades = self.fetch_trades(
@@ -578,7 +601,7 @@ class BinanceDataCollector(BaseDataCollector):
                         self.logger.error(error_msg)
                         collection_summary["errors"].append(error_msg)
 
-                # Collect order book
+                # Collect order book with improved error handling
                 if include_orderbook:
                     try:
                         orderbook = self.fetch_orderbook(

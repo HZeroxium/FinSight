@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from functools import wraps
+import pandas as pd
 
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 from .data_storage import DataStorage
@@ -228,10 +229,16 @@ class BaseDataCollector(ABC):
         clean_symbol = symbol.replace("/", "_")
         filename = f"{self.exchange_name}_{clean_symbol}_{filename_prefix}"
 
-        # Save processed data
-        for side, df in processed_orderbook.items():
-            if not df.empty:
-                self.storage.save_csv(df, f"{filename}_{side}", subfolder="orderbook")
+        # Save processed data - fix the DataFrame check
+        for side, data in processed_orderbook.items():
+            # Only process DataFrame objects (bids/asks), skip other metadata
+            if isinstance(data, pd.DataFrame) and not data.empty:
+                self.storage.save_csv(data, f"{filename}_{side}", subfolder="orderbook")
+            elif side in ["spread_analysis"] and isinstance(data, dict):
+                # Save spread analysis as JSON
+                self.storage.save_json(
+                    data, f"{filename}_{side}", subfolder="orderbook"
+                )
 
     def standardize_and_save_ticker(
         self, raw_ticker: Dict, symbol: str, filename_prefix: str = "ticker"

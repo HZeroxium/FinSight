@@ -172,31 +172,60 @@ class DataValidator:
             return report
 
         # Required columns
-        required_columns = ["price", "amount"]
+        required_columns = [
+            "price",
+            "qty",
+        ]  # Changed from "amount" to "qty" for Binance compatibility
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             report["issues"].append(f"Missing required columns: {missing_columns}")
 
-        # Price validation
+        # Price validation - ensure we're working with numeric types
         if "price" in df.columns:
-            invalid_prices = (df["price"] <= 0).sum()
-            if invalid_prices > 0:
-                report["issues"].append(f"Invalid prices in {invalid_prices} records")
+            try:
+                # Convert to numeric if it's not already
+                if not pd.api.types.is_numeric_dtype(df["price"]):
+                    price_series = pd.to_numeric(df["price"], errors="coerce")
+                else:
+                    price_series = df["price"]
 
-        # Amount validation
-        if "amount" in df.columns:
-            invalid_amounts = (df["amount"] <= 0).sum()
-            if invalid_amounts > 0:
-                report["issues"].append(f"Invalid amounts in {invalid_amounts} records")
+                invalid_prices = (price_series <= 0).sum()
+                if invalid_prices > 0:
+                    report["issues"].append(
+                        f"Invalid prices in {invalid_prices} records"
+                    )
+            except Exception as e:
+                report["issues"].append(f"Price validation error: {str(e)}")
 
-        # Side validation
+        # Amount/Quantity validation - handle both "amount" and "qty" columns
+        amount_col = "qty" if "qty" in df.columns else "amount"
+        if amount_col in df.columns:
+            try:
+                # Convert to numeric if it's not already
+                if not pd.api.types.is_numeric_dtype(df[amount_col]):
+                    amount_series = pd.to_numeric(df[amount_col], errors="coerce")
+                else:
+                    amount_series = df[amount_col]
+
+                invalid_amounts = (amount_series <= 0).sum()
+                if invalid_amounts > 0:
+                    report["issues"].append(
+                        f"Invalid amounts in {invalid_amounts} records"
+                    )
+            except Exception as e:
+                report["issues"].append(f"Amount validation error: {str(e)}")
+
+        # Side validation - handle different formats
         if "side" in df.columns:
-            valid_sides = {"buy", "sell", "BUY", "SELL"}
-            invalid_sides = (~df["side"].isin(valid_sides)).sum()
-            if invalid_sides > 0:
-                report["warnings"].append(
-                    f"Invalid trade sides in {invalid_sides} records"
-                )
+            valid_sides = {"buy", "sell", "BUY", "SELL", "b", "s", True, False}
+            try:
+                invalid_sides = (~df["side"].isin(valid_sides)).sum()
+                if invalid_sides > 0:
+                    report["warnings"].append(
+                        f"Invalid trade sides in {invalid_sides} records"
+                    )
+            except Exception as e:
+                report["warnings"].append(f"Side validation error: {str(e)}")
 
         report["quality_score"] = max(0, 1 - len(report["issues"]) * 0.2)
         report["is_valid"] = len(report["issues"]) == 0
