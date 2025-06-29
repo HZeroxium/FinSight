@@ -261,6 +261,160 @@ class ModelUtils:
             raise RuntimeError(f"Checkpoint load failed: {str(e)}")
 
     @staticmethod
+    def _infer_config_from_checkpoint(checkpoint: Dict[str, Any]) -> Config:
+        """Infer configuration from checkpoint data with enhanced detection"""
+        from ..core.config import Config, ModelConfig, DataConfig, ModelType
+
+        # Start with default config
+        config = Config()
+
+        # Extract configuration from checkpoint
+        saved_config = checkpoint.get("config", {})
+        model_info = checkpoint.get("model_info", {})
+        state_dict = checkpoint.get("model_state_dict", {})
+
+        # Create new model config to avoid modifying defaults
+        model_config = ModelConfig()
+
+        # 1. Determine model type from class name or saved config
+        model_class = checkpoint.get("model_class", "FinancialTransformer")
+        if "model_type" in saved_config:
+            model_type_value = saved_config["model_type"]
+            if isinstance(model_type_value, str):
+                # Convert string to enum
+                if hasattr(ModelType, model_type_value.upper()):
+                    model_config.model_type = getattr(
+                        ModelType, model_type_value.upper()
+                    )
+                elif "lightweight" in model_type_value.lower():
+                    model_config.model_type = ModelType.LIGHTWEIGHT_TRANSFORMER
+                elif "hybrid" in model_type_value.lower():
+                    model_config.model_type = ModelType.HYBRID_TRANSFORMER
+                else:
+                    model_config.model_type = ModelType.TRANSFORMER
+        else:
+            # Infer from class name
+            if "Lightweight" in model_class:
+                model_config.model_type = ModelType.LIGHTWEIGHT_TRANSFORMER
+            elif "Hybrid" in model_class:
+                model_config.model_type = ModelType.HYBRID_TRANSFORMER
+            else:
+                model_config.model_type = ModelType.TRANSFORMER
+
+        # 2. Extract dimensions from saved config first, then model_info, then infer from state_dict
+        dimension_params = [
+            "input_dim",
+            "d_model",
+            "n_layers",
+            "n_heads",
+            "output_dim",
+            "sequence_length",
+            "d_ff",
+        ]
+
+        for param in dimension_params:
+            if param in saved_config and saved_config[param] is not None:
+                setattr(model_config, param, saved_config[param])
+            elif param in model_info and model_info[param] is not None:
+                setattr(model_config, param, model_info[param])
+
+        # 3. Infer missing parameters from state_dict
+        if state_dict:
+            # Infer d_model from embedding or projection layers
+            if model_config.d_model is None:
+                for key, tensor in state_dict.items():
+                    if "input_proj.weight" in key and len(tensor.shape) >= 2:
+                        model_config.d_model = tensor.shape[0]  # Output dimension
+                        break
+                    elif "embedding" in key.lower() and len(tensor.shape) >= 2:
+                        model_config.d_model = tensor.shape[-1]
+                        break
+                    elif (
+                        "transformer_encoder.layers.0" in key
+                        and "self_attn.out_proj.weight" in key
+                    ):
+                        model_config.d_model = tensor.shape[0]
+                        break
+
+            # Infer input_dim from input projection layer
+            if model_config.input_dim is None:
+                for key, tensor in state_dict.items():
+                    if "input_proj.weight" in key and len(tensor.shape) >= 2:
+                        model_config.input_dim = tensor.shape[1]  # Input dimension
+                        break
+
+            # Infer number of transformer layers
+            if model_config.n_layers is None:
+                max_layer_idx = -1
+                for key in state_dict.keys():
+                    if "transformer_encoder.layers." in key:
+                        # Extract layer index
+                        parts = key.split(".")
+                        for i, part in enumerate(parts):
+                            if part == "layers" and i + 1 < len(parts):
+                                try:
+                                    layer_idx = int(parts[i + 1])
+                                    max_layer_idx = max(max_layer_idx, layer_idx)
+                                except (ValueError, IndexError):
+                                    continue
+                if max_layer_idx >= 0:
+                    model_config.n_layers = max_layer_idx + 1
+
+            # Infer number of heads from attention layer
+            if model_config.n_heads is None and model_config.d_model is not None:
+                for key, tensor in state_dict.items():
+                    if "self_attn.in_proj_weight" in key and len(tensor.shape) >= 2:
+                        # in_proj_weight shape is [3*d_model, d_model] for multi-head attention
+                        if tensor.shape[0] == 3 * model_config.d_model:
+                            # Default to 8 heads, but try to infer if possible
+                            if model_config.d_model % 8 == 0:
+                                model_config.n_heads = 8
+                            elif model_config.d_model % 4 == 0:
+                                model_config.n_heads = 4
+                            else:
+                                model_config.n_heads = 1
+                        break
+
+            # Infer d_ff from feed-forward layers
+            if model_config.d_ff is None:
+                for key, tensor in state_dict.items():
+                    if "linear1.weight" in key and len(tensor.shape) >= 2:
+                        model_config.d_ff = tensor.shape[
+                            0
+                        ]  # Output of first linear layer
+                        break
+
+        # 4. Set reasonable defaults for missing parameters
+        if model_config.d_model is None:
+            model_config.d_model = 256  # Default from training
+        if model_config.n_layers is None:
+            model_config.n_layers = 3  # Default from training
+        if model_config.n_heads is None:
+            model_config.n_heads = 8
+        if model_config.d_ff is None:
+            model_config.d_ff = 1024
+        if model_config.input_dim is None:
+            model_config.input_dim = 5
+        if model_config.output_dim is None:
+            model_config.output_dim = 1
+        if model_config.sequence_length is None:
+            model_config.sequence_length = 60
+
+        # 5. Update the main config
+        config.model = model_config
+
+        # 6. Copy other training parameters if available
+        training_params = ["dropout", "batch_size", "learning_rate"]
+        for param in training_params:
+            if param in saved_config:
+                try:
+                    setattr(config.model, param, saved_config[param])
+                except:
+                    pass  # Skip if attribute doesn't exist or can't be set
+
+        return config
+
+    @staticmethod
     def load_model_for_inference(
         checkpoint_path: Union[str, Path],
         config: Optional[Config] = None,
@@ -292,6 +446,12 @@ class ModelUtils:
             # Extract or infer configuration
             if config is None:
                 config = ModelUtils._infer_config_from_checkpoint(checkpoint)
+                logger.info(
+                    f"Inferred config - d_model: {config.model.d_model}, "
+                    f"n_layers: {config.model.n_layers}, "
+                    f"n_heads: {config.model.n_heads}, "
+                    f"input_dim: {config.model.input_dim}"
+                )
 
             # Determine device
             if force_cpu:
@@ -299,10 +459,10 @@ class ModelUtils:
             elif device is None:
                 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-            # Create model
+            # Create model using inferred configuration
             model_class = checkpoint.get("model_class", "FinancialTransformer")
 
-            # Try to determine model type from class name
+            # Map model class to model type string
             if "Lightweight" in model_class:
                 model_type = "lightweight_transformer"
             elif "Hybrid" in model_class:
@@ -310,18 +470,25 @@ class ModelUtils:
             else:
                 model_type = "transformer"
 
-            # Update config with inferred model type
-            if hasattr(config, "model") and hasattr(config.model, "model_type"):
-                from ..core.config import ModelType
-
-                if hasattr(ModelType, model_type.upper()):
-                    config.model.model_type = getattr(ModelType, model_type.upper())
-
             # Create model
             model = create_model(model_type, config)
 
-            # Load state dict
-            model.load_state_dict(checkpoint["model_state_dict"])
+            # Load state dict with strict=False to handle potential mismatches gracefully
+            try:
+                model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+                logger.info("Model state dict loaded successfully (strict=True)")
+            except RuntimeError as e:
+                logger.warning(
+                    f"Strict loading failed, trying with strict=False: {str(e)}"
+                )
+                missing_keys, unexpected_keys = model.load_state_dict(
+                    checkpoint["model_state_dict"], strict=False
+                )
+                if missing_keys:
+                    logger.warning(f"Missing keys: {missing_keys}")
+                if unexpected_keys:
+                    logger.warning(f"Unexpected keys: {unexpected_keys}")
+                logger.info("Model state dict loaded successfully (strict=False)")
 
             # Move to device and set to eval mode
             model.to(device)
@@ -336,67 +503,6 @@ class ModelUtils:
         except Exception as e:
             logger.error(f"Failed to load model for inference: {str(e)}")
             raise
-
-    @staticmethod
-    def _infer_config_from_checkpoint(checkpoint: Dict[str, Any]) -> Config:
-        """Infer configuration from checkpoint data"""
-        from ..core.config import Config, create_development_config
-
-        # Start with default config
-        config = create_development_config()
-
-        # Extract configuration from checkpoint
-        saved_config = checkpoint.get("config", {})
-        model_info = checkpoint.get("model_info", {})
-
-        # Update model dimensions
-        if "input_dim" in saved_config:
-            config.model.input_dim = saved_config["input_dim"]
-        elif "input_dim" in model_info:
-            config.model.input_dim = model_info["input_dim"]
-        else:
-            # Try to infer from state dict
-            state_dict = checkpoint.get("model_state_dict", {})
-            for key, tensor in state_dict.items():
-                if "embedding" in key.lower() and len(tensor.shape) >= 2:
-                    config.model.input_dim = tensor.shape[-1]
-                    break
-
-        # Update other model parameters
-        for param in [
-            "d_model",
-            "n_layers",
-            "n_heads",
-            "output_dim",
-            "sequence_length",
-        ]:
-            if param in saved_config:
-                setattr(config.model, param, saved_config[param])
-            elif param in model_info:
-                setattr(config.model, param, model_info[param])
-
-        # Infer some parameters from state dict if needed
-        state_dict = checkpoint.get("model_state_dict", {})
-
-        # Infer d_model from transformer layers
-        for key, tensor in state_dict.items():
-            if "transformer" in key and "weight" in key and len(tensor.shape) >= 2:
-                if config.model.d_model is None:
-                    config.model.d_model = tensor.shape[-1]
-                break
-
-        # Infer number of layers
-        if config.model.n_layers is None:
-            layer_count = 0
-            for key in state_dict.keys():
-                if "transformer_layers" in key:
-                    layer_nums = [int(s) for s in key.split(".") if s.isdigit()]
-                    if layer_nums:
-                        layer_count = max(layer_count, max(layer_nums) + 1)
-            if layer_count > 0:
-                config.model.n_layers = layer_count
-
-        return config
 
     @staticmethod
     def list_available_checkpoints(
