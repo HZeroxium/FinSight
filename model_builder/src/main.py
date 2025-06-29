@@ -9,6 +9,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional
+import numpy as np
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -236,11 +237,32 @@ class StreamlinedAIDemo:
 
             # Create comprehensive visualizations using our enhanced utilities
             try:
+                # Validate prediction data before visualization
+                predictions_for_viz = self.demo_results["predictions"].copy()
+
+                # Ensure prediction arrays are properly formatted
+                if "predictions" in predictions_for_viz:
+                    pred_array = predictions_for_viz["predictions"]
+                    if isinstance(pred_array, np.ndarray) and pred_array.ndim > 1:
+                        predictions_for_viz["predictions"] = pred_array.flatten()
+
+                if "targets" in predictions_for_viz:
+                    target_array = predictions_for_viz["targets"]
+                    if isinstance(target_array, np.ndarray) and target_array.ndim > 1:
+                        predictions_for_viz["targets"] = target_array.flatten()
+
+                # Validate all model predictions if they exist
+                if "all_model_predictions" in predictions_for_viz:
+                    all_preds = predictions_for_viz["all_model_predictions"]
+                    for model_name, preds in all_preds.items():
+                        if isinstance(preds, np.ndarray) and preds.ndim > 1:
+                            all_preds[model_name] = preds.flatten()
+
                 visualization_paths = (
                     VisualizationUtils.create_comprehensive_visualizations(
                         training_results=self.demo_results["training_results"],
                         evaluation_results=self.demo_results["evaluation_results"],
-                        predictions_data=self.demo_results["predictions"],
+                        predictions_data=predictions_for_viz,
                         feature_names=self.config.model.features_to_use,
                         output_dir=viz_dir,
                         raw_data=self.raw_data,

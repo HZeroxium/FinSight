@@ -62,6 +62,39 @@ class VisualizationUtils:
         return cls._feature_visualizer
 
     @staticmethod
+    def _ensure_1d_array(arr: np.ndarray) -> np.ndarray:
+        """Ensure array is 1D by flattening if necessary"""
+        if arr is None:
+            return None
+
+        arr = np.asarray(arr)
+        if arr.ndim > 1:
+            return arr.flatten()
+        return arr
+
+    @staticmethod
+    def _validate_prediction_data(
+        predictions: np.ndarray, targets: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Validate and reshape prediction data to ensure compatibility"""
+        try:
+            # Convert to numpy arrays and ensure they're 1D
+            predictions = VisualizationUtils._ensure_1d_array(predictions)
+            targets = VisualizationUtils._ensure_1d_array(targets)
+
+            # Ensure both arrays have the same length
+            min_length = min(len(predictions), len(targets))
+            predictions = predictions[:min_length]
+            targets = targets[:min_length]
+
+            return predictions, targets
+        except Exception as e:
+            VisualizationUtils._logger.error(
+                f"Error validating prediction data: {str(e)}"
+            )
+            raise
+
+    @staticmethod
     def setup_plot_style() -> None:
         """Setup matplotlib style for consistent plotting"""
         set_finance_style()
@@ -410,18 +443,47 @@ class VisualizationUtils:
         Returns:
             str: Path to saved plot
         """
-        visualizer = VisualizationUtils._get_financial_visualizer()
-        return visualizer.plot_candlestick_chart(
-            data=data,
-            date_col=date_col,
-            open_col=open_col,
-            high_col=high_col,
-            low_col=low_col,
-            close_col=close_col,
-            volume_col=volume_col,
-            overlay_predictions=overlay_predictions,
-            save_path=save_path,
-        )
+        try:
+            # Ensure predictions are 1D if provided
+            if overlay_predictions is not None:
+                overlay_predictions = VisualizationUtils._ensure_1d_array(
+                    overlay_predictions
+                )
+                # Limit predictions to match data length
+                if len(overlay_predictions) > len(data):
+                    overlay_predictions = overlay_predictions[: len(data)]
+
+            visualizer = VisualizationUtils._get_financial_visualizer()
+            return visualizer.plot_candlestick_chart(
+                data=data,
+                date_col=date_col,
+                open_col=open_col,
+                high_col=high_col,
+                low_col=low_col,
+                close_col=close_col,
+                volume_col=volume_col,
+                overlay_predictions=overlay_predictions,
+                save_path=save_path,
+            )
+        except Exception as e:
+            VisualizationUtils._logger.error(
+                f"Error creating candlestick chart: {str(e)}"
+            )
+            # Create fallback visualization
+            fig, ax = plt.subplots(figsize=(12, 8))
+            ax.text(
+                0.5,
+                0.5,
+                f"Error creating candlestick chart:\n{str(e)}",
+                ha="center",
+                va="center",
+                fontsize=12,
+            )
+            ax.set_title("Candlestick Chart (Error)")
+
+            if save_path is None:
+                save_path = Path("candlestick_chart_error.png")
+            return VisualizationUtils._save_figure_safely(fig, save_path)
 
     @staticmethod
     def plot_attention_weights(
@@ -584,30 +646,56 @@ class VisualizationUtils:
                 targets_array = test_preds["targets"]
 
             if predictions_array is not None and targets_array is not None:
-                viz_path = VisualizationUtils.plot_predictions(
-                    predictions_array,
-                    targets_array,
-                    save_path=output_dir / "prediction_analysis.png",
-                )
-                visualization_paths["predictions"] = viz_path
-
-                # Trading simulation based on predictions
-                viz_path = VisualizationUtils.plot_trading_simulation(
-                    predictions_array,
-                    targets_array,
-                    save_path=output_dir / "trading_simulation.png",
-                )
-                visualization_paths["trading_simulation"] = viz_path
-
-                # Multi-model forecast comparison if available
-                if "all_model_predictions" in predictions_data:
-                    all_preds = predictions_data["all_model_predictions"]
-                    viz_path = VisualizationUtils.plot_forecast_comparison(
-                        all_preds,
-                        targets_array,
-                        save_path=output_dir / "forecast_comparison.png",
+                # Validate and reshape prediction data
+                try:
+                    predictions_array, targets_array = (
+                        VisualizationUtils._validate_prediction_data(
+                            predictions_array, targets_array
+                        )
                     )
-                    visualization_paths["forecast_comparison"] = viz_path
+
+                    viz_path = VisualizationUtils.plot_predictions(
+                        predictions_array,
+                        targets_array,
+                        save_path=output_dir / "prediction_analysis.png",
+                    )
+                    visualization_paths["predictions"] = viz_path
+
+                    # Trading simulation based on predictions
+                    viz_path = VisualizationUtils.plot_trading_simulation(
+                        predictions_array,
+                        targets_array,
+                        save_path=output_dir / "trading_simulation.png",
+                    )
+                    visualization_paths["trading_simulation"] = viz_path
+
+                    # Multi-model forecast comparison if available
+                    if "all_model_predictions" in predictions_data:
+                        all_preds = predictions_data["all_model_predictions"]
+                        # Validate all prediction arrays
+                        validated_preds = {}
+                        for model_name, preds in all_preds.items():
+                            try:
+                                validated_preds[model_name] = (
+                                    VisualizationUtils._ensure_1d_array(preds)
+                                )
+                            except Exception as e:
+                                VisualizationUtils._logger.warning(
+                                    f"Skipping {model_name} predictions due to validation error: {str(e)}"
+                                )
+
+                        if validated_preds:
+                            viz_path = VisualizationUtils.plot_forecast_comparison(
+                                validated_preds,
+                                targets_array,
+                                save_path=output_dir / "forecast_comparison.png",
+                            )
+                            visualization_paths["forecast_comparison"] = viz_path
+
+                except Exception as e:
+                    VisualizationUtils._logger.error(
+                        f"Error processing prediction data: {str(e)}"
+                    )
 
             # Feature analysis
             if feature_names:
@@ -663,22 +751,26 @@ class VisualizationUtils:
                             # Candlestick with predictions overlay
                             if predictions_array is not None:
                                 # Need to align predictions with raw data dates
-                                # This is simplified - in practice you'd need proper alignment
-                                last_n = min(len(predictions_array), 30)  # Last 30 days
+                                # Take last N days where N is min of prediction length and available data
+                                last_n = min(len(predictions_array), len(raw_data), 30)
 
-                                viz_path = VisualizationUtils.plot_candlestick_chart(
-                                    raw_data.tail(last_n),
-                                    overlay_predictions=(
+                                if last_n > 0:
+                                    # Ensure predictions are properly shaped for overlay
+                                    overlay_preds = VisualizationUtils._ensure_1d_array(
                                         predictions_array[-last_n:]
-                                        if last_n > 0
-                                        else None
-                                    ),
-                                    save_path=output_dir
-                                    / "candlestick_predictions.png",
-                                )
-                                visualization_paths["candlestick_predictions"] = (
-                                    viz_path
-                                )
+                                    )
+
+                                    viz_path = (
+                                        VisualizationUtils.plot_candlestick_chart(
+                                            raw_data.tail(last_n),
+                                            overlay_predictions=overlay_preds,
+                                            save_path=output_dir
+                                            / "candlestick_predictions.png",
+                                        )
+                                    )
+                                    visualization_paths["candlestick_predictions"] = (
+                                        viz_path
+                                    )
                     except Exception as e:
                         VisualizationUtils._logger.error(
                             f"Error creating raw data visualizations: {str(e)}"
@@ -686,21 +778,31 @@ class VisualizationUtils:
 
                 # Model explainability - attention weights visualization for transformer models
                 if "attention_weights" in predictions_data:
-                    viz_path = VisualizationUtils.plot_attention_weights(
-                        predictions_data["attention_weights"],
-                        sequence_length=30,  # Assuming sequence length is 30
-                        save_path=output_dir / "attention_weights.png",
-                    )
-                    visualization_paths["attention_weights"] = viz_path
+                    try:
+                        viz_path = VisualizationUtils.plot_attention_weights(
+                            predictions_data["attention_weights"],
+                            sequence_length=30,  # Assuming sequence length is 30
+                            save_path=output_dir / "attention_weights.png",
+                        )
+                        visualization_paths["attention_weights"] = viz_path
+                    except Exception as e:
+                        VisualizationUtils._logger.error(
+                            f"Error creating attention weights visualization: {str(e)}"
+                        )
 
                 # Feature importance if available
                 if "feature_importance" in predictions_data:
-                    viz_path = VisualizationUtils.plot_feature_importance(
-                        predictions_data["feature_importance"],
-                        feature_names=feature_names,
-                        save_path=output_dir / "feature_importance.png",
-                    )
-                    visualization_paths["feature_importance"] = viz_path
+                    try:
+                        viz_path = VisualizationUtils.plot_feature_importance(
+                            predictions_data["feature_importance"],
+                            feature_names=feature_names,
+                            save_path=output_dir / "feature_importance.png",
+                        )
+                        visualization_paths["feature_importance"] = viz_path
+                    except Exception as e:
+                        VisualizationUtils._logger.error(
+                            f"Error creating feature importance visualization: {str(e)}"
+                        )
 
         except Exception as e:
             VisualizationUtils._logger.error(

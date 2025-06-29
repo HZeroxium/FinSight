@@ -252,37 +252,101 @@ class FinancialVisualizer(BaseVisualizer):
 
         # Add predictions as overlay if provided
         if overlay_predictions is not None and len(overlay_predictions) > 0:
-            prediction_series = pd.Series(
-                overlay_predictions[: len(plot_data)],
-                index=plot_data.index[: len(overlay_predictions)],
-            )
+            try:
+                # Ensure predictions is a 1D array
+                if isinstance(overlay_predictions, np.ndarray):
+                    if overlay_predictions.ndim > 1:
+                        overlay_predictions = overlay_predictions.flatten()
+                else:
+                    overlay_predictions = np.asarray(overlay_predictions).flatten()
 
-            kwargs["addplot"] = [
-                mpf.make_addplot(
-                    prediction_series,
-                    color="purple",
-                    width=2,
-                    linestyle="--",
-                    panel=0,
-                    secondary_y=False,
+                # Align predictions with plot data length
+                prediction_length = min(len(overlay_predictions), len(plot_data))
+                aligned_predictions = overlay_predictions[:prediction_length]
+                aligned_index = plot_data.index[:prediction_length]
+
+                prediction_series = pd.Series(
+                    aligned_predictions, index=aligned_index, name="Predicted Close"
                 )
-            ]
+
+                kwargs["addplot"] = [
+                    mpf.make_addplot(
+                        prediction_series,
+                        color="purple",
+                        width=2,
+                        linestyle="--",
+                        panel=0,
+                        secondary_y=False,
+                    )
+                ]
+
+                self.logger.info(
+                    f"Added predictions overlay with {len(aligned_predictions)} points"
+                )
+
+            except Exception as e:
+                self.logger.warning(f"Could not add predictions overlay: {str(e)}")
+                # Continue without predictions overlay
 
         # Create a temporary file path if none provided
         if save_path is None:
             save_path = Path("candlestick_chart.png")
 
-        # Plot and save
-        fig, axes = mpf.plot(plot_data, **kwargs, returnfig=True)
+        try:
+            # Plot and save
+            fig, axes = mpf.plot(plot_data, **kwargs, returnfig=True)
 
-        # Add legend for predictions if applicable
-        if overlay_predictions is not None:
-            axes[0].legend(["Predicted Close"], loc="upper left")
+            # Add legend for predictions if applicable
+            if overlay_predictions is not None and "addplot" in kwargs:
+                if hasattr(axes, "__len__") and len(axes) > 0:
+                    axes[0].legend(["Predicted Close"], loc="upper left")
+                else:
+                    axes.legend(["Predicted Close"], loc="upper left")
 
-        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            plt.close(fig)
 
-        self.logger.info(f"Candlestick chart saved to {save_path}")
-        return str(save_path)
+            self.logger.info(f"Candlestick chart saved to {save_path}")
+            return str(save_path)
+
+        except Exception as e:
+            self.logger.error(f"Error creating candlestick chart: {str(e)}")
+            # Create fallback simple chart
+            fig, ax = plt.subplots(figsize=(12, 8))
+
+            # Simple line chart as fallback
+            ax.plot(
+                plot_data.index, plot_data["Close"], label="Close Price", linewidth=2
+            )
+
+            if overlay_predictions is not None:
+                try:
+                    aligned_predictions = overlay_predictions[: len(plot_data)]
+                    ax.plot(
+                        plot_data.index[: len(aligned_predictions)],
+                        aligned_predictions,
+                        label="Predicted Close",
+                        linestyle="--",
+                        color="purple",
+                        linewidth=2,
+                    )
+                except:
+                    pass
+
+            ax.set_title(title)
+            ax.set_xlabel("Date")
+            ax.set_ylabel("Price")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+
+            # Format dates
+            plt.gcf().autofmt_xdate()
+
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            plt.close(fig)
+
+            self.logger.info(f"Fallback chart saved to {save_path}")
+            return str(save_path)
 
     def plot_volatility_analysis(
         self,
