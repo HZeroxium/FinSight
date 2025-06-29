@@ -38,7 +38,7 @@ class ModelInterface(ABC, nn.Module):
         Forward pass through the model
 
         Args:
-            x: Input tensor of shape (batch_size, seq_len, input_dim)
+            x: Input tensor of shape (batch_size, seq_len, feature_dim)
             **kwargs: Additional keyword arguments for specific models
 
         Returns:

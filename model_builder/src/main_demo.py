@@ -153,6 +153,23 @@ class AIDemo:
         feature_names = self.feature_engineering.get_feature_importance_names()
         self.logger.info(f"✓ Generated {len(feature_names)} features")
 
+        # CRITICAL FIX: Update config with actual feature dimensions
+        numeric_features = processed_data.select_dtypes(
+            include=["float64", "int64"]
+        ).columns
+        available_features = [
+            col for col in self.config.model.features_to_use if col in numeric_features
+        ]
+
+        if len(available_features) != len(self.config.model.features_to_use):
+            self.logger.warning(
+                f"Some configured features not found. Using: {available_features}"
+            )
+            self.config.model.features_to_use = available_features
+
+        self.config.model.input_dim = len(available_features)
+        self.logger.info(f"✓ Updated model input_dim to: {self.config.model.input_dim}")
+
         # Data quality validation
         quality_report = self._validate_data_quality(processed_data)
 
@@ -302,9 +319,12 @@ class AIDemo:
         for model_name, config in model_configs.items():
             self.logger.info(f"\n🔧 Creating {model_name} model...")
 
-            # Update config with current data dimensions
+            # Update config with current data dimensions - CRITICAL FIX
             config.model.input_dim = self.config.model.input_dim
             config.model.features_to_use = self.config.model.features_to_use
+            config.model.sequence_length = self.config.model.sequence_length
+            config.model.output_dim = self.config.model.output_dim
+            config.model.prediction_horizon = self.config.model.prediction_horizon
 
             # Create model
             model = create_model(config.model.model_type.value, config)

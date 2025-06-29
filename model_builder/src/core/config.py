@@ -64,7 +64,7 @@ class ModelConfig(BaseSettings):
     learnable_pos_encoding: bool = False
 
     # Input/Output dimensions
-    input_dim: int = Field(default=7, ge=1, le=100)
+    input_dim: int = Field(default=5, ge=1, le=100)  # Changed from 7 to 5
     output_dim: int = Field(default=1, ge=1, le=10)
     sequence_length: int = Field(default=60, ge=10, le=1000)
     prediction_horizon: int = Field(default=1, ge=1, le=30)

@@ -9,6 +9,8 @@ from typing import Any, Dict, Optional, Union, List
 import yaml
 
 import torch
+import numpy as np
+import pandas as pd
 from pydantic import BaseModel
 
 from ..common.logger.logger_factory import LoggerFactory
@@ -220,28 +222,44 @@ class FileUtils:
         atomic: bool = True,
     ) -> None:
         """
-        Save data as JSON file
-
-        Args:
-            data: Data to save (dict or Pydantic model)
-            path: Save path
-            indent: JSON indentation
-            atomic: Whether to use atomic save
+        Save data as JSON, converting NumPy/Pandas scalars into Python primitives.
         """
         path = Path(path)
         FileUtils.ensure_dir(path.parent)
 
-        # Convert Pydantic model to dict if needed
+        # Convert Pydantic models to dict
         if isinstance(data, BaseModel):
             json_data = data.model_dump()
         else:
             json_data = data
 
-        def _save_json():
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(json_data, f, indent=indent, ensure_ascii=False)
+        # Default handler for json.dump
+        def _default_serializer(obj):
+            # NumPy scalar (int64, float64, etc.)
+            if isinstance(obj, (np.generic,)):
+                return obj.item()
+            # Pandas nullable Int64Dtype / BooleanDtype, NAType
+            if hasattr(obj, "dtype") and str(obj.dtype).startswith(
+                ("Int64", "boolean")
+            ):
+                return int(obj)
+            # Pandas Timestamp or Timedelta
+            if isinstance(obj, (pd.Timestamp, pd.Timedelta)):
+                return obj.isoformat()
+            # Fallback to string
+            return str(obj)
+
+        def _write(f):
+            json.dump(
+                json_data,
+                f,
+                indent=indent,
+                ensure_ascii=False,
+                default=_default_serializer,
+            )
 
         if atomic:
+            # Atomic write: write to temp then move
             with tempfile.NamedTemporaryFile(
                 mode="w",
                 dir=path.parent,
@@ -249,18 +267,13 @@ class FileUtils:
                 delete=False,
                 encoding="utf-8",
             ) as tmp_file:
+                _write(tmp_file)
                 tmp_path = Path(tmp_file.name)
-                json.dump(json_data, tmp_file, indent=indent, ensure_ascii=False)
-
-            try:
-                tmp_path.replace(path)
-                FileUtils._logger.info(f"JSON saved atomically to {path}")
-            except Exception:
-                if tmp_path.exists():
-                    tmp_path.unlink()
-                raise
+            tmp_path.replace(path)
+            FileUtils._logger.info(f"JSON saved atomically to {path}")
         else:
-            _save_json()
+            with open(path, "w", encoding="utf-8") as f:
+                _write(f)
             FileUtils._logger.info(f"JSON saved to {path}")
 
     @staticmethod

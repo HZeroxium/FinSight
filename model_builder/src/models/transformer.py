@@ -112,7 +112,21 @@ class FinancialTransformer(ModelInterface):
          - apply TransformerEncoder
          - pool and project to outputs
         """
-        batch_size, seq_len, _ = x.shape
+        batch_size, seq_len, feature_dim = x.shape
+
+        # Validate input dimensions
+        if feature_dim != self.input_dim:
+            raise ValueError(
+                f"Input feature dimension {feature_dim} does not match model's expected "
+                f"input dimension {self.input_dim}. Please check your data preprocessing "
+                f"and model configuration."
+            )
+
+        if seq_len > self.sequence_length:
+            raise ValueError(
+                f"Input sequence length {seq_len} exceeds model's maximum sequence "
+                f"length {self.sequence_length}."
+            )
 
         x = self.input_proj(x)  # (B, L, D)
         pos = torch.arange(seq_len, device=x.device).unsqueeze(0).expand(batch_size, -1)
