@@ -17,6 +17,7 @@ from .training_utils import TrainingUtils
 from .evaluation_utils import EvaluationUtils
 from .visualization_utils import VisualizationUtils
 from .prediction_utils import PredictionUtils
+from .model_utils import ModelUtils
 
 # Convenience functions
 get_device = DeviceUtils.get_device
@@ -43,6 +44,7 @@ __all__ = [
     "EvaluationUtils",
     "VisualizationUtils",
     "PredictionUtils",
+    "ModelUtils",
     # Convenience functions
     "get_device",
     "set_seed",

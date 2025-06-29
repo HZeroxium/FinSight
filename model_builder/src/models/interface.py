@@ -304,23 +304,20 @@ class ModelInterface(ABC, nn.Module):
             epoch: Current epoch number
             metrics: Training metrics to save
         """
-        checkpoint = {
-            "model_state_dict": self.state_dict(),
-            "model_config": self.get_model_info(),
-            "model_name": self.get_model_name(),
-        }
+        from ..utils.model_utils import ModelUtils
 
-        if optimizer:
-            checkpoint["optimizer_state_dict"] = optimizer.state_dict()
-        if scheduler:
-            checkpoint["scheduler_state_dict"] = scheduler.state_dict()
-        if epoch is not None:
-            checkpoint["epoch"] = epoch
-        if metrics:
-            checkpoint["metrics"] = metrics
+        # Get config if available
+        config = getattr(self, "config", None)
 
-        torch.save(checkpoint, filepath)
-        self.logger.info(f"Checkpoint saved to {filepath}")
+        ModelUtils.save_model_checkpoint(
+            model=self,
+            filepath=filepath,
+            config=config,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            epoch=epoch,
+            metrics=metrics,
+        )
 
     def load_checkpoint(
         self,
@@ -330,7 +327,7 @@ class ModelInterface(ABC, nn.Module):
         device: Optional[torch.device] = None,
     ) -> Dict[str, Any]:
         """
-        Load model checkpoint with metadata
+        Load model checkpoint with metadata using safe loading
 
         Args:
             filepath: Path to checkpoint file
@@ -341,9 +338,16 @@ class ModelInterface(ABC, nn.Module):
         Returns:
             dict: Checkpoint metadata
         """
-        checkpoint = torch.load(filepath, map_location=device)
+        from ..utils.model_utils import ModelUtils
 
-        self.load_state_dict(checkpoint["model_state_dict"])
+        # Load checkpoint using safe method
+        checkpoint = ModelUtils._safe_torch_load(filepath, map_location=device)
+
+        # Handle different checkpoint formats
+        if "model_state_dict" in checkpoint:
+            self.load_state_dict(checkpoint["model_state_dict"])
+        else:
+            self.load_state_dict(checkpoint)
 
         if optimizer and "optimizer_state_dict" in checkpoint:
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

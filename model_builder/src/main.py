@@ -374,13 +374,18 @@ class StreamlinedAIDemo:
 
             elif aspect_type == "trading_simulation":
                 if "predictions" in self.demo_results:
-                    test_preds = self.demo_results["predictions"]["test_predictions"]
-                    return VisualizationUtils.plot_trading_simulation(
-                        test_preds["predictions"],
-                        test_preds["targets"],
-                        save_path=viz_dir / "trading_simulation.png",
-                        **kwargs,
-                    )
+                    # Safe access to predictions data
+                    predictions_data = self.demo_results["predictions"]
+                    if (
+                        "predictions" in predictions_data
+                        and "targets" in predictions_data
+                    ):
+                        return VisualizationUtils.plot_trading_simulation(
+                            predictions_data["predictions"],
+                            predictions_data["targets"],
+                            save_path=viz_dir / "trading_simulation.png",
+                            **kwargs,
+                        )
 
             elif aspect_type == "feature_importance":
                 if "feature_importance" in self.demo_results.get("predictions", {}):
@@ -402,33 +407,36 @@ class StreamlinedAIDemo:
 
             elif aspect_type == "candlestick_chart":
                 if (
-                    "Open" in self.raw_data.columns
+                    self.raw_data is not None
+                    and "Open" in self.raw_data.columns
                     and "predictions" in self.demo_results
                 ):
-                    test_preds = self.demo_results["predictions"]["test_predictions"]
-                    return VisualizationUtils.plot_candlestick_chart(
-                        data=self.raw_data.tail(30),
-                        overlay_predictions=(
-                            test_preds["predictions"][-30:]
-                            if len(test_preds["predictions"]) >= 30
-                            else None
-                        ),
-                        save_path=viz_dir / "candlestick_chart.png",
-                        **kwargs,
-                    )
+                    predictions_data = self.demo_results["predictions"]
+                    if "predictions" in predictions_data:
+                        pred_array = predictions_data["predictions"]
+                        overlay_preds = (
+                            pred_array[-30:] if len(pred_array) >= 30 else None
+                        )
+                        return VisualizationUtils.plot_candlestick_chart(
+                            data=self.raw_data.tail(30),
+                            overlay_predictions=overlay_preds,
+                            save_path=viz_dir / "candlestick_chart.png",
+                            **kwargs,
+                        )
 
             elif aspect_type == "forecast_comparison":
                 if "all_model_predictions" in self.demo_results.get("predictions", {}):
                     all_preds = self.demo_results["predictions"][
                         "all_model_predictions"
                     ]
-                    test_preds = self.demo_results["predictions"]["test_predictions"]
-                    return VisualizationUtils.plot_forecast_comparison(
-                        all_preds,
-                        test_preds["targets"],
-                        save_path=viz_dir / "forecast_comparison.png",
-                        **kwargs,
-                    )
+                    predictions_data = self.demo_results["predictions"]
+                    if "targets" in predictions_data:
+                        return VisualizationUtils.plot_forecast_comparison(
+                            all_preds,
+                            predictions_data["targets"],
+                            save_path=viz_dir / "forecast_comparison.png",
+                            **kwargs,
+                        )
 
             self.logger.warning(
                 f"Visualization type '{aspect_type}' not recognized or data not available"

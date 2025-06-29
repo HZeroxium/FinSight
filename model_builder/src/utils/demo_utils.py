@@ -7,7 +7,6 @@ import torch
 
 from ..common.logger.logger_factory import LoggerFactory
 from ..core.config import Config, ModelConfig, ModelType
-from ..data import FinancialDataLoader, FeatureEngineering
 from ..models import create_model
 from .device_utils import DeviceUtils
 from .common_utils import CommonUtils
@@ -197,6 +196,8 @@ class DemoUtils:
         Returns:
             Tuple of (train_loader, val_loader, test_loader)
         """
+        from ..data import FinancialDataLoader, FeatureEngineering
+
         DemoUtils._logger.info("Starting data processing pipeline...")
 
         # Initialize components
@@ -256,6 +257,8 @@ class DemoUtils:
         Returns:
             Tuple of ((train_loader, val_loader, test_loader), raw_data, processed_data)
         """
+        from ..data import FinancialDataLoader, FeatureEngineering
+
         DemoUtils._logger.info("Starting data processing pipeline...")
 
         # Initialize components
