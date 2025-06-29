@@ -38,9 +38,15 @@ class PredictionUtils:
         # Get predictions
         predictions, targets = model.predict_batch(test_loader, device)
 
+        # Convert to numpy arrays
+        predictions_np = (
+            predictions.cpu().numpy() if hasattr(predictions, "cpu") else predictions
+        )
+        targets_np = targets.cpu().numpy() if hasattr(targets, "cpu") else targets
+
         # Analyze predictions
         prediction_analysis = PredictionUtils.analyze_predictions(
-            predictions.numpy(), targets.numpy()
+            predictions_np, targets_np
         )
 
         # Generate future predictions (simplified)
@@ -49,17 +55,15 @@ class PredictionUtils:
         )
 
         result = {
-            "test_predictions": {
-                "predictions": predictions.numpy(),
-                "targets": targets.numpy(),
-                "analysis": prediction_analysis,
-            },
+            "predictions": predictions_np,  # Consistent key structure
+            "targets": targets_np,
+            "analysis": prediction_analysis,
             "future_predictions": future_predictions,
             "model_used": model_name,
         }
 
         PredictionUtils._logger.info(f"✓ Predictions generated using {model_name}:")
-        PredictionUtils._logger.info(f"  Test samples: {len(predictions)}")
+        PredictionUtils._logger.info(f"  Test samples: {len(predictions_np)}")
         PredictionUtils._logger.info(
             f"  Prediction accuracy: {prediction_analysis['accuracy']:.2f}%"
         )
@@ -144,6 +148,79 @@ class PredictionUtils:
         except Exception as e:
             PredictionUtils._logger.error(f"Error generating future predictions: {e}")
             return {"error": str(e)}
+
+    @staticmethod
+    def estimate_feature_importance(
+        model: torch.nn.Module,
+        test_loader: DataLoader,
+        feature_names: List[str],
+        device: torch.device,
+        n_samples: int = 10,
+    ) -> np.ndarray:
+        """
+        Estimate feature importance using simple perturbation analysis
+
+        Args:
+            model: PyTorch model
+            test_loader: Test data loader
+            feature_names: List of feature names
+            device: PyTorch device
+            n_samples: Number of samples to use for estimation
+
+        Returns:
+            numpy array of feature importance scores
+        """
+        try:
+            model.eval()
+
+            # Get a small batch for analysis
+            sample_batch = None
+            for batch in test_loader:
+                sample_batch = batch
+                break
+
+            if sample_batch is None:
+                return np.zeros(len(feature_names))
+
+            batch_x, batch_y = sample_batch
+            batch_x = batch_x[:n_samples].to(device)
+            batch_y = batch_y[:n_samples].to(device)
+
+            # Get baseline predictions
+            with torch.no_grad():
+                baseline_pred = model(batch_x)
+                baseline_loss = torch.nn.functional.mse_loss(baseline_pred, batch_y)
+
+            feature_importance = []
+
+            # For each feature, perturb it and measure the change in loss
+            for feat_idx in range(batch_x.shape[-1]):  # Last dimension is features
+                perturbed_x = batch_x.clone()
+
+                # Add noise to this feature across all sequences
+                noise = torch.randn_like(perturbed_x[:, :, feat_idx]) * 0.1
+                perturbed_x[:, :, feat_idx] += noise
+
+                with torch.no_grad():
+                    perturbed_pred = model(perturbed_x)
+                    perturbed_loss = torch.nn.functional.mse_loss(
+                        perturbed_pred, batch_y
+                    )
+
+                # Importance is the increase in loss when feature is perturbed
+                importance = float((perturbed_loss - baseline_loss).abs())
+                feature_importance.append(importance)
+
+            # Normalize importance scores
+            importance_array = np.array(feature_importance)
+            if importance_array.sum() > 0:
+                importance_array = importance_array / importance_array.sum()
+
+            return importance_array
+
+        except Exception as e:
+            PredictionUtils._logger.error(f"Error estimating feature importance: {e}")
+            return np.zeros(len(feature_names))
 
     @staticmethod
     def calculate_prediction_metrics(
