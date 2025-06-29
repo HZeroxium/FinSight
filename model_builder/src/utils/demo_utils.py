@@ -1,9 +1,7 @@
 # utils/demo_utils.py
 
-import time
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 import torch
 
@@ -11,12 +9,10 @@ from ..common.logger.logger_factory import LoggerFactory
 from ..core.config import Config, ModelConfig, ModelType
 from ..data import FinancialDataLoader, FeatureEngineering
 from ..models import create_model
-from ..training.trainer import ModelTrainer
 from .device_utils import DeviceUtils
 from .common_utils import CommonUtils
 from .file_utils import FileUtils
-from .metric_utils import MetricUtils
-from .visualization_utils import VisualizationUtils
+from torch.utils.data import DataLoader
 
 
 class DemoUtils:
@@ -249,7 +245,7 @@ class DemoUtils:
     @staticmethod
     def prepare_data_pipeline_with_data(
         config: Config, data_path: Optional[str] = None
-    ) -> Tuple[Tuple[Any, Any, Any], pd.DataFrame, pd.DataFrame]:
+    ) -> Tuple[Tuple[DataLoader, DataLoader, DataLoader], pd.DataFrame, pd.DataFrame]:
         """
         Execute complete data preparation pipeline and return loaders and data
 
@@ -271,11 +267,13 @@ class DemoUtils:
             config.data.data_file = data_path
 
         raw_data = data_loader.load_data()
-        DemoUtils._logger.info(f"✓ Raw data loaded: {raw_data.shape}")
+        DemoUtils._logger.info(f"- Raw data loaded: {raw_data.shape}")
+        # Save raw data for later use
+        FileUtils.save_csv(raw_data, "demo_results/raw_data.csv")
 
         # Feature engineering
         processed_data = feature_engineering.process_data(raw_data, fit=True)
-        DemoUtils._logger.info(f"✓ Data processed: {processed_data.shape}")
+        DemoUtils._logger.info(f"- Data processed: {processed_data.shape}")
 
         # Update config with actual feature dimensions
         numeric_features = processed_data.select_dtypes(
@@ -559,7 +557,7 @@ class DemoUtils:
         """
         if output_path is None:
             timestamp = CommonUtils.get_timestamp()
-            output_path = f"demo_results_{timestamp}.json"
+            output_path = f"demo_results/{timestamp}.json"
 
         # Prepare results for serialization
         serializable_results = DemoUtils.prepare_results_for_serialization(results)

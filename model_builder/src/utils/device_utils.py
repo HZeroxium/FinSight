@@ -3,13 +3,15 @@
 import torch
 import psutil
 from typing import Optional, Dict, List, Union
-from ..common.logger.logger_factory import LoggerFactory
+from ..common.logger.logger_factory import LoggerFactory, LoggerType, LogLevel
 
 
 class DeviceUtils:
     """Utility class for device management (CPU/GPU) with enhanced capabilities"""
 
-    _logger = LoggerFactory.get_logger(__name__)
+    _logger = LoggerFactory.get_logger(
+        name="device_utils", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
+    )
 
     @staticmethod
     def get_device(

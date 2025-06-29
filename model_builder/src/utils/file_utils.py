@@ -384,3 +384,26 @@ class FileUtils:
             obj = pickle.load(f)
         FileUtils._logger.info(f"Object loaded from {path}")
         return obj
+
+    @staticmethod
+    def save_csv(
+        data: Union[pd.DataFrame, pd.Series, np.ndarray], path: Union[str, Path]
+    ) -> None:
+        """
+        Save data as CSV file
+
+        Args:
+            data: Data to save
+            path: Save path
+        """
+        path = Path(path)
+        FileUtils.ensure_dir(path.parent)
+
+        if isinstance(data, (pd.DataFrame, pd.Series)):
+            data.to_csv(path, index=False)
+        elif isinstance(data, np.ndarray):
+            np.savetxt(path, data, delimiter=",")
+        else:
+            raise ValueError("Unsupported data type")
+
+        FileUtils._logger.info(f"CSV saved to {path}")

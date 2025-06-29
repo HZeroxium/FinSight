@@ -7,7 +7,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
 from ..common.logger.logger_factory import LoggerFactory
 from ..core.config import Config
-from ..utils import ValidationUtils
+from ..utils import ValidationUtils, FileUtils
 
 
 class FeatureEngineering:
@@ -423,18 +423,18 @@ class FeatureEngineering:
                 df = df.dropna()
 
             # Remove outliers using IQR method for better financial data handling
-            if self.config.data.remove_outliers:
-                numeric_columns = df.select_dtypes(include=[np.number]).columns
-                for col in numeric_columns:
-                    if col != self.config.data.date_column:
-                        Q1 = df[col].quantile(0.25)
-                        Q3 = df[col].quantile(0.75)
-                        IQR = Q3 - Q1
-                        lower_bound = Q1 - 1.5 * IQR
-                        upper_bound = Q3 + 1.5 * IQR
+            # if self.config.data.remove_outliers:
+            #     numeric_columns = df.select_dtypes(include=[np.number]).columns
+            #     for col in numeric_columns:
+            #         if col != self.config.data.date_column:
+            #             Q1 = df[col].quantile(0.25)
+            #             Q3 = df[col].quantile(0.75)
+            #             IQR = Q3 - Q1
+            #             lower_bound = Q1 - 1.5 * IQR
+            #             upper_bound = Q3 + 1.5 * IQR
 
-                        outliers = (df[col] < lower_bound) | (df[col] > upper_bound)
-                        df = df[~outliers]
+            #             outliers = (df[col] < lower_bound) | (df[col] > upper_bound)
+            #             df = df[~outliers]
 
             self.logger.info(f"Data cleaning: {initial_shape} -> {df.shape}")
 
@@ -556,8 +556,12 @@ class FeatureEngineering:
             # Add price patterns
             df = self.add_price_patterns(df)
 
+            FileUtils.save_csv(df, "demo_results/processed_data.csv")
+
             # Clean data
             df = self.clean_data(df)
+
+            FileUtils.save_csv(df, "demo_results/cleaned_processed_data.csv")
 
             # Scale features
             df = self.scale_features(df, fit=fit)

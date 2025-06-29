@@ -44,6 +44,7 @@ class StreamlinedAIDemo:
             name=self.__class__.__name__,
             logger_type=LoggerType.STANDARD,
             level=log_level,
+            log_file="logs/streamlined_demo.log",
             use_colors=True,
         )
 
@@ -59,9 +60,9 @@ class StreamlinedAIDemo:
 
     def run_full_demo(self) -> Dict[str, Any]:
         """Run the complete streamlined demo"""
-        self.logger.info("🚀" * 20)
+        self.logger.info("=" * 20)
         self.logger.info("STARTING STREAMLINED AI DEMO")
-        self.logger.info("🚀" * 20)
+        self.logger.info("=" * 20)
 
         demo_start_time = time.time()
 
@@ -72,7 +73,6 @@ class StreamlinedAIDemo:
             self.demo_results["setup_info"] = setup_info
 
             # Extract device from setup_info string and convert to torch.device
-            device_str = setup_info["device"]
             self.device = DeviceUtils.get_device(
                 prefer_gpu=self.config.model.use_gpu, gpu_id=self.config.model.gpu_id
             )
