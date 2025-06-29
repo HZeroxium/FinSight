@@ -726,3 +726,64 @@ class FeatureEngineering:
         except Exception as e:
             self.logger.error(f"Error loading scalers: {str(e)}")
             raise
+
+    def get_meaningful_features(self, df: pd.DataFrame) -> List[str]:
+        """
+        Get list of meaningful features for training
+
+        Args:
+            df: Input DataFrame
+
+        Returns:
+            List of meaningful feature names
+        """
+        try:
+            # Get numeric columns only
+            numeric_df = df.select_dtypes(include=[np.number])
+
+            # Remove date column if present
+            if self.config.data.date_column in numeric_df.columns:
+                numeric_df = numeric_df.drop(columns=[self.config.data.date_column])
+
+            # Remove target column if present
+            if self.config.model.target_column in numeric_df.columns:
+                numeric_df = numeric_df.drop(columns=[self.config.model.target_column])
+
+            # Apply variance threshold
+            variances = numeric_df.var()
+            meaningful_features = variances[
+                variances > self.config.model.feature_selection_threshold
+            ].index.tolist()
+
+            # Remove highly correlated features (keep the first one in each pair)
+            if len(meaningful_features) > 1:
+                feature_data = numeric_df[meaningful_features]
+                corr_matrix = feature_data.corr().abs()
+
+                # Find features to drop due to high correlation
+                upper_triangle = corr_matrix.where(
+                    np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
+                )
+
+                to_drop = [
+                    column
+                    for column in upper_triangle.columns
+                    if any(upper_triangle[column] > 0.95)
+                ]
+
+                meaningful_features = [
+                    feature for feature in meaningful_features if feature not in to_drop
+                ]
+
+            self.logger.info(
+                f"Selected {len(meaningful_features)} meaningful features from {len(numeric_df.columns)} total numeric features"
+            )
+
+            return meaningful_features
+
+        except Exception as e:
+            self.logger.error(f"Error selecting meaningful features: {str(e)}")
+            # Fallback to original features_to_use
+            return [
+                col for col in self.config.model.features_to_use if col in df.columns
+            ]

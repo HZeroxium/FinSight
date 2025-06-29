@@ -275,21 +275,56 @@ class DemoUtils:
         processed_data = feature_engineering.process_data(raw_data, fit=True)
         DemoUtils._logger.info(f"- Data processed: {processed_data.shape}")
 
-        # Update config with actual feature dimensions
-        numeric_features = processed_data.select_dtypes(
-            include=["float64", "int64"]
-        ).columns
+        # Determine which features to use based on configuration
+        if config.model.use_all_features:
+            DemoUtils._logger.info(
+                "Using all meaningful features from feature engineering"
+            )
+            selected_features = feature_engineering.get_meaningful_features(
+                processed_data
+            )
+            DemoUtils._logger.info(
+                f"Selected {len(selected_features)} meaningful features"
+            )
+        else:
+            DemoUtils._logger.info(
+                "Using only configured features from features_to_use"
+            )
+            # Update config with actual feature dimensions
+            numeric_features = processed_data.select_dtypes(
+                include=["float64", "int64"]
+            ).columns
+            selected_features = [
+                col for col in config.model.features_to_use if col in numeric_features
+            ]
+
+        # Validate selected features
         available_features = [
-            col for col in config.model.features_to_use if col in numeric_features
+            col for col in selected_features if col in processed_data.columns
         ]
 
-        if len(available_features) != len(config.model.features_to_use):
+        if len(available_features) != len(selected_features):
+            missing_features = set(selected_features) - set(available_features)
             DemoUtils._logger.warning(
-                f"Some configured features not found. Using: {available_features}"
+                f"Some selected features not found in processed data: {missing_features}"
             )
-            config.model.features_to_use = available_features
 
+        if not available_features:
+            DemoUtils._logger.error(
+                "No valid features found! Falling back to basic features."
+            )
+            basic_features = ["Open", "High", "Low", "Close", "Volume"]
+            available_features = [
+                col for col in basic_features if col in processed_data.columns
+            ]
+
+        # Update config with final feature list
+        config.model.features_to_use = available_features
         config.model.input_dim = len(available_features)
+
+        DemoUtils._logger.info(
+            f"✓ Final feature set: {len(available_features)} features"
+        )
         DemoUtils._logger.info(
             f"✓ Updated model input_dim to: {config.model.input_dim}"
         )

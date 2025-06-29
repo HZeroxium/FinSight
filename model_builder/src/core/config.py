@@ -92,6 +92,16 @@ class ModelConfig(BaseSettings):
         default_factory=lambda: ["Open", "High", "Low", "Close", "Volume"]
     )
     target_column: str = "Close"
+    use_all_features: bool = Field(
+        default=False,
+        description="If True, use all meaningful features from feature engineering. If False, use only features_to_use.",
+    )
+    feature_selection_threshold: float = Field(
+        default=0.01,
+        ge=0.0,
+        le=1.0,
+        description="Variance threshold for automatic feature selection when use_all_features=True",
+    )
     scale_features: bool = True
     scaler_type: str = Field(default="standard", pattern="^(standard|minmax|robust)$")
 
