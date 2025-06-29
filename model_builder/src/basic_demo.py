@@ -219,13 +219,28 @@ class AIPredictor:
             # Create trainer
             self.trainer = ModelTrainer(self.config, self.device)
 
-            # Train model
-            training_history = self.trainer.train(
-                model=self.model,
-                train_loader=train_loader,
-                val_loader=val_loader,
-                save_best=save_best,
-            )
+            # Train model with better error handling
+            try:
+                training_history = self.trainer.train(
+                    model=self.model,
+                    train_loader=train_loader,
+                    val_loader=val_loader,
+                    save_best=save_best,
+                )
+            except Exception as training_error:
+                self.logger.error(f"Training failed with error: {str(training_error)}")
+                # Return a minimal training history if training fails
+                return {
+                    "status": "failed",
+                    "error": str(training_error),
+                    "training_history": {
+                        "train_loss": [],
+                        "val_loss": [],
+                        "learning_rate": [],
+                        "epoch_time": [],
+                    },
+                    "epochs_completed": 0,
+                }
 
             self.logger.info("Model training completed successfully")
             return training_history

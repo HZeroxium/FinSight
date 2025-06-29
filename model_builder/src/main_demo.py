@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from core.config import (
+from .core.config import (
     Config,
     ModelConfig,
     create_development_config,
@@ -30,11 +30,11 @@ from core.config import (
     create_lightweight_config,
     ModelType,
 )
-from data import FinancialDataLoader, FeatureEngineering
-from models import create_model
-from training.trainer import ModelTrainer
-from utils import DeviceUtils, CommonUtils, FileUtils
-from common.logger.logger_factory import LoggerFactory, LoggerType, LogLevel
+from .data import FinancialDataLoader, FeatureEngineering
+from .models import create_model
+from .training.trainer import ModelTrainer
+from .utils import DeviceUtils, CommonUtils, FileUtils
+from .common.logger.logger_factory import LoggerFactory, LoggerType, LogLevel
 
 
 class AIDemo:
@@ -236,18 +236,45 @@ class AIDemo:
         return high_corr[:10]  # Top 10 pairs
 
     def _validate_data_quality(self, data: pd.DataFrame) -> Dict[str, Any]:
-        """Validate data quality"""
+        """
+        Validate data quality.
+        Returns completeness %, duplicate count, infinite values, zero-variance feature count, etc.
+        """
+        # 1. Completeness: proportion of non-null cells
+        completeness = (1 - data.isnull().sum().sum() / data.size) * 100
+
+        # 2. Duplicates: count of fully duplicated rows
+        duplicates = data.duplicated().sum()
+
+        # 3. Infinite values: only numeric columns support isinf
+        numeric_data = data.select_dtypes(include=[np.number])
+        infinite_values = np.isinf(numeric_data).sum().sum()
+
+        # 4. Zero-variance features: compute variance on numeric columns only
+        #    Use numeric_only parameter where supported or pre-select numeric dtypes
+        try:
+            variances = numeric_data.var()  # numeric_only enforced by selecting dtypes
+        except TypeError:
+            # Fallback for older pandas versions
+            variances = numeric_data.var(numeric_only=True)
+
+        zero_variance_features = int((variances == 0).sum())
+
+        # 5. Data types consistency: simplified check
+        data_types_consistency = True
+
+        # 6. Temporal consistency: only meaningful if date_column exists
+        temporal_consistency = (
+            True if self.config.data.date_column in data.columns else None
+        )
+
         return {
-            "completeness": (1 - data.isnull().sum().sum() / data.size) * 100,
-            "duplicates": data.duplicated().sum(),
-            "infinite_values": np.isinf(data.select_dtypes(include=[np.number]))
-            .sum()
-            .sum(),
-            "zero_variance_features": (data.var() == 0).sum(),
-            "data_types_consistency": True,  # Simplified check
-            "temporal_consistency": (
-                True if self.config.data.date_column in data.columns else None
-            ),
+            "completeness": completeness,
+            "duplicates": duplicates,
+            "infinite_values": int(infinite_values),
+            "zero_variance_features": zero_variance_features,
+            "data_types_consistency": data_types_consistency,
+            "temporal_consistency": temporal_consistency,
         }
 
     def demonstrate_model_architectures(self) -> Dict[str, Any]:
@@ -301,7 +328,7 @@ class AIDemo:
                 "output_shape": output.shape,
                 "model_size_mb": model_info["model_size_mb"],
                 "architecture_type": config.model.model_type.value,
-                "config": config.model.dict(),
+                "config": config.model.model_dump(),
             }
 
             # Store model for training
@@ -446,19 +473,62 @@ class AIDemo:
         self, predictions: np.ndarray, targets: np.ndarray
     ) -> Dict[str, float]:
         """Calculate additional evaluation metrics"""
+        # Ensure arrays are flattened and finite
+        pred_flat = predictions.flatten()
+        target_flat = targets.flatten()
+
+        # Remove invalid values
+        valid_mask = np.isfinite(pred_flat) & np.isfinite(target_flat)
+        if not valid_mask.any():
+            return {
+                key: 0.0
+                for key in [
+                    "prediction_bias",
+                    "prediction_variance",
+                    "correlation",
+                    "max_error",
+                    "quantile_loss_50",
+                    "hit_rate_5pct",
+                ]
+            }
+
+        pred_valid = pred_flat[valid_mask]
+        target_valid = target_flat[valid_mask]
+
+        try:
+            correlation = (
+                np.corrcoef(pred_valid, target_valid)[0, 1]
+                if len(pred_valid) > 1
+                else 0.0
+            )
+            correlation = correlation if np.isfinite(correlation) else 0.0
+        except:
+            correlation = 0.0
+
+        try:
+            # Safe division for hit rate calculation
+            relative_errors = np.abs(pred_valid - target_valid)
+            threshold_values = 0.05 * np.abs(target_valid)
+            # Avoid division by zero
+            safe_threshold = np.where(threshold_values == 0, 1e-8, threshold_values)
+            hit_rate = np.mean(relative_errors < safe_threshold)
+        except:
+            hit_rate = 0.0
+
         return {
-            "prediction_bias": np.mean(predictions - targets),
-            "prediction_variance": np.var(predictions - targets),
-            "correlation": np.corrcoef(predictions.flatten(), targets.flatten())[0, 1],
-            "max_error": np.max(np.abs(predictions - targets)),
-            "quantile_loss_50": np.mean(
-                np.maximum(
-                    0.5 * (predictions - targets), (0.5 - 1) * (predictions - targets)
+            "prediction_bias": float(np.mean(pred_valid - target_valid)),
+            "prediction_variance": float(np.var(pred_valid - target_valid)),
+            "correlation": float(correlation),
+            "max_error": float(np.max(np.abs(pred_valid - target_valid))),
+            "quantile_loss_50": float(
+                np.mean(
+                    np.maximum(
+                        0.5 * (pred_valid - target_valid),
+                        (0.5 - 1) * (pred_valid - target_valid),
+                    )
                 )
             ),
-            "hit_rate_5pct": np.mean(
-                np.abs(predictions - targets) < 0.05 * np.abs(targets)
-            ),
+            "hit_rate_5pct": float(hit_rate),
         }
 
     def _compare_models(self, evaluation_results: Dict[str, Any]) -> Dict[str, Any]:

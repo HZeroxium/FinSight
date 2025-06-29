@@ -53,16 +53,27 @@ class MetricUtils:
         y_true_np = MetricUtils._to_numpy(y_true)
         y_pred_np = MetricUtils._to_numpy(y_pred)
 
+        # Flatten arrays to 1D for metric calculations
+        y_true_np = y_true_np.flatten()
+        y_pred_np = y_pred_np.flatten()
+
         if y_true_np.shape != y_pred_np.shape:
             raise ValueError(
-                f"Shape mismatch: y_true {y_true_np.shape} vs y_pred {y_pred_np.shape}"
+                f"Shape mismatch after flattening: y_true {y_true_np.shape} vs y_pred {y_pred_np.shape}"
             )
 
-        if np.isnan(y_true_np).any() or np.isnan(y_pred_np).any():
-            MetricUtils._logger.warning("NaN values detected in inputs")
+        # Remove any NaN or infinite values
+        valid_mask = np.isfinite(y_true_np) & np.isfinite(y_pred_np)
 
-        if np.isinf(y_true_np).any() or np.isinf(y_pred_np).any():
-            MetricUtils._logger.warning("Infinite values detected in inputs")
+        if not valid_mask.any():
+            raise ValueError("No valid (finite) values found in inputs")
+
+        if not valid_mask.all():
+            MetricUtils._logger.warning(
+                f"Removing {(~valid_mask).sum()} invalid values from inputs"
+            )
+            y_true_np = y_true_np[valid_mask]
+            y_pred_np = y_pred_np[valid_mask]
 
         return y_true_np, y_pred_np
 
@@ -231,9 +242,29 @@ class MetricUtils:
         y_true_np, y_pred_np = MetricUtils._validate_inputs(y_true, y_pred)
 
         def _max_drawdown(values: np.ndarray) -> float:
-            peak = np.maximum.accumulate(values)
-            drawdown = (values - peak) / peak
-            return float(np.min(drawdown) * 100)
+            if len(values) < 2:
+                return 0.0
+
+            # Ensure we have a 1D array
+            values = values.flatten()
+
+            # Convert to cumulative series if needed
+            if np.any(values <= 0):
+                # For series with negative values, use cumulative sum
+                cumulative = np.cumsum(values)
+            else:
+                cumulative = values
+
+            peak = np.maximum.accumulate(cumulative)
+            drawdown = cumulative - peak
+
+            # Avoid division by zero
+            valid_peak = peak != 0
+            if valid_peak.any():
+                drawdown_pct = np.where(valid_peak, drawdown / peak, 0)
+                return float(np.min(drawdown_pct) * 100)
+            else:
+                return 0.0
 
         return {
             "true_max_drawdown": _max_drawdown(y_true_np),
@@ -259,8 +290,23 @@ class MetricUtils:
         def _volatility(values: np.ndarray) -> float:
             if len(values) < 2:
                 return 0.0
-            returns = np.diff(values) / values[:-1]
-            return float(np.std(returns) * 100)
+
+            # Ensure we have a 1D array
+            values = values.flatten()
+
+            # Check for zero or negative values which would cause issues
+            if np.any(values <= 0):
+                # Use simple difference-based returns for cases with zero/negative values
+                returns = np.diff(values)
+                if len(returns) == 0:
+                    return 0.0
+                return float(np.std(returns))
+            else:
+                # Use percentage returns for positive values
+                returns = np.diff(values) / values[:-1]
+                if len(returns) == 0:
+                    return 0.0
+                return float(np.std(returns) * 100)
 
         return {
             "true_volatility": _volatility(y_true_np),
@@ -282,6 +328,29 @@ class MetricUtils:
             dict: Dictionary containing all metrics
         """
         try:
+            # Validate inputs first
+            y_true_validated, y_pred_validated = MetricUtils._validate_inputs(
+                y_true, y_pred
+            )
+
+            if len(y_true_validated) == 0:
+                MetricUtils._logger.warning(
+                    "No valid data points for metric calculation"
+                )
+                return {
+                    "mse": 0.0,
+                    "rmse": 0.0,
+                    "mae": 0.0,
+                    "mape": 0.0,
+                    "smape": 0.0,
+                    "r2": 0.0,
+                    "directional_accuracy": 0.0,
+                    "true_max_drawdown": 0.0,
+                    "pred_max_drawdown": 0.0,
+                    "true_volatility": 0.0,
+                    "pred_volatility": 0.0,
+                }
+
             metrics = {
                 "mse": MetricUtils.calculate_mse(y_true, y_pred),
                 "rmse": MetricUtils.calculate_rmse(y_true, y_pred),
@@ -294,12 +363,24 @@ class MetricUtils:
                 ),
             }
 
-            # Add financial metrics
-            drawdown_metrics = MetricUtils.calculate_max_drawdown(y_true, y_pred)
-            volatility_metrics = MetricUtils.calculate_volatility(y_true, y_pred)
+            # Add financial metrics with error handling
+            try:
+                drawdown_metrics = MetricUtils.calculate_max_drawdown(y_true, y_pred)
+                metrics.update(drawdown_metrics)
+            except Exception as e:
+                MetricUtils._logger.warning(
+                    f"Could not calculate drawdown metrics: {e}"
+                )
+                metrics.update({"true_max_drawdown": 0.0, "pred_max_drawdown": 0.0})
 
-            metrics.update(drawdown_metrics)
-            metrics.update(volatility_metrics)
+            try:
+                volatility_metrics = MetricUtils.calculate_volatility(y_true, y_pred)
+                metrics.update(volatility_metrics)
+            except Exception as e:
+                MetricUtils._logger.warning(
+                    f"Could not calculate volatility metrics: {e}"
+                )
+                metrics.update({"true_volatility": 0.0, "pred_volatility": 0.0})
 
             return metrics
 

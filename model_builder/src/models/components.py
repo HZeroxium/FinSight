@@ -133,6 +133,17 @@ class MultiHeadAttention(nn.Module):
         for module in [self.w_q, self.w_k, self.w_v, self.w_o]:
             nn.init.xavier_uniform_(module.weight)
 
+    def create_causal_mask(self, size: int, device: torch.device) -> torch.Tensor:
+        """
+        Create a boolean causal mask: True where future tokens should be masked.
+        Shape: (1, 1, size, size)
+        """
+        # Upper triangle (excluding diagonal) is True
+        mask = torch.triu(
+            torch.ones(size, size, dtype=torch.bool, device=device), diagonal=1
+        )
+        return mask.unsqueeze(0).unsqueeze(0)  # (1, 1, size, size)
+
     def get_relative_positions(self, seq_len: int) -> torch.Tensor:
         """
         Generate relative position matrix
@@ -192,16 +203,28 @@ class MultiHeadAttention(nn.Module):
         # Add relative position encoding to attention scores
         if self.use_relative_position:
             relative_positions = self.get_relative_positions(seq_len).to(x.device)
-            relative_k = self.relative_position_k(relative_positions)
-            relative_scores = torch.matmul(
-                Q.permute(2, 0, 1, 3), relative_k.transpose(-2, -1)
-            )
-            relative_scores = relative_scores.permute(1, 2, 0, 3)
+            relative_k = self.relative_position_k(
+                relative_positions
+            )  # (seq_len, seq_len, d_k)
+
+            # Reshape Q for relative position computation: (batch_size, n_heads, seq_len, d_k)
+            # We need to compute relative scores properly
+            relative_scores = torch.einsum("bhid,ijd->bhij", Q, relative_k)
             scores = scores + relative_scores / math.sqrt(self.d_k)
 
-        # Apply mask if provided
+        # Apply boolean mask if provided
         if mask is not None:
-            scores = scores.masked_fill(mask == 0, -1e9)
+            # Ensure mask has the correct shape (batch_size, n_heads, seq_len, seq_len)
+            if mask.dim() == 2:  # (seq_len, seq_len)
+                mask = mask.unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len, seq_len)
+            elif mask.dim() == 3:  # (batch_size, seq_len, seq_len)
+                mask = mask.unsqueeze(1)  # (batch_size, 1, seq_len, seq_len)
+
+            # Expand to match scores shape if needed
+            mask = mask.expand(batch_size, self.n_heads, seq_len, seq_len)
+
+            # mask: True where we want to block attention
+            scores = scores.masked_fill(mask, float("-inf"))
 
         # Apply softmax and dropout
         attention_weights = F.softmax(scores, dim=-1)
@@ -212,10 +235,12 @@ class MultiHeadAttention(nn.Module):
 
         # Add relative position encoding to values
         if self.use_relative_position:
-            relative_v = self.relative_position_v(relative_positions)
-            relative_context = torch.matmul(
-                attention_weights.permute(2, 0, 1, 3), relative_v
-            ).permute(1, 2, 0, 3)
+            relative_v = self.relative_position_v(
+                relative_positions
+            )  # (seq_len, seq_len, d_k)
+            relative_context = torch.einsum(
+                "bhij,ijd->bhid", attention_weights, relative_v
+            )
             context = context + relative_context
 
         # Concatenate heads and apply output projection

@@ -4,7 +4,7 @@ import os
 import random
 import time
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, TypeVar
+from typing import Any, Callable, Dict, Optional, TypeVar, Union
 import numpy as np
 import torch
 from pathlib import Path
@@ -87,7 +87,7 @@ class CommonUtils:
             return f"{int(hours)}h {int(minutes)}m {secs:.1f}s"
 
     @staticmethod
-    def format_bytes(bytes_val: int) -> str:
+    def format_bytes(bytes_val: Union[int, float]) -> str:
         """
         Format bytes to human readable format
 
@@ -97,6 +97,7 @@ class CommonUtils:
         Returns:
             str: Formatted string (e.g., "1.5 GB")
         """
+        bytes_val = float(bytes_val)  # Ensure it's a float for division
         for unit in ["B", "KB", "MB", "GB", "TB"]:
             if bytes_val < 1024.0:
                 return f"{bytes_val:.1f} {unit}"

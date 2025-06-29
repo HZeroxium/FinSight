@@ -291,7 +291,7 @@ class ModelTrainer:
                 batch_y = batch_y.to(self.device, non_blocking=True)
 
                 if self.use_amp:
-                    with autocast():
+                    with autocast("cuda"):
                         predictions = model(batch_x)
                         loss = criterion(predictions, batch_y)
                 else:
@@ -302,13 +302,56 @@ class ModelTrainer:
                 all_predictions.append(predictions.cpu())
                 all_targets.append(batch_y.cpu())
 
-        # Calculate comprehensive metrics
+        # Calculate comprehensive metrics with error handling
         predictions_tensor = torch.cat(all_predictions, dim=0)
         targets_tensor = torch.cat(all_targets, dim=0)
 
-        metrics = MetricUtils.calculate_all_metrics(
-            targets_tensor.numpy(), predictions_tensor.numpy()
-        )
+        try:
+            metrics = MetricUtils.calculate_all_metrics(
+                targets_tensor.numpy(), predictions_tensor.numpy()
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate some metrics: {str(e)}")
+            # Provide basic metrics if advanced ones fail
+            pred_np = predictions_tensor.numpy().flatten()
+            target_np = targets_tensor.numpy().flatten()
+
+            # Remove invalid values
+            valid_mask = np.isfinite(pred_np) & np.isfinite(target_np)
+            if valid_mask.any():
+                pred_valid = pred_np[valid_mask]
+                target_valid = target_np[valid_mask]
+
+                metrics = {
+                    "mse": float(np.mean((pred_valid - target_valid) ** 2)),
+                    "mae": float(np.mean(np.abs(pred_valid - target_valid))),
+                    "rmse": float(np.sqrt(np.mean((pred_valid - target_valid) ** 2))),
+                    "r2": 0.0,  # Skip complex calculations that might fail
+                    "mape": 0.0,
+                    "smape": 0.0,
+                    "directional_accuracy": 0.0,
+                    "true_max_drawdown": 0.0,
+                    "pred_max_drawdown": 0.0,
+                    "true_volatility": 0.0,
+                    "pred_volatility": 0.0,
+                }
+            else:
+                metrics = {
+                    key: 0.0
+                    for key in [
+                        "mse",
+                        "mae",
+                        "rmse",
+                        "r2",
+                        "mape",
+                        "smape",
+                        "directional_accuracy",
+                        "true_max_drawdown",
+                        "pred_max_drawdown",
+                        "true_volatility",
+                        "pred_volatility",
+                    ]
+                }
 
         avg_loss = total_loss / len(val_loader)
         return avg_loss, metrics

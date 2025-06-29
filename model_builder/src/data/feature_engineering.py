@@ -410,7 +410,7 @@ class FeatureEngineering:
             if self.config.data.fill_missing:
                 method = self.config.data.missing_method
                 if method == "forward":
-                    df = df.fillna(method="ffill")
+                    df = df.ffill()  # Forward fill instead of fillna(method="ffill")
                 elif method == "backward":
                     df = df.fillna(method="bfill")
                 elif method == "interpolate":
