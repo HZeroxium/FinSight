@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from pathlib import Path
 
-from common.logger.logger_factory import LoggerFactory
+from ..common.logger.logger_factory import LoggerFactory
 
 F = TypeVar("F", bound=Callable[..., Any])
 

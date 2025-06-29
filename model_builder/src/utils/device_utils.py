@@ -3,7 +3,7 @@
 import torch
 import psutil
 from typing import Optional, Dict, List, Union
-from common.logger.logger_factory import LoggerFactory
+from ..common.logger.logger_factory import LoggerFactory
 
 
 class DeviceUtils:

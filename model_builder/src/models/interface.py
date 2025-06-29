@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from pathlib import Path
 
 from ..core.config import Config
-from common.logger.logger_factory import LoggerFactory
+from ..common.logger.logger_factory import LoggerFactory
 
 
 class ModelInterface(ABC, nn.Module):

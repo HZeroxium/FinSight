@@ -2,8 +2,10 @@
 
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
+from pydantic_core.core_schema import FieldValidationInfo
 from enum import Enum
 
 
@@ -52,7 +54,7 @@ class ModelConfig(BaseSettings):
     n_layers: int = Field(default=6, ge=1, le=24)
     d_ff: int = Field(default=1024, ge=64, le=8192)
     dropout: float = Field(default=0.1, ge=0.0, le=0.5)
-    activation: str = Field(default="gelu", regex="^(relu|gelu|swish)$")
+    activation: str = Field(default="gelu", pattern="^(relu|gelu|swish)$")
 
     # Advanced architecture options
     use_relative_position: bool = True
@@ -91,7 +93,7 @@ class ModelConfig(BaseSettings):
     )
     target_column: str = "Close"
     scale_features: bool = True
-    scaler_type: str = Field(default="standard", regex="^(standard|minmax|robust)$")
+    scaler_type: str = Field(default="standard", pattern="^(standard|minmax|robust)$")
 
     # Model paths and device
     model_save_dir: str = "models"
@@ -105,18 +107,18 @@ class ModelConfig(BaseSettings):
     gradient_clip_value: float = Field(default=1.0, ge=0.0, le=10.0)
     label_smoothing: float = Field(default=0.0, ge=0.0, le=0.2)
 
-    @validator("train_ratio", "val_ratio", "test_ratio")
-    def validate_ratios(cls, v, values):
-        """Validate that ratios are positive"""
+    @field_validator("train_ratio", "val_ratio", "test_ratio")
+    def validate_ratios(cls, v: float) -> float:
+        """Validate that ratios are positive."""
         if v <= 0:
             raise ValueError("Ratios must be positive")
         return v
 
-    @validator("test_ratio")
-    def validate_ratio_sum(cls, v, values):
-        """Validate that all ratios sum to 1.0"""
-        train_ratio = values.get("train_ratio", 0.7)
-        val_ratio = values.get("val_ratio", 0.15)
+    @field_validator("test_ratio")
+    def validate_ratio_sum(cls, v: float, info: FieldValidationInfo) -> float:
+        """Validate that train + val + test ratios sum to 1.0."""
+        train_ratio = info.data.get("train_ratio", 0.7)
+        val_ratio = info.data.get("val_ratio", 0.15)
         total = train_ratio + val_ratio + v
         if abs(total - 1.0) > 1e-6:
             raise ValueError(
@@ -124,18 +126,18 @@ class ModelConfig(BaseSettings):
             )
         return v
 
-    @validator("d_ff")
-    def validate_d_ff(cls, v, values):
-        """Ensure d_ff is reasonable relative to d_model"""
-        d_model = values.get("d_model", 256)
+    @field_validator("d_ff")
+    def validate_d_ff(cls, v: int, info: FieldValidationInfo) -> int:
+        """Ensure d_ff is at least equal to d_model."""
+        d_model = info.data.get("d_model", 256)
         if v < d_model:
             raise ValueError("d_ff should be at least equal to d_model")
         return v
 
-    @validator("n_heads")
-    def validate_n_heads(cls, v, values):
-        """Ensure d_model is divisible by n_heads"""
-        d_model = values.get("d_model", 256)
+    @field_validator("n_heads")
+    def validate_n_heads(cls, v: int, info: FieldValidationInfo) -> int:
+        """Ensure d_model is divisible by n_heads."""
+        d_model = info.data.get("d_model", 256)
         if d_model % v != 0:
             raise ValueError("d_model must be divisible by n_heads")
         return v
@@ -145,7 +147,7 @@ class DataConfig(BaseSettings):
     """Configuration for data processing and feature engineering"""
 
     # File paths
-    data_file: str = "src/ai/data/coin_Bitcoin.csv"
+    data_file: str = "data/coin_Bitcoin.csv"
     date_column: str = "Date"
 
     # Feature engineering flags
@@ -172,14 +174,14 @@ class DataConfig(BaseSettings):
     outlier_threshold: float = Field(default=3.0, ge=1.0, le=5.0)
     fill_missing: bool = True
     missing_method: str = Field(
-        default="forward", regex="^(forward|backward|interpolate)$"
+        default="forward", pattern="^(forward|backward|interpolate)$"
     )
 
     # Data validation
     min_data_points: int = Field(default=1000, ge=100)
     max_missing_ratio: float = Field(default=0.1, ge=0.0, le=0.5)
 
-    @validator("data_file")
+    @field_validator("data_file")
     def validate_data_file(cls, v):
         """Validate that data file exists"""
         path = Path(v)
@@ -199,13 +201,13 @@ class Config(BaseSettings):
     project_name: str = "ai-prediction"
     version: str = "1.0.0"
     environment: str = Field(
-        default="development", regex="^(development|staging|production)$"
+        default="development", pattern="^(development|staging|production)$"
     )
     debug: bool = False
 
     # Logging configuration
     log_level: str = Field(
-        default="INFO", regex="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$"
+        default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$"
     )
     enable_tensorboard: bool = True
     save_model_artifacts: bool = True
@@ -227,7 +229,7 @@ class Config(BaseSettings):
         extra="ignore",
     )
 
-    @validator("environment")
+    @field_validator("environment")
     def validate_environment(cls, v):
         """Validate environment setting"""
         allowed = {"development", "staging", "production"}

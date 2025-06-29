@@ -11,7 +11,7 @@ import yaml
 import torch
 from pydantic import BaseModel
 
-from common.logger.logger_factory import LoggerFactory
+from ..common.logger.logger_factory import LoggerFactory
 
 
 class FileUtils:

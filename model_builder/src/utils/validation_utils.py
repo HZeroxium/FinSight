@@ -6,7 +6,7 @@ import torch
 from typing import Any, Dict, List, Optional, Union, Tuple
 from pathlib import Path
 
-from common.logger.logger_factory import LoggerFactory
+from ..common.logger.logger_factory import LoggerFactory
 
 
 class ValidationUtils:

@@ -4,9 +4,8 @@ import numpy as np
 import torch
 from typing import Dict, Tuple, Union, Optional
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-import warnings
 
-from common.logger.logger_factory import LoggerFactory
+from ..common.logger.logger_factory import LoggerFactory
 
 
 class MetricUtils:

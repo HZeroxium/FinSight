@@ -14,14 +14,14 @@ from torch.optim.lr_scheduler import (
     ReduceLROnPlateau,
     CosineAnnealingWarmRestarts,
 )
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 import wandb
 from tqdm import tqdm
 
 from ..core.config import Config, OptimizerType, SchedulerType
 from ..models.interface import ModelInterface
 from ..utils import FileUtils, MetricUtils, CommonUtils
-from common.logger.logger_factory import LoggerFactory
+from ..common.logger.logger_factory import LoggerFactory
 
 
 class EarlyStopping:
@@ -225,7 +225,7 @@ class ModelTrainer:
 
             # Forward pass with optional mixed precision
             if self.use_amp:
-                with autocast():
+                with autocast("cuda"):
                     predictions = model(batch_x)
                     loss = criterion(predictions, batch_y)
 
