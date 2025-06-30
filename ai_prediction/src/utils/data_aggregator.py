@@ -112,6 +112,10 @@ class DataAggregator:
             pattern = f"*{clean_symbol}*{interval}*processed*.csv"
             ohlcv_files = list((exchange_dir / "ohlcv").glob(pattern))
 
+            # Sort files by modification time to get the most recent one
+            if ohlcv_files:
+                ohlcv_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
             for file_path in ohlcv_files:
                 try:
                     df = pd.read_csv(file_path)
@@ -122,10 +126,11 @@ class DataAggregator:
                     elif "timestamp" in df.columns:
                         df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
 
-                    # Filter by date range
-                    df = df[
-                        (df["datetime"] >= start_date) & (df["datetime"] <= end_date)
-                    ]
+                    # Don't filter by date range here since the collected data
+                    # already represents the requested period. The issue was
+                    # double-filtering which reduced the dataset size.
+                    # The data collection process already ensures we get data
+                    # for the requested period, so we should use all collected data.
 
                     if not df.empty:
                         # Add interval identifier
@@ -139,6 +144,18 @@ class DataAggregator:
 
                         df = df.rename(columns=rename_cols)
                         all_ohlcv.append(df)
+
+                        # Log the actual date range of loaded data
+                        if "datetime" in df.columns:
+                            actual_start = df["datetime"].min()
+                            actual_end = df["datetime"].max()
+                            self.logger.info(
+                                f"Loaded OHLCV data for {clean_symbol} ({interval}): "
+                                f"{len(df)} rows from {actual_start} to {actual_end}"
+                            )
+
+                        # Only process the most recent file for each interval
+                        break
 
                 except Exception as e:
                     self.logger.warning(f"Error loading OHLCV file {file_path}: {e}")
@@ -403,7 +420,7 @@ class DataAggregator:
 
             # Save dataset
             file_path = self.dataset_storage.save_csv(
-                dataset_df, filename, timestamp_suffix=True, index=False
+                dataset_df, filename, timestamp_suffix=False, index=False
             )
 
             # Save metadata
@@ -420,7 +437,7 @@ class DataAggregator:
             }
 
             self.dataset_storage.save_json(
-                metadata, f"{filename}_metadata", timestamp_suffix=True
+                metadata, f"{filename}_metadata", timestamp_suffix=False
             )
 
             self.logger.info(f"Created dataset for {symbol}: {file_path}")
