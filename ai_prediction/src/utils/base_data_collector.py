@@ -87,6 +87,8 @@ class BaseDataCollector(ABC):
             logger_type=LoggerType.STANDARD,
             level=LogLevel.INFO,
             use_colors=True,
+            file_level=LogLevel.DEBUG,
+            log_file=f"logs/{self.exchange_name}_collector.log",
         )
 
         # Initialize configuration

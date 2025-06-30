@@ -73,14 +73,31 @@ class DataAggregator:
                 self.logger.warning(f"No OHLCV data found for {symbol}")
                 return pd.DataFrame()
 
+            # Print number of rows and columns in the base DataFrame
+            self.logger.info(
+                f"Loaded OHLCV data for {symbol}: {len(base_df)} rows, {len(base_df.columns)} columns"
+            )
+
             # Add orderbook features
             base_df = self._add_orderbook_features(base_df, exchange_dir, clean_symbol)
+
+            self.logger.info(
+                f"Added orderbook features for {symbol}: {len(base_df)} rows, {len(base_df.columns)} columns"
+            )
 
             # Add trade features
             base_df = self._add_trade_features(base_df, exchange_dir, clean_symbol)
 
+            self.logger.info(
+                f"Added trade features for {symbol}: {len(base_df)} rows, {len(base_df.columns)} columns"
+            )
+
             # Add ticker features
             base_df = self._add_ticker_features(base_df, exchange_dir, clean_symbol)
+
+            self.logger.info(
+                f"Added ticker features for {symbol}: {len(base_df)} rows, {len(base_df.columns)} columns"
+            )
 
             # Add metadata
             base_df["exchange"] = exchange

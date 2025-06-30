@@ -1294,6 +1294,8 @@ def main():
         logger_type=LoggerType.STANDARD,
         level=LogLevel.INFO,
         use_colors=True,
+        log_file="binance_demo.log",
+        file_level=LogLevel.DEBUG,
     )
 
     try:
@@ -1322,11 +1324,11 @@ def main():
         ]
 
         demo_intervals = [
-            # "1h",
+            "1h",
             # "4h",
-            "1d",
+            # "1d",
         ]
-
+        
         # Configuration for data collection
         days_back = 2874  # Now this will actually fetch 1000 days of data
         max_trades_per_symbol = 10000  # Fetch up to 10k trades per symbol
@@ -1350,8 +1352,8 @@ def main():
             intervals=demo_intervals,
             days_back=days_back,
             end_date=end_date,
-            include_trades=False,
-            include_orderbook=False,
+            # include_trades=False,
+            # include_orderbook=False,
             enable_validation=True,
             realtime_duration=0,
             create_datasets=True,
