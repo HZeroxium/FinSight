@@ -1,8 +1,8 @@
 # predict_example.py
 
 """
-Simple example demonstrating how to use a trained model for prediction.
-This example creates synthetic data to demonstrate the prediction process.
+Enhanced example demonstrating how to use a trained model for prediction with comprehensive visualization.
+This example creates synthetic data to demonstrate the prediction process and generates detailed visualizations.
 """
 
 import sys
@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import torch
 from pathlib import Path
+from torch.utils.data import DataLoader, TensorDataset
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -18,7 +19,14 @@ sys.path.append(str(project_root))
 from .core.config import Config, create_development_config
 from .models import create_model
 from .data import FeatureEngineering
-from .utils import DeviceUtils, CommonUtils, FileUtils, ModelUtils
+from .utils import (
+    DeviceUtils,
+    CommonUtils,
+    FileUtils,
+    ModelUtils,
+    PredictionUtils,
+    VisualizationUtils,
+)
 from .common.logger.logger_factory import LoggerFactory, LoggerType, LogLevel
 
 
@@ -363,8 +371,266 @@ def predict_future(
     return np.array(future_predictions)
 
 
+def create_data_loader_from_sequences(
+    sequences: np.ndarray, targets: np.ndarray, batch_size: int = 32
+) -> DataLoader:
+    """
+    Create a DataLoader from sequences for compatibility with PredictionUtils
+
+    Args:
+        sequences: Input sequences
+        targets: Target values
+        batch_size: Batch size for DataLoader
+
+    Returns:
+        DataLoader instance
+    """
+    # Convert to tensors
+    sequences_tensor = torch.FloatTensor(sequences)
+    targets_tensor = torch.FloatTensor(targets)
+
+    # Create dataset and dataloader
+    dataset = TensorDataset(sequences_tensor, targets_tensor)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
+    return dataloader
+
+
+def create_comprehensive_predictions(
+    model: torch.nn.Module,
+    sequences: np.ndarray,
+    targets: np.ndarray,
+    device: torch.device,
+    model_name: str = "loaded_model",
+) -> dict:
+    """
+    Create comprehensive predictions using PredictionUtils
+
+    Args:
+        model: Trained model
+        sequences: Input sequences
+        targets: Target values
+        device: PyTorch device
+        model_name: Name of the model
+
+    Returns:
+        Dictionary with comprehensive prediction results
+    """
+    # Create DataLoader for compatibility with PredictionUtils
+    test_loader = create_data_loader_from_sequences(sequences, targets)
+
+    # Generate comprehensive predictions using existing utilities
+    prediction_results = PredictionUtils.generate_predictions(
+        model=model, test_loader=test_loader, device=device, model_name=model_name
+    )
+
+    return prediction_results
+
+
+def create_prediction_visualizations(
+    prediction_results: dict,
+    feature_names: list,
+    raw_data: pd.DataFrame,
+    processed_data: pd.DataFrame,
+    output_dir: Path = None,
+) -> dict:
+    """
+    Create comprehensive visualizations for prediction results
+
+    Args:
+        prediction_results: Results from comprehensive predictions
+        feature_names: List of feature names used
+        raw_data: Original raw data
+        processed_data: Processed data
+        output_dir: Output directory for visualizations
+
+    Returns:
+        Dictionary mapping visualization types to file paths
+    """
+    if output_dir is None:
+        output_dir = Path("prediction_visualizations")
+
+    FileUtils.ensure_dir(output_dir)
+
+    logger = LoggerFactory.get_logger("visualization")
+    logger.info(f"📊 Creating comprehensive visualizations in {output_dir}...")
+
+    visualization_paths = {}
+
+    try:
+        # 1. Detailed prediction analysis using existing visualizer
+        viz_path = VisualizationUtils.plot_predictions(
+            predictions=prediction_results["predictions"],
+            targets=prediction_results["targets"],
+            save_path=output_dir / "detailed_prediction_analysis.png",
+            model_name=prediction_results["model_used"],
+        )
+        visualization_paths["detailed_prediction_analysis"] = viz_path
+        logger.info(f"✓ Created detailed prediction analysis: {Path(viz_path).name}")
+
+        # 2. Trading simulation based on predictions
+        viz_path = VisualizationUtils.plot_trading_simulation(
+            predictions=prediction_results["predictions"],
+            targets=prediction_results["targets"],
+            save_path=output_dir / "trading_simulation.png",
+        )
+        visualization_paths["trading_simulation"] = viz_path
+        logger.info(f"✓ Created trading simulation: {Path(viz_path).name}")
+
+        # 3. Feature importance if available
+        if "feature_importance" in prediction_results:
+            viz_path = VisualizationUtils.plot_feature_importance(
+                feature_importance=prediction_results["feature_importance"],
+                feature_names=feature_names,
+                title="Feature Importance Analysis",
+                save_path=output_dir / "feature_importance.png",
+            )
+            visualization_paths["feature_importance"] = viz_path
+            logger.info(f"✓ Created feature importance plot: {Path(viz_path).name}")
+
+        # 4. Attention weights visualization if available
+        if "attention_weights" in prediction_results:
+            viz_path = VisualizationUtils.plot_attention_weights(
+                attention_weights=prediction_results["attention_weights"],
+                sequence_length=30,  # Default sequence length
+                save_path=output_dir / "attention_weights.png",
+            )
+            visualization_paths["attention_weights"] = viz_path
+            logger.info(
+                f"✓ Created attention weights visualization: {Path(viz_path).name}"
+            )
+
+        # 5. Feature analysis
+        viz_path = VisualizationUtils.plot_feature_analysis(
+            feature_names=feature_names, save_path=output_dir / "feature_analysis.png"
+        )
+        visualization_paths["feature_analysis"] = viz_path
+        logger.info(f"✓ Created feature analysis: {Path(viz_path).name}")
+
+        # 6. Correlation matrix from processed data
+        if processed_data is not None and not processed_data.empty:
+            viz_path = VisualizationUtils.plot_correlation_matrix(
+                data=processed_data,
+                features=feature_names,
+                save_path=output_dir / "correlation_matrix.png",
+            )
+            visualization_paths["correlation_matrix"] = viz_path
+            logger.info(f"✓ Created correlation matrix: {Path(viz_path).name}")
+
+            # 7. Feature distributions
+            viz_path = VisualizationUtils.plot_feature_distributions(
+                data=processed_data,
+                features=feature_names,
+                save_path=output_dir / "feature_distributions.png",
+            )
+            visualization_paths["feature_distributions"] = viz_path
+            logger.info(f"✓ Created feature distributions: {Path(viz_path).name}")
+
+        # 8. Price series from raw data
+        if raw_data is not None and "Close" in raw_data.columns:
+            viz_path = VisualizationUtils.plot_price_series(
+                data=raw_data,
+                price_cols=["Close"],
+                title="Price Series Analysis",
+                save_path=output_dir / "price_series.png",
+            )
+            visualization_paths["price_series"] = viz_path
+            logger.info(f"✓ Created price series plot: {Path(viz_path).name}")
+
+            # 9. Candlestick chart with prediction overlay
+            if all(col in raw_data.columns for col in ["Open", "High", "Low", "Close"]):
+                # Use last 50 data points for better visualization
+                recent_data = raw_data.tail(50)
+                recent_predictions = prediction_results["predictions"][
+                    -len(recent_data) :
+                ]
+
+                viz_path = VisualizationUtils.plot_candlestick_chart(
+                    data=recent_data,
+                    overlay_predictions=recent_predictions,
+                    save_path=output_dir / "candlestick_with_predictions.png",
+                )
+                visualization_paths["candlestick_with_predictions"] = viz_path
+                logger.info(
+                    f"✓ Created candlestick chart with predictions: {Path(viz_path).name}"
+                )
+
+        logger.info(
+            f"✅ Successfully created {len(visualization_paths)} visualizations"
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating visualizations: {str(e)}", exc_info=True)
+
+    return visualization_paths
+
+
+def create_prediction_report(
+    prediction_results: dict,
+    feature_names: list,
+    model_info: dict,
+    config: Config,
+    output_dir: Path = None,
+) -> str:
+    """
+    Create a comprehensive prediction report
+
+    Args:
+        prediction_results: Results from comprehensive predictions
+        feature_names: List of feature names
+        model_info: Model information
+        config: Configuration object
+        output_dir: Output directory
+
+    Returns:
+        Path to the generated report
+    """
+    if output_dir is None:
+        output_dir = Path("prediction_reports")
+
+    FileUtils.ensure_dir(output_dir)
+
+    # Create detailed report
+    report = {
+        "prediction_summary": {
+            "total_predictions": len(prediction_results["predictions"]),
+            "model_used": prediction_results["model_used"],
+            "timestamp": CommonUtils.get_readable_timestamp(),
+        },
+        "model_info": model_info,
+        "prediction_analysis": prediction_results["analysis"],
+        "future_predictions": prediction_results.get("future_predictions", {}),
+        "configuration": {
+            "model_config": {
+                "model_type": config.model.model_type.value,
+                "d_model": config.model.d_model,
+                "n_layers": config.model.n_layers,
+                "sequence_length": config.model.sequence_length,
+                "input_dim": config.model.input_dim,
+            },
+            "features_used": feature_names,
+            "target_column": config.model.target_column,
+        },
+        "performance_metrics": {
+            "mae": prediction_results["analysis"]["mae"],
+            "rmse": prediction_results["analysis"]["rmse"],
+            "directional_accuracy": prediction_results["analysis"][
+                "directional_accuracy"
+            ],
+            "accuracy_percentage": prediction_results["analysis"]["accuracy"],
+        },
+    }
+
+    # Save report
+    timestamp = CommonUtils.get_timestamp()
+    report_path = output_dir / f"prediction_report_{timestamp}.json"
+    FileUtils.save_json(report, str(report_path))
+
+    return str(report_path)
+
+
 def main():
-    """Main function demonstrating model prediction"""
+    """Enhanced main function with comprehensive prediction analysis and visualization"""
 
     # Setup logging
     logger = LoggerFactory.get_logger(
@@ -375,7 +641,7 @@ def main():
     )
 
     logger.info("=" * 60)
-    logger.info("🔮 FINANCIAL PREDICTION EXAMPLE")
+    logger.info("🔮 ENHANCED FINANCIAL PREDICTION EXAMPLE")
     logger.info("=" * 60)
 
     try:
@@ -449,75 +715,165 @@ def main():
         logger.info(f"✓ Target shape: {targets.shape}")
 
         # Get model info for logging
+        model_info = {}
         if hasattr(model, "get_model_info"):
             model_info = model.get_model_info()
             logger.info(f"✓ Model: {model_info.get('model_name', 'Unknown')}")
             logger.info(f"✓ Parameters: {model_info.get('num_parameters', 0):,}")
             logger.info(f"✓ Model size: {model_info.get('model_size_mb', 0):.2f} MB")
 
-        # 6. Make predictions on recent data
-        logger.info("\n🔮 Making predictions...")
+        # 6. Enhanced predictions using PredictionUtils
+        logger.info("\n🔮 Generating comprehensive predictions...")
         # Use last 100 sequences for prediction
         test_sequences = sequences[-100:]
         test_targets = targets[-100:]
 
-        predictions = make_predictions(model, test_sequences, device)
-        logger.info(f"✓ Generated {len(predictions)} predictions")
+        # Generate comprehensive predictions using existing utilities
+        prediction_results = create_comprehensive_predictions(
+            model=model,
+            sequences=test_sequences,
+            targets=test_targets,
+            device=device,
+            model_name=model_info.get("model_name", "loaded_model"),
+        )
 
-        # 7. Analyze predictions
-        logger.info("\n📊 Analyzing prediction quality...")
-        analysis = analyze_predictions(predictions, test_targets)
+        logger.info(f"✓ Generated comprehensive predictions:")
+        logger.info(f"  - Test samples: {len(prediction_results['predictions'])}")
+        logger.info(
+            f"  - Model accuracy: {prediction_results['analysis']['accuracy']:.2f}%"
+        )
+        logger.info(f"  - MAE: {prediction_results['analysis']['mae']:.4f}")
+        logger.info(f"  - RMSE: {prediction_results['analysis']['rmse']:.4f}")
+        logger.info(
+            f"  - Directional accuracy: {prediction_results['analysis']['directional_accuracy']:.2f}%"
+        )
 
-        logger.info(f"✓ Mean Absolute Error (MAE): {analysis['mae']:.4f}")
-        logger.info(f"✓ Root Mean Square Error (RMSE): {analysis['rmse']:.4f}")
-        logger.info(f"✓ Mean Absolute Percentage Error (MAPE): {analysis['mape']:.2f}%")
-        logger.info(f"✓ Directional Accuracy: {analysis['directional_accuracy']:.2f}%")
+        # 7. Feature importance analysis
+        logger.info("\n🔍 Analyzing feature importance...")
+        try:
+            # Create DataLoader for feature importance analysis
+            importance_loader = create_data_loader_from_sequences(
+                test_sequences, test_targets, batch_size=10
+            )
 
-        # 8. Predict future values
-        logger.info("\n🔮 Predicting future values...")
-        last_sequence = sequences[-1]
-        future_predictions = predict_future(model, last_sequence, device, n_steps=5)
+            feature_importance = PredictionUtils.estimate_feature_importance(
+                model=model,
+                test_loader=importance_loader,
+                feature_names=feature_columns,
+                device=device,
+                n_samples=20,
+            )
+            prediction_results["feature_importance"] = feature_importance
 
-        logger.info("✓ Future predictions (next 5 steps):")
-        current_price = targets[-1]
-        for i, pred in enumerate(future_predictions):
-            change = ((pred - current_price) / current_price) * 100
-            logger.info(f"   Step {i+1}: ${pred:.2f} ({change:+.2f}%)")
-            current_price = pred
+            # Log top features
+            importance_pairs = list(zip(feature_columns, feature_importance))
+            importance_pairs.sort(key=lambda x: x[1], reverse=True)
 
-        # 9. Save results (optional)
-        logger.info("\n💾 Saving results...")
-        results = {
+            logger.info("✓ Top 5 most important features:")
+            for i, (feature, importance) in enumerate(importance_pairs[:5]):
+                logger.info(f"   {i+1}. {feature}: {importance:.4f}")
+
+        except Exception as e:
+            logger.warning(f"Could not estimate feature importance: {str(e)}")
+
+        # 8. Extract attention weights if model supports it
+        if hasattr(model, "get_attention_weights"):
+            logger.info("\n🎯 Extracting attention weights...")
+            try:
+                sample_input = torch.FloatTensor(test_sequences[:1]).to(device)
+                attention_weights = model.get_attention_weights(sample_input)
+                prediction_results["attention_weights"] = attention_weights
+                logger.info("✓ Attention weights extracted successfully")
+            except Exception as e:
+                logger.warning(f"Could not extract attention weights: {str(e)}")
+
+        # 9. Future predictions using existing results
+        logger.info("\n🔮 Future predictions:")
+        if "future_predictions" in prediction_results:
+            future_preds = prediction_results["future_predictions"]
+            if isinstance(future_preds, dict) and "prediction" in future_preds:
+                logger.info("✓ Future predictions (next steps):")
+                for i, pred in enumerate(future_preds["prediction"][:5]):
+                    logger.info(f"   Step {i+1}: {pred}")
+                    # pass
+            else:
+                logger.info("✓ Future predictions generated (format varies)")
+        else:
+            logger.info("⚠ No future predictions available")
+
+        # 10. Create comprehensive visualizations
+        logger.info("\n📊 Creating comprehensive visualizations...")
+        visualization_dir = Path("prediction_visualizations")
+        visualization_paths = create_prediction_visualizations(
+            prediction_results=prediction_results,
+            feature_names=feature_columns,
+            raw_data=raw_data,
+            processed_data=processed_data,
+            output_dir=visualization_dir,
+        )
+
+        logger.info(f"✅ Created {len(visualization_paths)} visualizations:")
+        for viz_type, path in visualization_paths.items():
+            logger.info(f"   - {viz_type}: {Path(path).name}")
+
+        # 11. Generate comprehensive report
+        logger.info("\n📄 Generating prediction report...")
+        report_path = create_prediction_report(
+            prediction_results=prediction_results,
+            feature_names=feature_columns,
+            model_info=model_info,
+            config=config,
+        )
+        logger.info(f"✓ Report saved to: {report_path}")
+
+        # 12. Save enhanced results
+        logger.info("\n💾 Saving enhanced results...")
+        enhanced_results = {
             "config": config.to_dict(),
             "data_info": {
                 "total_samples": len(raw_data),
                 "feature_count": len(feature_columns),
                 "sequence_count": len(sequences),
+                "test_samples": len(test_sequences),
             },
-            "predictions": {
-                "test_predictions": predictions.tolist(),
-                "test_targets": test_targets.tolist(),
-                "future_predictions": future_predictions.tolist(),
+            "model_info": model_info,
+            "prediction_results": {
+                "predictions": prediction_results["predictions"].tolist(),
+                "targets": prediction_results["targets"].tolist(),
+                "analysis": prediction_results["analysis"],
+                "future_predictions": prediction_results.get("future_predictions", {}),
+                "feature_importance": (
+                    prediction_results.get("feature_importance", []).tolist()
+                    if "feature_importance" in prediction_results
+                    else []
+                ),
             },
-            "analysis": analysis,
-            "model_info": model_info if hasattr(model, "get_model_info") else {},
+            "visualizations": visualization_paths,
+            "report_path": report_path,
+            "execution_info": {
+                "timestamp": CommonUtils.get_readable_timestamp(),
+                "device_used": str(device),
+                "features_used": feature_columns,
+            },
         }
 
         FileUtils.ensure_dir("prediction_results")
-        results_path = (
-            f"prediction_results/prediction_example_{CommonUtils.get_timestamp()}.json"
-        )
-        FileUtils.save_json(results, results_path)
-        logger.info(f"✓ Results saved to: {results_path}")
+        results_path = f"prediction_results/enhanced_prediction_example_{CommonUtils.get_timestamp()}.json"
+        FileUtils.save_json(enhanced_results, results_path)
+        logger.info(f"✓ Enhanced results saved to: {results_path}")
 
         logger.info("\n" + "=" * 60)
-        logger.info("✅ PREDICTION EXAMPLE COMPLETED SUCCESSFULLY!")
+        logger.info("✅ ENHANCED PREDICTION EXAMPLE COMPLETED SUCCESSFULLY!")
+        logger.info("=" * 60)
+        logger.info(f"📊 {len(visualization_paths)} visualizations created")
+        logger.info(f"📄 Report generated: {Path(report_path).name}")
+        logger.info(f"💾 Results saved: {Path(results_path).name}")
         logger.info("=" * 60)
 
-        return results
+        return enhanced_results
 
     except Exception as e:
-        logger.error(f"❌ Prediction example failed: {str(e)}", exc_info=True)
+        logger.error(f"❌ Enhanced prediction example failed: {str(e)}", exc_info=True)
         raise
 
 
