@@ -144,7 +144,7 @@ class RabbitMQBroker(MessageBroker):
                             callback(message_data)
 
                         if not auto_ack:
-                            message.ack()
+                            await message.ack()
 
                         logger.debug(f"Processed message from {queue}")
 

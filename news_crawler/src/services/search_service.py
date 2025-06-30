@@ -153,8 +153,8 @@ class SearchService:
             # Publish articles for sentiment analysis
             await self._publish_articles_for_sentiment_analysis(filtered_response)
 
-            # Publish search event for analytics
-            await self._publish_search_event(request, filtered_response)
+            # # Publish search event for analytics
+            # await self._publish_search_event(request, filtered_response)
 
             logger.info(
                 f"Search completed with {len(filtered_response.results)} final results"
@@ -193,7 +193,7 @@ class SearchService:
             search_depth="advanced",
             time_range=time_range,
             include_answer=True,
-            max_results=20,
+            max_results=5,
             chunks_per_source=3,
             enable_crawler=False,  # Disable crawler for financial sentiment
         )

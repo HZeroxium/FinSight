@@ -11,7 +11,6 @@ __all__ = [
     # Sentiment schemas
     "SentimentAnalysisRequestSchema",
     "SentimentBatchRequestSchema",
-    "SentimentScoreSchema",
     "SentimentAnalysisResponseSchema",
     "SentimentBatchResponseSchema",
     "ProcessedSentimentSchema",
@@ -19,6 +18,7 @@ __all__ = [
     "SentimentSearchResponseSchema",
     "SentimentAggregationSchema",
     "SentimentErrorSchema",
+    "SentimentScore"
     # Common schemas
     "HealthCheckSchema",
     "ErrorResponseSchema",
