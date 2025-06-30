@@ -20,7 +20,7 @@ Author: Expert Software Architect
 """
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 import pandas as pd
 
@@ -34,6 +34,7 @@ from .utils import (
     retry_on_error,
     RealTimeDataStorage,
     DataValidator,
+    DataAggregator,
 )
 
 
@@ -73,6 +74,9 @@ class BinanceDataCollector(BaseDataCollector):
 
         # Initialize data validator
         self.validator = DataValidator()
+
+        # Initialize data aggregator
+        self.aggregator = DataAggregator(base_dir="data")
 
         # Initialize Binance client
         self._initialize_client()
@@ -422,6 +426,7 @@ class BinanceDataCollector(BaseDataCollector):
         interval: str,
         days_back: int = 30,
         chunk_size: int = 1000,
+        end_date: Optional[datetime] = None,
     ) -> List[List]:
         """
         Fetch historical klines with chunking for large datasets
@@ -431,25 +436,28 @@ class BinanceDataCollector(BaseDataCollector):
             interval: Kline interval
             days_back: Number of days to go back
             chunk_size: Maximum number of klines per request
+            end_date: End date for data collection (default: now)
 
         Returns:
             List of OHLCV data
         """
         try:
-            # Calculate time range
-            start_time, end_time, _ = ExchangeUtils.calculate_time_range(days_back)
+            # Use provided end_date or default to now
+            actual_end_date = end_date or datetime.now()
+            start_time = actual_end_date - timedelta(days=days_back)
 
             # Fetch historical data
             klines = self.fetch_historical_klines(
                 symbol=symbol,
                 interval=interval,
                 start_str=start_time.strftime("%d %b %Y"),
-                end_str=end_time.strftime("%d %b %Y"),
+                end_str=actual_end_date.strftime("%d %b %Y"),
                 limit=chunk_size,
             )
 
             self.logger.info(
-                f"Fetched {len(klines)} historical klines for {symbol} ({interval})"
+                f"Fetched {len(klines)} historical klines for {symbol} ({interval}) "
+                f"from {start_time.strftime('%Y-%m-%d')} to {actual_end_date.strftime('%Y-%m-%d')}"
             )
             return klines
 
@@ -476,6 +484,7 @@ class BinanceDataCollector(BaseDataCollector):
         days_back: int,
         include_trades: bool = True,
         include_orderbook: bool = True,
+        end_date: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """Collect data for a single symbol"""
         symbol_data = {"ohlcv": {}, "trades": 0, "orderbook": 0, "ticker": False}
@@ -489,6 +498,7 @@ class BinanceDataCollector(BaseDataCollector):
                         interval=interval,
                         days_back=days_back,
                         chunk_size=self.data_config.max_ohlcv_limit,
+                        end_date=end_date,
                     )
                     symbol_data["ohlcv"][interval] = len(klines)
                     self.apply_rate_limiting()
@@ -532,26 +542,42 @@ class BinanceDataCollector(BaseDataCollector):
         symbols: Optional[List[str]] = None,
         intervals: Optional[List[str]] = None,
         days_back: int = 30,
+        end_date: Optional[datetime] = None,
         include_trades: bool = True,
         include_orderbook: bool = True,
         enable_validation: bool = True,
         realtime_duration: int = 0,
+        create_datasets: bool = True,
     ) -> Dict[str, Any]:
         """
-        Collect comprehensive data with optional real-time streaming
+        Collect comprehensive data with optional real-time streaming and dataset creation
 
         Args:
+            symbols: List of symbols to collect data for (default: first 3 active symbols)
+            intervals: List of intervals to collect OHLCV data for (default: ["1h", "4h"])
+            days_back: Number of days to go back for historical data (default: 30)
+            end_date: End date for data collection (default: now)
+            include_trades: Whether to include recent trades (default: True)
+            include_orderbook: Whether to include order book data (default: True)
+            enable_validation: Whether to validate collected data (default: True)
             realtime_duration: Duration in seconds for real-time data collection (0 = disabled)
+            create_datasets: Whether to create unified datasets after collection (default: True)
         """
         # Use defaults if not specified
         symbols = symbols or self.get_default_symbols()[:3]  # Limit for demo
         intervals = intervals or ["1h", "4h"]
+
+        # Use provided end_date or default to now
+        actual_end_date = end_date or datetime.now()
+        start_date = actual_end_date - timedelta(days=days_back)
 
         # Create collection summary
         collection_summary = self.create_collection_summary(
             symbols=symbols,
             timeframes=intervals,
             days_back=days_back,
+            end_date=actual_end_date.isoformat(),
+            start_date=start_date.isoformat(),
             include_trades=include_trades,
             include_orderbook=include_orderbook,
             enable_validation=enable_validation,
@@ -559,7 +585,8 @@ class BinanceDataCollector(BaseDataCollector):
         )
 
         self.logger.info(
-            f"Starting comprehensive data collection for {len(symbols)} symbols"
+            f"Starting comprehensive data collection for {len(symbols)} symbols "
+            f"from {start_date.strftime('%Y-%m-%d')} to {actual_end_date.strftime('%Y-%m-%d')}"
         )
 
         # Collect historical data for each symbol
@@ -576,7 +603,10 @@ class BinanceDataCollector(BaseDataCollector):
                 for interval in intervals:
                     try:
                         klines = self.fetch_historical_klines_chunked(
-                            symbol=symbol, interval=interval, days_back=days_back
+                            symbol=symbol,
+                            interval=interval,
+                            days_back=days_back,
+                            end_date=actual_end_date,
                         )
                         symbol_data["ohlcv"][interval] = len(klines)
                         self.apply_rate_limiting()
@@ -673,6 +703,23 @@ class BinanceDataCollector(BaseDataCollector):
         )
         collection_summary["statistics"] = collection_stats
 
+        # Create unified datasets if requested
+        if create_datasets:
+            try:
+                self.logger.info("Creating unified datasets from collected data...")
+                datasets = self.aggregator.create_multiple_datasets(collection_summary)
+
+                collection_summary["datasets"] = {
+                    symbol: str(path) for symbol, path in datasets.items()
+                }
+
+                self.logger.info(f"Created {len(datasets)} unified datasets")
+
+            except Exception as e:
+                error_msg = f"Failed to create datasets: {e}"
+                self.logger.error(error_msg)
+                collection_summary["errors"].append(error_msg)
+
         # Save collection summary
         self.save_collection_summary(collection_summary)
 
@@ -715,17 +762,27 @@ def main():
         demo_symbols = ["BTCUSDT", "ETHUSDT"]
         demo_intervals = ["1h", "4h"]
 
-        logger.info(f"Collecting comprehensive data for symbols: {demo_symbols}")
+        # Example: Collect data for a specific date range
+        from datetime import timedelta
 
-        # Collect comprehensive data
+        end_date = datetime(2024, 1, 15)  # Example end date
+
+        logger.info(f"Collecting comprehensive data for symbols: {demo_symbols}")
+        logger.info(
+            f"Date range: {(end_date - timedelta(days=3)).strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+        )
+
+        # Collect comprehensive data with custom end_date and dataset creation
         collection_summary = collector.collect_comprehensive_data(
             symbols=demo_symbols,
             intervals=demo_intervals,
-            days_back=3,  # Reduced for testing
+            days_back=3,
+            end_date=end_date,  # Custom end date
             include_trades=True,
             include_orderbook=True,
             enable_validation=True,
-            realtime_duration=0,  # Disabled for initial testing
+            realtime_duration=0,
+            create_datasets=True,  # Enable dataset creation
         )
 
         # Display enhanced summary
@@ -737,6 +794,12 @@ def main():
             logger.info(f"  Total symbols processed: {stats.get('total_symbols', 0)}")
             logger.info(f"  OHLCV candles: {stats.get('total_ohlcv_candles', 0)}")
             logger.info(f"  Trades: {stats.get('total_trades', 0)}")
+
+        # Display dataset information
+        if collection_summary.get("datasets"):
+            logger.info("Created Datasets:")
+            for symbol, dataset_path in collection_summary["datasets"].items():
+                logger.info(f"  {symbol}: {dataset_path}")
 
         if collection_summary.get("errors"):
             logger.warning(f"  Errors encountered: {len(collection_summary['errors'])}")
