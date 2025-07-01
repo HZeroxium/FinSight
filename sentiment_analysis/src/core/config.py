@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     # RabbitMQ configuration - synchronized with news crawler
     rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
-    rabbitmq_exchange: str = "news_crawler_exchange"
+    rabbitmq_article_exchange: str = "news_crawler_exchange"
     rabbitmq_sentiment_exchange: str = "sentiment_analysis_exchange"
 
     # Queue names

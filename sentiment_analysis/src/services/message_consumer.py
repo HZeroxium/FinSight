@@ -92,7 +92,7 @@ class MessageConsumerService:
         try:
             # Declare exchanges using config
             await self.message_broker.declare_exchange(
-                settings.rabbitmq_exchange, "topic", durable=True
+                settings.rabbitmq_article_exchange, "topic", durable=True
             )
             await self.message_broker.declare_exchange(
                 settings.rabbitmq_sentiment_exchange, "topic", durable=True
@@ -109,7 +109,7 @@ class MessageConsumerService:
             # Bind queues to exchanges using config
             await self.message_broker.bind_queue(
                 settings.rabbitmq_queue_raw_articles,
-                settings.rabbitmq_exchange,
+                settings.rabbitmq_article_exchange,
                 settings.rabbitmq_routing_key_article_sentiment,
             )
             await self.message_broker.bind_queue(

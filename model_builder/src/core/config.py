@@ -83,13 +83,28 @@ class ModelConfig(BaseSettings):
     min_lr: float = Field(default=1e-6, ge=1e-8, le=1e-3)
 
     # Data split ratios
-    train_ratio: float = Field(default=0.7, ge=0.1, le=0.9)
-    val_ratio: float = Field(default=0.15, ge=0.05, le=0.3)
-    test_ratio: float = Field(default=0.15, ge=0.05, le=0.3)
+    train_ratio: float = Field(default=0.8, ge=0.1, le=0.9)
+    val_ratio: float = Field(default=0.1, ge=0.05, le=0.3)
+    test_ratio: float = Field(default=0.1, ge=0.05, le=0.3)
 
     # Feature configuration
     features_to_use: List[str] = Field(
-        default_factory=lambda: ["Open", "High", "Low", "Close", "Volume"]
+        default_factory=lambda: [
+            "Open",
+            "High",
+            "Low",
+            "Close",
+            "Volume",
+            # "DayOfWeek",
+            # "DayOfWeek_sin",
+            # "DayOfWeek_cos",
+            # "Month",
+            # "Month_sin",
+            # "Month_cos",
+            # "DayOfMonth",
+            # "DayOfMonth_sin",
+            # "DayOfMonth_cos",
+        ]
     )
     target_column: str = "Close"
     use_all_features: bool = Field(
@@ -157,8 +172,8 @@ class DataConfig(BaseSettings):
     """Configuration for data processing and feature engineering"""
 
     # File paths
-    data_file: str = "data/coin_Bitcoin.csv"
-    date_column: str = "Date"
+    data_file: str = "data/binance_BTCUSDT_20170817_20250630_1h_dataset.csv"
+    date_column: str = "datetime"
 
     # Feature engineering flags
     add_technical_indicators: bool = True

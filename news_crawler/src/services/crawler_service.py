@@ -415,7 +415,7 @@ class CrawlerService:
             }
 
             await self.message_broker.publish(
-                exchange=settings.rabbitmq_exchange,
+                exchange=settings.rabbitmq_article_exchange,
                 routing_key="article.crawled",
                 message=event,
             )
@@ -455,7 +455,7 @@ class CrawlerService:
             }
 
             await self.message_broker.publish(
-                exchange=settings.rabbitmq_exchange,
+                exchange=settings.rabbitmq_article_exchange,
                 routing_key="crawl.summary",
                 message=event,
             )

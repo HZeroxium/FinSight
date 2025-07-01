@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     # RabbitMQ configuration - centralized messaging settings
     rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
-    rabbitmq_exchange: str = "news_crawler_exchange"
+    rabbitmq_article_exchange: str = "news_crawler_exchange"
     rabbitmq_analytics_exchange: str = "analytics_exchange"
 
     # Queue names

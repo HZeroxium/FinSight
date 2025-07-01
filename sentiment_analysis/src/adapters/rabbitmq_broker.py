@@ -15,13 +15,15 @@ from aio_pika import (
     RobustChannel,
     Message,
     ExchangeType,
+    DeliveryMode,
 )
 
 from ..interfaces.message_broker import MessageBroker, MessageBrokerError
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from ..common.logger import LoggerFactory
 
 logger = LoggerFactory.get_logger(
-    name="rabbitmq-broker", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
+    name="rabbitmq-broker",
+    log_file="logs/rabbitmq_broker.log",
 )
 
 
@@ -89,6 +91,10 @@ class RabbitMQBroker(MessageBroker):
             if not self._channel:
                 await self.connect()
 
+                # enable confirms once
+                await self._channel.set_qos(prefetch_count=10)
+                await self._channel.confirm_select()
+
             # Serialize message
             message_body = json.dumps(message, default=str).encode("utf-8")
 
@@ -96,7 +102,11 @@ class RabbitMQBroker(MessageBroker):
             aio_message = Message(
                 message_body,
                 content_type="application/json",
-                delivery_mode=2 if persistent else 1,  # 2 = persistent
+                delivery_mode=(
+                    DeliveryMode.PERSISTENT
+                    if persistent
+                    else DeliveryMode.NOT_PERSISTENT
+                ),
             )
 
             # Get exchange - if it doesn't exist, create it first
@@ -104,7 +114,7 @@ class RabbitMQBroker(MessageBroker):
                 exchange_obj = await self._channel.get_exchange(exchange)
             except Exception:
                 logger.info(f"Exchange {exchange} not found, creating it...")
-                await self.create_exchange(exchange)
+                await self.declare_exchange(exchange)
                 exchange_obj = await self._channel.get_exchange(exchange)
 
             # Publish message
@@ -178,7 +188,7 @@ class RabbitMQBroker(MessageBroker):
                 "headers": ExchangeType.HEADERS,
             }
 
-            await self._channel.declare_exchange(
+            exchange = await self._channel.declare_exchange(
                 exchange,
                 exchange_type_map.get(exchange_type, ExchangeType.TOPIC),
                 durable=durable,
@@ -252,36 +262,3 @@ class RabbitMQBroker(MessageBroker):
         except Exception as e:
             logger.error(f"RabbitMQ health check failed: {str(e)}")
             return False
-
-    async def create_exchange(
-        self, exchange_name: str, exchange_type: str = "topic"
-    ) -> None:
-        """
-        Create an exchange if it doesn't exist.
-
-        Args:
-            exchange_name: Name of the exchange
-            exchange_type: Type of exchange (topic, direct, fanout, headers)
-        """
-        try:
-            if not self._channel:
-                await self.connect()
-
-            exchange_type_map = {
-                "topic": ExchangeType.TOPIC,
-                "direct": ExchangeType.DIRECT,
-                "fanout": ExchangeType.FANOUT,
-                "headers": ExchangeType.HEADERS,
-            }
-
-            await self._channel.declare_exchange(
-                exchange_name,
-                exchange_type_map.get(exchange_type, ExchangeType.TOPIC),
-                durable=True,
-            )
-
-            logger.info(f"Exchange '{exchange_name}' created successfully")
-
-        except Exception as e:
-            logger.error(f"Failed to create exchange '{exchange_name}': {str(e)}")
-            raise MessageBrokerError(f"Exchange creation failed: {str(e)}")

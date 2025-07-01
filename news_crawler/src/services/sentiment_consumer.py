@@ -70,7 +70,7 @@ class SentimentConsumerService:
         try:
             # Declare exchanges using config
             await self.message_broker.declare_exchange(
-                settings.rabbitmq_exchange, "topic", durable=True
+                settings.rabbitmq_article_exchange, "topic", durable=True
             )
 
             # Declare sentiment analysis exchange
