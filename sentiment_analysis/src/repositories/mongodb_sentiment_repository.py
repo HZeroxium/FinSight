@@ -91,6 +91,9 @@ class MongoDBSentimentRepository(SentimentRepository):
     async def save_sentiment(self, sentiment: ProcessedSentiment) -> str:
         """
         Save processed sentiment to MongoDB.
+        If a document with the same URL or article_id already exists,
+        only update it if any of the fields have changed.
+        Otherwise insert a new document.
 
         Args:
             sentiment: ProcessedSentiment to save
@@ -99,54 +102,72 @@ class MongoDBSentimentRepository(SentimentRepository):
             str: Saved sentiment ID
         """
         try:
-            # Convert Pydantic model to dict with proper serialization
-            doc = sentiment.model_dump(by_alias=True, exclude_unset=True)
+            # 1. Convert Pydantic model to dict, exclude _id to avoid false diffs
+            doc = sentiment.model_dump(
+                by_alias=True,
+                exclude_unset=True,
+                exclude={"_id"},
+            )
 
-            # Convert enum values to strings
+            # 2. Serialize enum to string
             if "sentiment_label" in doc:
+                label = doc["sentiment_label"]
                 doc["sentiment_label"] = (
-                    doc["sentiment_label"].value
-                    if hasattr(doc["sentiment_label"], "value")
-                    else str(doc["sentiment_label"])
+                    label.value if hasattr(label, "value") else str(label)
                 )
 
-            # Convert datetime objects to ensure they're timezone-aware
-            if "processed_at" in doc and doc["processed_at"]:
-                if (
-                    isinstance(doc["processed_at"], datetime)
-                    and doc["processed_at"].tzinfo is None
-                ):
-                    doc["processed_at"] = doc["processed_at"].replace(
-                        tzinfo=timezone.utc
-                    )
+            # 3. Ensure datetimes are timezone-aware
+            for dt_field in ("processed_at", "published_at"):
+                if dt_field in doc and isinstance(doc[dt_field], datetime):
+                    if doc[dt_field].tzinfo is None:
+                        doc[dt_field] = doc[dt_field].replace(tzinfo=timezone.utc)
 
-            if "published_at" in doc and doc["published_at"]:
-                if (
-                    isinstance(doc["published_at"], datetime)
-                    and doc["published_at"].tzinfo is None
-                ):
-                    doc["published_at"] = doc["published_at"].replace(
-                        tzinfo=timezone.utc
-                    )
-
-            # Ensure sentiment_scores is a dict
+            # 4. Unwrap nested sentiment_scores if needed
             if "sentiment_scores" in doc and hasattr(
                 doc["sentiment_scores"], "model_dump"
             ):
                 doc["sentiment_scores"] = doc["sentiment_scores"].model_dump()
 
-            # Upsert based on article_id
-            result = await self.collection.replace_one(
-                {"article_id": sentiment.article_id}, doc, upsert=True
-            )
+            # 5. Build query: match on URL (if provided) or fallback to article_id
+            query = {"article_id": sentiment.article_id}
+            if doc.get("url"):
+                query = {
+                    "$or": [{"url": doc["url"]}, {"article_id": sentiment.article_id}]
+                }
 
-            sentiment_id = (
-                result.upserted_id
-                or await self._get_sentiment_id_by_article(sentiment.article_id)
-            )
+            # 6. Look for an existing document
+            existing = await self.collection.find_one(query)
 
-            logger.debug(f"Saved sentiment for article: {sentiment.article_id}")
-            return str(sentiment_id)
+            if existing:
+                # 7. Compare fields and collect only the changed ones
+                updates: Dict[str, Any] = {}
+                for key, new_val in doc.items():
+                    if existing.get(key) != new_val:
+                        updates[key] = new_val
+
+                if updates:
+                    # 8. Perform update if any field changed
+                    await self.collection.update_one(
+                        {"_id": existing["_id"]}, {"$set": updates}
+                    )
+                    logger.debug(
+                        f"Updated sentiment for article_id={sentiment.article_id}, "
+                        f"fields changed: {list(updates.keys())}"
+                    )
+                else:
+                    logger.debug(
+                        f"No changes detected for article_id={sentiment.article_id}; skipping update"
+                    )
+
+                return str(existing["_id"])
+
+            else:
+                # 9. Insert new document
+                result = await self.collection.insert_one(doc)
+                logger.debug(
+                    f"Inserted new sentiment for article_id={sentiment.article_id}"
+                )
+                return str(result.inserted_id)
 
         except Exception as e:
             logger.error(f"Failed to save sentiment: {e}")

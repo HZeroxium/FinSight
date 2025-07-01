@@ -158,23 +158,23 @@ class MessageConsumerService:
                 )
 
             # Analyze sentiment
-            # result = await self.sentiment_service.analyze_text(
-            #     text=analysis_text,
-            #     title=article_message.title,
-            #     article_id=article_message.id,
-            #     source_url=article_message.url,
-            #     save_result=True,
-            # )
+            result = await self.sentiment_service.analyze_text(
+                text=analysis_text,
+                title=article_message.title,
+                article_id=article_message.id,
+                source_url=article_message.url,
+                save_result=True,
+            )
 
             # For now, simulate sentiment analysis result by sleeping
-            await asyncio.sleep(5)  # Simulate processing delay
+            # await asyncio.sleep(5)  # Simulate processing delay
 
-            result = SentimentAnalysisResult(
-                label=SentimentLabel.POSITIVE,
-                confidence=0.95,
-                scores=SentimentScore(positive=0.95, negative=0.02, neutral=0.03),
-                reasoning="The article has a positive tone.",
-            )
+            # result = SentimentAnalysisResult(
+            #     label=SentimentLabel.POSITIVE,
+            #     confidence=0.95,
+            #     scores=SentimentScore(positive=0.95, negative=0.02, neutral=0.03),
+            #     reasoning="The article has a positive tone.",
+            # )
 
             # Only publish if enabled in settings
             if settings.enable_message_publishing:
