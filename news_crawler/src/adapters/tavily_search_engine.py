@@ -183,6 +183,7 @@ class TavilySearchEngine(SearchEngine):
         formats = [
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%dT%H:%M:%SZ",
+            "%Y-%m-%dT%H:%M:%S.%fZ",
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%d",
             "%m/%d/%Y",
@@ -190,12 +191,18 @@ class TavilySearchEngine(SearchEngine):
             # RFC 2822 format (like "Tue, 24 Jun 2025 20:10:53 GMT")
             "%a, %d %b %Y %H:%M:%S %Z",
             "%a, %d %b %Y %H:%M:%S GMT",
+            # ISO 8601 with timezone offset
+            "%Y-%m-%dT%H:%M:%S%z",
         ]
 
         for fmt in formats:
             try:
                 parsed_date = datetime.strptime(date_str, fmt)
-                return parsed_date.isoformat()
+                return (
+                    parsed_date.isoformat() + "Z"
+                    if not parsed_date.tzinfo
+                    else parsed_date.isoformat()
+                )
             except ValueError:
                 continue
 

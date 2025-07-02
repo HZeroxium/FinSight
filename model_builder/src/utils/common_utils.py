@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, Optional, TypeVar, Union
 import numpy as np
 import torch
 from pathlib import Path
+from datetime import datetime, timezone
 
 from ..common.logger.logger_factory import LoggerFactory
 
@@ -59,9 +60,19 @@ class CommonUtils:
         Get current timestamp in readable format
 
         Returns:
-            str: Timestamp in format YYYY-MM-DD HH:MM:SS
+            str: Timestamp in format YYYY-MM-DD HH:MM:SS (ISO 8601 compatible)
         """
-        return time.strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    @staticmethod
+    def get_iso_timestamp() -> str:
+        """
+        Get current timestamp in ISO 8601 format
+
+        Returns:
+            str: Timestamp in ISO 8601 format with UTC timezone
+        """
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     @staticmethod
     def format_duration(seconds: float) -> str:

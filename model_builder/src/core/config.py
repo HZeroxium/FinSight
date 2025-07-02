@@ -172,7 +172,7 @@ class DataConfig(BaseSettings):
     """Configuration for data processing and feature engineering"""
 
     # File paths
-    data_file: str = "data/binance_BTCUSDT_20170817_20250630_1h_dataset.csv"
+    data_file: str = "data/binance_BTCUSDT_20170817_20250630_1d_dataset.csv"
     date_column: str = "datetime"
 
     # Feature engineering flags
@@ -277,8 +277,8 @@ class Config(BaseSettings):
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary for serialization"""
         return {
-            "model": self.model.dict(),
-            "data": self.data.dict(),
+            "model": self.model.model_dump(),
+            "data": self.data.model_dump(),
             "project_name": self.project_name,
             "version": self.version,
             "environment": self.environment,

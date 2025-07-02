@@ -235,10 +235,16 @@ class DefaultNewsCrawler(NewsCrawler):
             self.date_format,
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%dT%H:%M:%SZ",
+            "%Y-%m-%dT%H:%M:%S.%fZ",
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%d",
             "%m/%d/%Y",
             "%d/%m/%Y",
+            # RFC 2822 format
+            "%a, %d %b %Y %H:%M:%S %Z",
+            "%a, %d %b %Y %H:%M:%S GMT",
+            # ISO 8601 with timezone
+            "%Y-%m-%dT%H:%M:%S%z",
         ]
 
         for fmt in formats:

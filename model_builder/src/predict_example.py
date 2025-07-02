@@ -41,44 +41,17 @@ def create_synthetic_data(n_samples: int = 1000) -> pd.DataFrame:
         DataFrame with synthetic OHLCV data
     """
     # Set seed for reproducibility
-    np.random.seed(42)
 
-    # Generate synthetic price data with some trend and noise
-    base_price = 100.0
-    trend = np.linspace(0, 20, n_samples)  # Upward trend
-    noise = np.random.normal(0, 2, n_samples)  # Random noise
+    df = pd.read_csv("data/binance_BTCUSDT_20170817_20250630_1d_dataset.csv")
 
-    # Generate Close prices
-    close_prices = base_price + trend + noise.cumsum() * 0.1
+    # Last 1000 samples for demonstration
+    if n_samples > len(df):
+        raise ValueError(
+            f"Requested n_samples ({n_samples}) exceeds available data ({len(df)} samples)."
+        )
+    df = df[-n_samples:]
 
-    # Generate other OHLC data based on Close
-    volatility = np.random.uniform(0.5, 2.0, n_samples)
-
-    high_prices = close_prices + np.random.uniform(0, volatility)
-    low_prices = close_prices - np.random.uniform(0, volatility)
-
-    # Generate Open prices (previous close + small gap)
-    open_prices = np.roll(close_prices, 1) + np.random.normal(0, 0.5, n_samples)
-    open_prices[0] = close_prices[0]
-
-    # Generate Volume data
-    volume = np.random.randint(1000, 10000, n_samples)
-
-    # Create DataFrame
-    dates = pd.date_range(start="2023-01-01", periods=n_samples, freq="D")
-
-    data = pd.DataFrame(
-        {
-            "Date": dates,
-            "Open": open_prices,
-            "High": high_prices,
-            "Low": low_prices,
-            "Close": close_prices,
-            "Volume": volume,
-        }
-    )
-
-    return data
+    return df
 
 
 def prepare_data_for_prediction(data: pd.DataFrame, config: Config) -> tuple:
