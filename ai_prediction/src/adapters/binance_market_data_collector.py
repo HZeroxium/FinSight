@@ -17,6 +17,7 @@ from binance.exceptions import BinanceAPIException, BinanceRequestException
 from ..interfaces.market_data_collector import MarketDataCollector
 from ..interfaces.errors import CollectionError, ValidationError
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from ..utils.datetime_utils import DateTimeUtils
 
 
 class BinanceMarketDataCollector(MarketDataCollector):
@@ -97,6 +98,43 @@ class BinanceMarketDataCollector(MarketDataCollector):
         self.logger.debug(f"Available timeframes: {timeframes}")
         return timeframes
 
+    def get_symbol_listing_date(self, symbol: str) -> Optional[str]:
+        """
+        Get the earliest available date for a symbol on Binance.
+
+        Args:
+            symbol: Trading symbol
+
+        Returns:
+            Earliest available date in ISO 8601 format, None if not available
+        """
+        try:
+            # Try to get a small amount of historical data from a very early date
+            # Binance will return data from the actual listing date
+            test_klines = self.client.get_historical_klines(
+                symbol=symbol,
+                interval="1d",
+                start_str="1 Jan 2010",  # Very early date
+                limit=1,
+            )
+
+            if test_klines:
+                # First available timestamp
+                timestamp_ms = test_klines[0][0]
+                timestamp_dt = DateTimeUtils.from_timestamp_ms(timestamp_ms)
+                return DateTimeUtils.to_iso_string(timestamp_dt)
+
+            return None
+
+        except (BinanceAPIException, BinanceRequestException) as e:
+            self.logger.warning(f"Could not get listing date for {symbol}: {str(e)}")
+            return None
+        except Exception as e:
+            self.logger.error(
+                f"Unexpected error getting listing date for {symbol}: {str(e)}"
+            )
+            return None
+
     def collect_ohlcv(
         self, symbol: str, timeframe: str, start_date: str, end_date: str
     ) -> List[Dict[str, Any]]:
@@ -106,8 +144,8 @@ class BinanceMarketDataCollector(MarketDataCollector):
         Args:
             symbol: Trading symbol (e.g., 'BTCUSDT')
             timeframe: Time interval (e.g., '1h', '1d')
-            start_date: Start date in ISO 8601 format
-            end_date: End date in ISO 8601 format
+            start_date: Start date in ISO 8601 format (e.g., '2024-01-01T00:00:00Z')
+            end_date: End date in ISO 8601 format (e.g., '2024-01-31T23:59:59Z')
 
         Returns:
             List of OHLCV records with standardized format
@@ -116,15 +154,26 @@ class BinanceMarketDataCollector(MarketDataCollector):
             # Validate inputs
             self._validate_symbol(symbol)
             self._validate_timeframe(timeframe)
-            start_dt, end_dt = self._validate_and_parse_dates(start_date, end_date)
+            start_dt, end_dt = DateTimeUtils.validate_date_range(start_date, end_date)
 
             self.logger.info(
                 f"Collecting OHLCV data for {symbol} ({timeframe}) from {start_date} to {end_date}"
             )
 
+            # Check if start_date is before symbol listing
+            listing_date = self.get_symbol_listing_date(symbol)
+            if listing_date:
+                listing_dt = DateTimeUtils.to_utc_datetime(listing_date)
+                if start_dt < listing_dt:
+                    self.logger.info(
+                        f"Adjusting start date from {start_date} to symbol listing date {listing_date}"
+                    )
+                    start_dt = listing_dt
+                    start_date = listing_date
+
             # Convert to Binance format
-            start_str = start_dt.strftime("%d %b %Y %H:%M:%S")
-            end_str = end_dt.strftime("%d %b %Y %H:%M:%S")
+            start_str = DateTimeUtils.format_timestamp_for_exchange(start_dt, "binance")
+            end_str = DateTimeUtils.format_timestamp_for_exchange(end_dt, "binance")
 
             # Collect data in chunks if date range is large
             all_klines = []
@@ -135,11 +184,18 @@ class BinanceMarketDataCollector(MarketDataCollector):
                 chunk_end = min(chunk_start + timedelta(days=30), end_dt)
 
                 try:
+                    chunk_start_str = DateTimeUtils.format_timestamp_for_exchange(
+                        chunk_start, "binance"
+                    )
+                    chunk_end_str = DateTimeUtils.format_timestamp_for_exchange(
+                        chunk_end, "binance"
+                    )
+
                     chunk_klines = self.client.get_historical_klines(
                         symbol=symbol,
                         interval=timeframe,
-                        start_str=chunk_start.strftime("%d %b %Y %H:%M:%S"),
-                        end_str=chunk_end.strftime("%d %b %Y %H:%M:%S"),
+                        start_str=chunk_start_str,
+                        end_str=chunk_end_str,
                         limit=1000,
                     )
 
@@ -164,14 +220,13 @@ class BinanceMarketDataCollector(MarketDataCollector):
                 all_klines, symbol, timeframe
             )
 
-            # Filter by exact date range
-            filtered_data = [
-                record
-                for record in standardized_data
-                if start_dt
-                <= datetime.fromisoformat(record["timestamp"].replace("Z", "+00:00"))
-                <= end_dt
-            ]
+            # Filter by exact date range (use original end_dt)
+            filtered_data: List[Dict[str, Any]] = []
+            original_end_dt = DateTimeUtils.to_utc_datetime(end_date)
+            for record in standardized_data:
+                record_dt = DateTimeUtils.to_utc_datetime(record["timestamp"])
+                if start_dt <= record_dt <= original_end_dt:
+                    filtered_data.append(record)
 
             self.logger.info(
                 f"Collected {len(filtered_data)} OHLCV records for {symbol}"
@@ -247,23 +302,17 @@ class BinanceMarketDataCollector(MarketDataCollector):
     def _validate_and_parse_dates(self, start_date: str, end_date: str) -> tuple:
         """Validate and parse ISO 8601 date strings"""
         try:
-            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-
-            if start_dt >= end_dt:
-                raise ValidationError("Start date must be before end date")
+            start_dt, end_dt = DateTimeUtils.validate_date_range(start_date, end_date)
 
             # Check if date range is reasonable (not too far in the past or future)
-            now = datetime.now().replace(tzinfo=start_dt.tzinfo)
+            now = DateTimeUtils.now_utc()
             if end_dt > now:
                 raise ValidationError("End date cannot be in the future")
 
             return start_dt, end_dt
 
         except ValueError as e:
-            raise ValidationError(
-                f"Invalid date format. Expected ISO 8601 format: {str(e)}"
-            )
+            raise ValidationError(f"Date validation failed: {str(e)}")
 
     def _standardize_ohlcv_data(
         self, klines: List[List], symbol: str, timeframe: str
@@ -273,10 +322,11 @@ class BinanceMarketDataCollector(MarketDataCollector):
 
         for kline in klines:
             # Binance kline format: [timestamp, open, high, low, close, volume, ...]
+            timestamp_ms = kline[0]
+            timestamp_dt = DateTimeUtils.from_timestamp_ms(timestamp_ms)
+
             record = {
-                "timestamp": datetime.fromtimestamp(kline[0] / 1000).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                ),
+                "timestamp": DateTimeUtils.to_iso_string(timestamp_dt),
                 "open": float(kline[1]),
                 "high": float(kline[2]),
                 "low": float(kline[3]),

@@ -14,7 +14,8 @@ import time
 
 from ..interfaces.market_data_collector import MarketDataCollector
 from ..services.market_data_service import MarketDataService
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from ..common.logger import LoggerFactory
+from ..utils.datetime_utils import DateTimeUtils
 
 
 class MarketDataCollectorService:
@@ -45,8 +46,6 @@ class MarketDataCollectorService:
 
         self.logger = LoggerFactory.get_logger(
             name="market_data_collector_service",
-            logger_type=LoggerType.STANDARD,
-            level=LogLevel.INFO,
         )
 
         self._running = False
@@ -93,7 +92,7 @@ class MarketDataCollectorService:
             "gaps_filled": 0,
             "success": False,
             "error": None,
-            "collection_time": datetime.now(timezone.utc).isoformat(),
+            "collection_time": DateTimeUtils.now_iso(),
         }
 
         try:
@@ -194,13 +193,31 @@ class MarketDataCollectorService:
                 # Fill each gap
                 for gap_start, gap_end in gaps:
                     try:
+                        # Validate the gap dates
+                        gap_start_dt = DateTimeUtils.to_utc_datetime(gap_start)
+                        gap_end_dt = DateTimeUtils.to_utc_datetime(gap_end)
+
+                        # Handle single-day gaps by extending end date by one interval
+                        if gap_start_dt == gap_end_dt:
+                            # For single timestamp gaps, extend by one interval
+                            interval = DateTimeUtils.parse_timeframe_to_timedelta(
+                                timeframe
+                            )
+                            if interval:
+                                gap_end_dt = gap_start_dt + interval
+                                gap_end = DateTimeUtils.to_iso_string(gap_end_dt)
+                                self.logger.info(
+                                    f"Extended single-day gap to: {gap_start} to {gap_end}"
+                                )
+
+                        # Ensure gap is valid
+                        if gap_start_dt >= gap_end_dt:
+                            self.logger.warning(
+                                f"Invalid gap range: {gap_start} to {gap_end}, skipping"
+                            )
+                            continue
+
                         # Calculate gap size in days
-                        gap_start_dt = datetime.fromisoformat(
-                            gap_start.replace("Z", "+00:00")
-                        )
-                        gap_end_dt = datetime.fromisoformat(
-                            gap_end.replace("Z", "+00:00")
-                        )
                         gap_days = (gap_end_dt - gap_start_dt).days
 
                         if gap_days > max_gap_days:
@@ -281,13 +298,11 @@ class MarketDataCollectorService:
                 start_date = latest_timestamp
             else:
                 # No existing data, start from max_lookback_days ago
-                start_dt = datetime.now(timezone.utc) - timedelta(
-                    days=max_lookback_days
-                )
-                start_date = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                start_dt = DateTimeUtils.now_utc() - timedelta(days=max_lookback_days)
+                start_date = DateTimeUtils.to_iso_string(start_dt)
 
             # End date is now
-            end_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            end_date = DateTimeUtils.now_iso()
 
             self.logger.info(
                 f"Updating {exchange}/{symbol}/{timeframe} from {start_date} to {end_date}"
@@ -322,7 +337,7 @@ class MarketDataCollectorService:
             self.logger.error(error_msg)
             return result
 
-    async def bulk_collection_scan(
+    async def scan_and_update_all_symbols(
         self,
         exchange: str,
         symbols: Optional[List[str]] = None,
@@ -331,20 +346,22 @@ class MarketDataCollectorService:
         update_existing: bool = True,
     ) -> Dict[str, Any]:
         """
-        Perform bulk scan and collection for multiple symbols/timeframes.
+        Scan and update all symbols to ensure data is current.
+        This can be used as a background job or manual scan.
 
         Args:
             exchange: Exchange name
-            symbols: List of symbols to process (None = all available)
-            timeframes: List of timeframes to process (None = all available)
+            symbols: List of symbols to process (None = get from collector)
+            timeframes: List of timeframes to process (None = get from collector)
             max_lookback_days: Maximum days to look back for new symbols
             update_existing: Whether to update existing data to latest
 
         Returns:
-            Bulk collection results
+            Scan and update results
         """
         scan_result = {
             "exchange": exchange,
+            "scan_time": DateTimeUtils.now_iso(),
             "total_combinations": 0,
             "successful_updates": 0,
             "failed_updates": 0,
@@ -363,16 +380,16 @@ class MarketDataCollectorService:
                 if not symbols:
                     # Get from collector if none in database
                     symbols = self.collector.get_available_symbols()
-                    symbols = symbols[:10]  # Limit for initial scan
+                    symbols = symbols[:5]  # Limit for demo
 
             if timeframes is None:
                 timeframes = self.collector.get_available_timeframes()
-                timeframes = timeframes[:3]  # Limit for initial scan
+                timeframes = timeframes[:2]  # Limit for demo
 
             scan_result["total_combinations"] = len(symbols) * len(timeframes)
 
             self.logger.info(
-                f"Starting bulk scan for {len(symbols)} symbols × {len(timeframes)} timeframes = "
+                f"Starting scan for {len(symbols)} symbols × {len(timeframes)} timeframes = "
                 f"{scan_result['total_combinations']} combinations"
             )
 
@@ -387,13 +404,11 @@ class MarketDataCollectorService:
                             )
                         else:
                             # Just ensure completeness
-                            end_date = datetime.now(timezone.utc).strftime(
-                                "%Y-%m-%dT%H:%M:%SZ"
+                            end_date = DateTimeUtils.now_iso()
+                            start_dt = DateTimeUtils.now_utc() - timedelta(
+                                days=max_lookback_days
                             )
-                            start_date = (
-                                datetime.now(timezone.utc)
-                                - timedelta(days=max_lookback_days)
-                            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                            start_date = DateTimeUtils.to_iso_string(start_dt)
 
                             update_result = await self.ensure_data_completeness(
                                 exchange, symbol, timeframe, start_date, end_date
@@ -404,7 +419,7 @@ class MarketDataCollectorService:
                         if update_result.get("success", False):
                             scan_result["successful_updates"] += 1
                             scan_result["total_records_collected"] += update_result.get(
-                                "records_added", 0
+                                "records_added", update_result.get("total_records", 0)
                             )
                         else:
                             scan_result["failed_updates"] += 1
@@ -421,14 +436,14 @@ class MarketDataCollectorService:
             scan_result["processing_time_seconds"] = time.time() - start_time
 
             self.logger.info(
-                f"Bulk scan completed: {scan_result['successful_updates']}/{scan_result['total_combinations']} successful, "
+                f"Scan completed: {scan_result['successful_updates']}/{scan_result['total_combinations']} successful, "
                 f"{scan_result['total_records_collected']} total records collected"
             )
 
             return scan_result
 
         except Exception as e:
-            error_msg = f"Error in bulk collection scan: {str(e)}"
+            error_msg = f"Error in scan and update: {str(e)}"
             scan_result["errors"].append(error_msg)
             self.logger.error(error_msg)
             return scan_result
@@ -503,9 +518,7 @@ class MarketDataCollectorService:
         else:
             self._collection_stats["failed_collections"] += 1
 
-        self._collection_stats["last_collection_time"] = datetime.now(
-            timezone.utc
-        ).isoformat()
+        self._collection_stats["last_collection_time"] = DateTimeUtils.now_iso()
 
         # Per-symbol stats
         if symbol not in self._collection_stats["collections_by_symbol"]:
@@ -567,6 +580,16 @@ async def main():
     print(f"Example date range: {start_date} to {end_date}")
     print()
 
+    print("Service would coordinate:")
+    print("- MarketDataCollector: Fetch data from exchange APIs")
+    print("- MarketDataService: Validate and manage storage")
+    print("- Gap detection: Identify missing data periods")
+    print("- Automatic updates: Keep data current")
+    print("- Batch operations: Efficient bulk processing")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
     print("Service would coordinate:")
     print("- MarketDataCollector: Fetch data from exchange APIs")
     print("- MarketDataService: Validate and manage storage")

@@ -21,7 +21,7 @@ except ImportError:
 
 from ..interfaces.market_data_repository import MarketDataRepository
 from ..interfaces.errors import RepositoryError, ValidationError
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from ..common.logger import LoggerFactory
 
 
 class InfluxMarketDataRepository(MarketDataRepository):
@@ -55,8 +55,6 @@ class InfluxMarketDataRepository(MarketDataRepository):
 
         self.logger = LoggerFactory.get_logger(
             name="influx_repository",
-            logger_type=LoggerType.STANDARD,
-            level=LogLevel.INFO,
         )
 
         # Initialize client

@@ -12,7 +12,8 @@ from typing import Dict, List, Any, Optional, Tuple
 
 from ..interfaces.market_data_repository import MarketDataRepository
 from ..interfaces.errors import ValidationError
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from ..common.logger import LoggerFactory
+from ..utils.datetime_utils import DateTimeUtils
 
 
 class MarketDataService:
@@ -33,8 +34,6 @@ class MarketDataService:
         self.repository = repository
         self.logger = LoggerFactory.get_logger(
             name="market_data_service",
-            logger_type=LoggerType.STANDARD,
-            level=LogLevel.INFO,
         )
 
         self.logger.info("Market Data Service initialized")
@@ -76,7 +75,9 @@ class MarketDataService:
                 self._validate_ohlcv_data(data)
 
             # Sort data by timestamp to ensure proper ordering
-            sorted_data = sorted(data, key=lambda x: x["timestamp"])
+            sorted_data = sorted(
+                data, key=lambda x: DateTimeUtils.to_utc_datetime(x["timestamp"])
+            )
 
             # Save to repository
             success = self.repository.save_ohlcv(
@@ -125,7 +126,7 @@ class MarketDataService:
         """
         try:
             # Validate date format
-            self._validate_date_range(start_date, end_date)
+            DateTimeUtils.validate_date_range(start_date, end_date)
 
             # Retrieve data from repository
             data = self.repository.get_ohlcv(
@@ -203,14 +204,13 @@ class MarketDataService:
                 return [(start_date, end_date)]
 
             # Convert timeframe to timedelta
-            interval = self._parse_timeframe_to_timedelta(timeframe)
+            interval = DateTimeUtils.parse_timeframe_to_timedelta(timeframe)
             if not interval:
                 self.logger.warning(f"Could not parse timeframe: {timeframe}")
                 return []
 
             # Parse dates
-            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+            start_dt, end_dt = DateTimeUtils.validate_date_range(start_date, end_date)
 
             # Create expected timestamps
             expected_timestamps = []
@@ -222,7 +222,7 @@ class MarketDataService:
             # Get existing timestamps
             existing_timestamps = set()
             for record in data:
-                ts = datetime.fromisoformat(record["timestamp"].replace("Z", "+00:00"))
+                ts = DateTimeUtils.to_utc_datetime(record["timestamp"])
                 existing_timestamps.add(ts)
 
             # Find gaps
@@ -235,22 +235,24 @@ class MarketDataService:
                         gap_start = expected_ts
                 else:
                     if gap_start is not None:
-                        # End of gap
+                        # End of gap - use previous timestamp as gap end
                         gap_end = expected_ts - interval
-                        gaps.append(
-                            (
-                                gap_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                gap_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        # Only add gap if it's valid (start <= end)
+                        if gap_start <= gap_end:
+                            gaps.append(
+                                (
+                                    DateTimeUtils.to_iso_string(gap_start),
+                                    DateTimeUtils.to_iso_string(gap_end),
+                                )
                             )
-                        )
                         gap_start = None
 
             # Handle gap at the end
             if gap_start is not None:
                 gaps.append(
                     (
-                        gap_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        end_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        DateTimeUtils.to_iso_string(gap_start),
+                        DateTimeUtils.to_iso_string(end_dt),
                     )
                 )
 
@@ -289,7 +291,7 @@ class MarketDataService:
         try:
             # Validate date range if provided
             if start_date and end_date:
-                self._validate_date_range(start_date, end_date)
+                DateTimeUtils.validate_date_range(start_date, end_date)
 
             success = self.repository.delete_ohlcv(
                 exchange, symbol, timeframe, start_date, end_date
@@ -412,9 +414,9 @@ class MarketDataService:
 
             # Validate timestamp format
             try:
-                datetime.fromisoformat(record["timestamp"].replace("Z", "+00:00"))
-            except ValueError:
-                raise ValidationError(f"Record {i}: Invalid timestamp format")
+                DateTimeUtils.to_utc_datetime(record["timestamp"])
+            except ValueError as e:
+                raise ValidationError(f"Record {i}: Invalid timestamp format: {e}")
 
             # Validate numeric values
             try:
@@ -440,37 +442,3 @@ class MarketDataService:
 
             except (ValueError, TypeError) as e:
                 raise ValidationError(f"Record {i}: Invalid numeric value - {str(e)}")
-
-    def _validate_date_range(self, start_date: str, end_date: str) -> None:
-        """Validate ISO 8601 date format and range."""
-        try:
-            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-
-            if start_dt >= end_dt:
-                raise ValidationError("Start date must be before end date")
-
-        except ValueError as e:
-            raise ValidationError(f"Invalid date format. Expected ISO 8601: {str(e)}")
-
-    def _parse_timeframe_to_timedelta(self, timeframe: str) -> Optional[timedelta]:
-        """Convert timeframe string to timedelta object."""
-        timeframe_map = {
-            "1m": timedelta(minutes=1),
-            "3m": timedelta(minutes=3),
-            "5m": timedelta(minutes=5),
-            "15m": timedelta(minutes=15),
-            "30m": timedelta(minutes=30),
-            "1h": timedelta(hours=1),
-            "2h": timedelta(hours=2),
-            "4h": timedelta(hours=4),
-            "6h": timedelta(hours=6),
-            "8h": timedelta(hours=8),
-            "12h": timedelta(hours=12),
-            "1d": timedelta(days=1),
-            "3d": timedelta(days=3),
-            "1w": timedelta(weeks=1),
-            "1M": timedelta(days=30),  # Approximate
-        }
-
-        return timeframe_map.get(timeframe)

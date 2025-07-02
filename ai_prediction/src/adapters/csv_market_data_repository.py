@@ -14,7 +14,8 @@ from datetime import datetime
 
 from ..interfaces.market_data_repository import MarketDataRepository
 from ..interfaces.errors import RepositoryError, ValidationError
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from ..common.logger import LoggerFactory
+from ..utils.datetime_utils import DateTimeUtils
 
 
 class CSVMarketDataRepository(MarketDataRepository):
@@ -28,9 +29,7 @@ class CSVMarketDataRepository(MarketDataRepository):
             base_directory: Base directory for storing CSV files
         """
         self.base_directory = Path(base_directory)
-        self.logger = LoggerFactory.get_logger(
-            name="csv_repository", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
-        )
+        self.logger = LoggerFactory.get_logger(name="csv_repository")
 
         # Create base directory structure
         self._initialize_directory_structure()
@@ -51,11 +50,20 @@ class CSVMarketDataRepository(MarketDataRepository):
             # Validate data format
             self._validate_ohlcv_data(data)
 
-            # Convert to DataFrame
-            df = pd.DataFrame(data)
+            # Convert to DataFrame with standardized timestamps
+            df_data = []
+            for record in data:
+                # Standardize timestamp
+                standardized_record = record.copy()
+                standardized_record["timestamp"] = DateTimeUtils.to_iso_string(
+                    record["timestamp"]
+                )
+                df_data.append(standardized_record)
 
-            # Ensure timestamp is datetime and set as index
-            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            df = pd.DataFrame(df_data)
+
+            # Convert timestamp to datetime and set as index
+            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
             df = df.set_index("timestamp").sort_index()
 
             # Get file path
@@ -67,6 +75,11 @@ class CSVMarketDataRepository(MarketDataRepository):
                 existing_df = pd.read_csv(
                     file_path, index_col="timestamp", parse_dates=True
                 )
+                # Ensure existing data has UTC timezone
+                if existing_df.index.tz is None:
+                    existing_df.index = existing_df.index.tz_localize("UTC")
+                elif existing_df.index.tz != df.index.tz:
+                    existing_df.index = existing_df.index.tz_convert("UTC")
 
                 # Merge and remove duplicates
                 combined_df = pd.concat([existing_df, df])
@@ -90,7 +103,7 @@ class CSVMarketDataRepository(MarketDataRepository):
         """Retrieve OHLCV data from CSV file"""
         try:
             # Validate date format
-            start_dt, end_dt = self._parse_dates(start_date, end_date)
+            start_dt, end_dt = DateTimeUtils.validate_date_range(start_date, end_date)
 
             # Get file path
             file_path = self._get_ohlcv_file_path(exchange, symbol, timeframe)
@@ -102,6 +115,12 @@ class CSVMarketDataRepository(MarketDataRepository):
             # Read CSV
             df = pd.read_csv(file_path, index_col="timestamp", parse_dates=True)
 
+            # Ensure timezone-aware timestamps
+            if df.index.tz is None:
+                df.index = df.index.tz_localize("UTC")
+            else:
+                df.index = df.index.tz_convert("UTC")
+
             # Filter by date range
             mask = (df.index >= start_dt) & (df.index <= end_dt)
             filtered_df = df.loc[mask]
@@ -110,7 +129,7 @@ class CSVMarketDataRepository(MarketDataRepository):
             result = []
             for timestamp, row in filtered_df.iterrows():
                 record = {
-                    "timestamp": timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "timestamp": DateTimeUtils.to_iso_string(timestamp),
                     "open": float(row["open"]),
                     "high": float(row["high"]),
                     "low": float(row["low"]),
@@ -150,9 +169,15 @@ class CSVMarketDataRepository(MarketDataRepository):
                 return True
 
             # Parse dates and filter data
-            start_dt, end_dt = self._parse_dates(start_date, end_date)
+            start_dt, end_dt = DateTimeUtils.validate_date_range(start_date, end_date)
 
             df = pd.read_csv(file_path, index_col="timestamp", parse_dates=True)
+
+            # Ensure timezone-aware timestamps
+            if df.index.tz is None:
+                df.index = df.index.tz_localize("UTC")
+            else:
+                df.index = df.index.tz_convert("UTC")
 
             # Remove data in specified range
             mask = ~((df.index >= start_dt) & (df.index <= end_dt))
@@ -274,9 +299,15 @@ class CSVMarketDataRepository(MarketDataRepository):
                 if df.empty:
                     return None
 
+                # Ensure timezone-aware timestamps
+                if df.index.tz is None:
+                    df.index = df.index.tz_localize("UTC")
+                else:
+                    df.index = df.index.tz_convert("UTC")
+
                 return {
-                    "start_date": df.index.min().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    "end_date": df.index.max().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "start_date": DateTimeUtils.to_iso_string(df.index.min()),
+                    "end_date": DateTimeUtils.to_iso_string(df.index.max()),
                 }
             else:
                 raise NotImplementedError(f"Data type {data_type} not implemented yet")
@@ -301,13 +332,11 @@ class CSVMarketDataRepository(MarketDataRepository):
                 if not data_range:
                     return False
 
-                start_dt, end_dt = self._parse_dates(start_date, end_date)
-                range_start = datetime.fromisoformat(
-                    data_range["start_date"].replace("Z", "+00:00")
+                start_dt, end_dt = DateTimeUtils.validate_date_range(
+                    start_date, end_date
                 )
-                range_end = datetime.fromisoformat(
-                    data_range["end_date"].replace("Z", "+00:00")
-                )
+                range_start = DateTimeUtils.to_utc_datetime(data_range["start_date"])
+                range_end = DateTimeUtils.to_utc_datetime(data_range["end_date"])
 
                 return range_start <= start_dt and end_dt <= range_end
             else:
@@ -345,6 +374,12 @@ class CSVMarketDataRepository(MarketDataRepository):
                 try:
                     df = pd.read_csv(file_path, index_col="timestamp", parse_dates=True)
                     if not df.empty:
+                        # Ensure timezone-aware timestamps
+                        if df.index.tz is None:
+                            df.index = df.index.tz_localize("UTC")
+                        else:
+                            df.index = df.index.tz_convert("UTC")
+
                         file_oldest = df.index.min()
                         file_newest = df.index.max()
 
@@ -368,10 +403,10 @@ class CSVMarketDataRepository(MarketDataRepository):
                 "available_exchanges": sorted(list(exchanges)),
                 "total_symbols": total_symbols,
                 "oldest_data": (
-                    oldest_date.strftime("%Y-%m-%dT%H:%M:%SZ") if oldest_date else None
+                    DateTimeUtils.to_iso_string(oldest_date) if oldest_date else None
                 ),
                 "newest_data": (
-                    newest_date.strftime("%Y-%m-%dT%H:%M:%SZ") if newest_date else None
+                    DateTimeUtils.to_iso_string(newest_date) if newest_date else None
                 ),
             }
 
@@ -472,18 +507,8 @@ class CSVMarketDataRepository(MarketDataRepository):
                 if field not in record:
                     raise ValidationError(f"Missing required field: {field}")
 
-    def _parse_dates(self, start_date: str, end_date: str) -> tuple:
-        """Parse and validate ISO 8601 date strings"""
-        try:
-            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-
-            if start_dt >= end_dt:
-                raise ValidationError("Start date must be before end date")
-
-            return start_dt, end_dt
-
-        except ValueError as e:
-            raise ValidationError(
-                f"Invalid date format. Expected ISO 8601 format: {str(e)}"
-            )
+            # Validate timestamp format
+            try:
+                DateTimeUtils.to_utc_datetime(record["timestamp"])
+            except ValueError as e:
+                raise ValidationError(f"Invalid timestamp format: {e}")
