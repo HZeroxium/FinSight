@@ -37,7 +37,7 @@ class GoogleConfig(BaseSettings):
     """Configuration for Google ADK adapter"""
 
     # Default to a Gemini model, or any provider/model string LiteLlm supports
-    default_model: str = Field(default="gemini-pro", description="Default model")
+    default_model: str = Field(default="gemini-2.0-flash", description="Default model")
     timeout: int = Field(default=30, description="LLM call timeout (s)")
 
     class Config:
@@ -95,15 +95,19 @@ class GoogleADKAdapter(LLMAdapterInterface):
         session_id = str(uuid.uuid4())
         user_id = "adapter"
 
-        session_svc.create_session(
-            app_name="google-adapter",
-            user_id=user_id,
-            session_id=session_id,
-            state={},
+        # drive the async create_session to completion
+        import asyncio
+
+        asyncio.run(
+            session_svc.create_session(
+                app_name="google_adapter",
+                user_id=user_id,
+                session_id=session_id,
+                state={},
+            )
         )
 
-        # wrap messages into a single instruction string
-        # we append system prompt first if present
+        # build the instruction string
         instruction = ""
         if request.system_prompt:
             instruction += request.system_prompt + "\n\n"
@@ -111,9 +115,9 @@ class GoogleADKAdapter(LLMAdapterInterface):
             f"{msg.role}: {msg.content}" for msg in request.messages
         )
 
-        # create the ADK agent
+        # instantiate the agent with a per-request LiteLlm
         agent = LlmAgent(
-            name="google-adapter",
+            name="google_adapter",
             model=LiteLlm(model=request.model),
             instruction=instruction,
             input_schema=None,
@@ -122,20 +126,20 @@ class GoogleADKAdapter(LLMAdapterInterface):
             disallow_transfer_to_peers=True,
         )
 
-        # runner to execute
+        # create runner
         runner = Runner(
-            app_name="google-adapter",
+            app_name="google_adapter",
             agent=agent,
             session_service=session_svc,
             artifact_service=artifact_svc,
             memory_service=memory_svc,
         )
 
-        # build the Content object
+        # wrap into ADK Content
         user_content = types.Content(role="user", parts=[types.Part(text=instruction)])
 
         try:
-            # collect streamed or sync parts
+            # collect stream or sync responses
             response_parts: List[str] = []
             for event in runner.run(
                 session_id=session_id,
@@ -148,12 +152,11 @@ class GoogleADKAdapter(LLMAdapterInterface):
                             response_parts.append(part.text)
 
             full_text = "".join(response_parts)
-            usage = {"tokens": len(full_text.split())}  # rough token count
+            usage = {"tokens": len(full_text.split())}  # approximate
 
             parsed_output = None
             if request.output_schema:
-                data = json.loads(full_text)
-                parsed_output = request.output_schema(**data)
+                parsed_output = request.output_schema(**json.loads(full_text))
 
             elapsed = time.time() - start_time
             self.stats.record_request(

@@ -14,10 +14,13 @@ from llm import (
     generate_text,
     generate_structured,
     create_openai_llm,
+    create_langchain_llm,
+    create_google_adk_llm,
     LLMProvider,
     StrategyType,
     configure_container,
     get_facade,
+    LLMFactory,
 )
 
 
@@ -100,7 +103,7 @@ def get_stock_recommendation(
     return generate_structured(
         prompt=prompt,
         schema=StockAnalysis,
-        model="gpt-4",  # Use better model for complex analysis
+        model="gpt-4o-mini",  # Use better model for complex analysis
         temperature=0.2,  # Lower temperature for more consistent analysis
     )
 
@@ -228,17 +231,17 @@ def demo_usage_patterns():
     print("=== FinSight LLM Module Usage Examples ===\n")
 
     # Pattern 1: Quick text generation (80% of use cases)
-    # print("1. Quick text generation:")
-    # try:
-    #     result = generate_text(
-    #         "Explain the concept of compound interest in simple terms",
-    #         model="gpt-4o-mini",
-    #     )
-    #     print(f"Result: {result}...\n")
-    # except Exception as e:
-    #     print(f"Error: {e}\n")
+    print("1. Quick text generation:")
+    try:
+        result = generate_text(
+            "Explain the concept of compound interest in simple terms",
+            model="gpt-4o-mini",
+        )
+        print(f"Result: {result[:100]}...\n")
+    except Exception as e:
+        print(f"Error: {e}\n")
 
-    # # Pattern 2: Structured output (15% of use cases)
+    # Pattern 2: Structured output (15% of use cases)
     print("2. Structured output generation:")
     try:
         analysis = generate_structured(
@@ -252,15 +255,145 @@ def demo_usage_patterns():
     except Exception as e:
         print(f"Error: {e}\n")
 
-    # # Pattern 3: Using the analyzer class (5% of use cases - for complex workflows)
-    # print("3. Using analyzer class:")
+    # Pattern 3: Provider comparison
+    print("3. All providers demo:")
+    demo_all_providers()
+
+    # Pattern 4: Provider-specific features
+    # demo_provider_specific_features()
+
+
+# Example 8: Demonstrate all three providers
+def demo_all_providers():
+    """
+    Demonstrate usage of all three LLM providers
+    """
+    print("=== Testing All LLM Providers ===\n")
+
+    test_prompt = "Explain what is a stock market in 2 sentences."
+
+    # Method 1: Using Factory
+    # print("1. Using Factory:")
+
     # try:
-    #     analyzer = FinancialAnalyzer()
-    #     portfolio = {"AAPL": 0.3, "GOOGL": 0.2, "MSFT": 0.3, "BONDS": 0.2}
-    #     insights = analyzer.analyze_portfolio(portfolio)
-    #     print(f"Portfolio analysis: {insights['analysis'][:100]}...\n")
+    #     # OpenAI via Factory
+    #     openai_llm = LLMFactory.get_llm(
+    #         provider=LLMProvider.OPENAI,
+    #         strategy=StrategyType.SIMPLE,
+    #         default_model="gpt-4o-mini",
+    #         api_key=os.getenv("OPENAI_API_KEY"),
+    #     )
+    #     result = openai_llm.simple_generate(test_prompt)
+    #     print(f"OpenAI Factory: {result[:100]}...")
     # except Exception as e:
-    #     print(f"Error: {e}\n")
+    #     print(f"OpenAI Factory Error: {e}")
+
+    # try:
+    #     # LangChain via Factory
+    #     langchain_llm = LLMFactory.get_llm(
+    #         provider=LLMProvider.LANGCHAIN,
+    #         strategy=StrategyType.SIMPLE,
+    #         model_name="gpt-4o-mini",
+    #         api_key=os.getenv("OPENAI_API_KEY"),
+    #         langchain_provider=LLMProvider.OPENAI,
+    #     )
+    #     result = langchain_llm.simple_generate(test_prompt)
+    #     print(f"LangChain Factory: {result[:100]}...")
+    # except Exception as e:
+    #     print(f"LangChain Factory Error: {e}")
+
+    try:
+        # Google ADK via Factory
+        google_adk_llm = LLMFactory.get_llm(
+            provider=LLMProvider.GOOGLE_AGENT_DEVELOPMENT_KIT,
+            strategy=StrategyType.SIMPLE,
+            default_model="gemini-2.0-flash",
+        )
+        result = google_adk_llm.simple_generate(test_prompt)
+        print(f"Google ADK Factory: {result[:100]}...")
+    except Exception as e:
+        print(f"Google ADK Factory Error: {e}")
+
+    print("\n2. Using Direct Creation:")
+
+    # try:
+    #     # OpenAI Direct
+    #     openai_direct = create_openai_llm(
+    #         model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY")
+    #     )
+    #     result = openai_direct.simple_generate(test_prompt)
+    #     print(f"OpenAI Direct: {result[:100]}...")
+    # except Exception as e:
+    #     print(f"OpenAI Direct Error: {e}")
+
+    # try:
+    #     # LangChain Direct
+    #     langchain_direct = create_langchain_llm(
+    #         model="gpt-3.5-turbo",
+    #         api_key=os.getenv("OPENAI_API_KEY"),
+    #         langchain_provider=LLMProvider.OPENAI,
+    #     )
+    #     result = langchain_direct.simple_generate(test_prompt)
+    #     print(f"LangChain Direct: {result[:100]}...")
+    # except Exception as e:
+    #     print(f"LangChain Direct Error: {e}")
+
+    try:
+        # Google ADK Direct
+        google_adk_direct = create_google_adk_llm(model="gemini-2.0-flash")
+        result = google_adk_direct.simple_generate(test_prompt)
+        print(f"Google ADK Direct: {result[:100]}...")
+    except Exception as e:
+        print(f"Google ADK Direct Error: {e}")
+
+
+def demo_provider_specific_features():
+    """
+    Demonstrate provider-specific features and use cases
+    """
+    print("\n=== Provider-Specific Features ===\n")
+
+    # OpenAI - Best for general purpose and structured output
+    print("1. OpenAI - Structured Analysis:")
+    try:
+        analysis = generate_structured(
+            prompt="Analyze TSLA stock: Price $200, High volatility, EV market leader",
+            schema=StockAnalysis,
+            provider="openai",
+            model="gpt-4o-mini",
+        )
+        print(f"   Recommendation: {analysis.recommendation}")
+        print(f"   Confidence: {analysis.confidence}")
+    except Exception as e:
+        print(f"   Error: {e}")
+
+    # LangChain - Good for complex workflows and multiple providers
+    print("\n2. LangChain - Multi-step Analysis:")
+    try:
+        configure_container(
+            provider=LLMProvider.LANGCHAIN,
+            strategy=StrategyType.CHAIN_OF_THOUGHT,
+            model="gpt-3.5-turbo",
+        )
+        facade = get_facade()
+        result = facade.generate_text(
+            "Should I invest in renewable energy stocks? Consider market trends.",
+            temperature=0.4,
+        )
+        print(f"   Analysis: {result[:150]}...")
+    except Exception as e:
+        print(f"   Error: {e}")
+
+    # Google ADK - Good for agent-based workflows
+    print("\n3. Google ADK - Agent-based Generation:")
+    try:
+        google_llm = create_google_adk_llm(model="gemini-pro")
+        result = google_llm.simple_generate(
+            "What are the top 3 financial metrics for evaluating a company?"
+        )
+        print(f"   Metrics: {result[:150]}...")
+    except Exception as e:
+        print(f"   Error: {e}")
 
 
 if __name__ == "__main__":

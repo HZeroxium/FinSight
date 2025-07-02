@@ -11,6 +11,8 @@ from .llm_interfaces import (
     LLMStrategyInterface,
 )
 from .adapters.openai_adapter import OpenAIAdapter, OpenAIConfig
+from .adapters.langchain_adapter import LangChainAdapter, LangChainConfig
+from .adapters.google_adk_adapter import GoogleADKAdapter, GoogleConfig
 from .llm_strategies import (
     SimpleStrategy,
     RetryStrategy,
@@ -153,9 +155,9 @@ class LLMFactory:
         if provider == LLMProvider.OPENAI:
             return cls._create_openai_adapter(**kwargs)
         elif provider == LLMProvider.LANGCHAIN:
-            raise NotImplementedError("Langchain adapter not implemented yet")
+            return cls._create_langchain_adapter(**kwargs)
         elif provider == LLMProvider.GOOGLE_AGENT_DEVELOPMENT_KIT:
-            raise NotImplementedError("Google ADK adapter not implemented yet")
+            return cls._create_google_adk_adapter(**kwargs)
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -179,6 +181,30 @@ class LLMFactory:
 
         config = OpenAIConfig(**openai_params)
         return OpenAIAdapter(config)
+
+    @classmethod
+    def _create_langchain_adapter(cls, **kwargs) -> LangChainAdapter:
+        """Create LangChain adapter with configuration"""
+        langchain_params = {
+            k: v
+            for k, v in kwargs.items()
+            if k in {"api_key", "model_name", "temperature", "max_tokens", "timeout"}
+        }
+
+        config = LangChainConfig(**langchain_params)
+        # Default to OpenAI provider for LangChain unless specified
+        provider = kwargs.get("langchain_provider", LLMProvider.OPENAI)
+        return LangChainAdapter(config, provider)
+
+    @classmethod
+    def _create_google_adk_adapter(cls, **kwargs) -> GoogleADKAdapter:
+        """Create Google ADK adapter with configuration"""
+        google_params = {
+            k: v for k, v in kwargs.items() if k in {"default_model", "timeout"}
+        }
+
+        config = GoogleConfig(**google_params)
+        return GoogleADKAdapter(config)
 
     @classmethod
     def _create_strategy(
@@ -241,6 +267,62 @@ class LLMFactory:
             provider=LLMProvider.OPENAI,
             strategy=strategy,
             api_key=api_key,
+            default_model=model,
+            **kwargs,
+        )
+
+    @classmethod
+    def create_langchain_llm(
+        cls,
+        api_key: Optional[str] = None,
+        model: str = "gpt-3.5-turbo",
+        langchain_provider: LLMProvider = LLMProvider.OPENAI,
+        strategy: StrategyType = StrategyType.SIMPLE,
+        **kwargs,
+    ) -> LLMInterface:
+        """
+        Convenience method to create LangChain LLM
+
+        Args:
+            api_key: API key for the underlying provider
+            model: Model to use
+            langchain_provider: Underlying provider (OpenAI, Gemini, etc.)
+            strategy: Generation strategy
+            **kwargs: Additional configuration
+
+        Returns:
+            LangChain LLM instance
+        """
+        return cls.create_llm(
+            provider=LLMProvider.LANGCHAIN,
+            strategy=strategy,
+            api_key=api_key,
+            model_name=model,
+            langchain_provider=langchain_provider,
+            **kwargs,
+        )
+
+    @classmethod
+    def create_google_adk_llm(
+        cls,
+        model: str = "gemini-pro",
+        strategy: StrategyType = StrategyType.SIMPLE,
+        **kwargs,
+    ) -> LLMInterface:
+        """
+        Convenience method to create Google ADK LLM
+
+        Args:
+            model: Model to use (supports various providers through LiteLLM)
+            strategy: Generation strategy
+            **kwargs: Additional configuration
+
+        Returns:
+            Google ADK LLM instance
+        """
+        return cls.create_llm(
+            provider=LLMProvider.GOOGLE_AGENT_DEVELOPMENT_KIT,
+            strategy=strategy,
             default_model=model,
             **kwargs,
         )

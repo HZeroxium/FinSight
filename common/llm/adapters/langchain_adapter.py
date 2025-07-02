@@ -23,7 +23,7 @@ from ..llm_interfaces import (
     GenerationConfig,
     LLMMessage,
 )
-from ...logger import LoggerFactory, LoggerType, LogLevel
+from logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
     name="langchain-adapter", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
@@ -104,9 +104,10 @@ class LangChainAdapter(LLMAdapterInterface):
     def is_available(self) -> bool:
         """Check if service is available"""
         try:
-            messages = [HumanMessage(content="test")]
-            self.client.invoke(messages)
-            return True
+            # Simple availability check
+            test_messages = [HumanMessage(content="ping")]
+            response = self.client.invoke(test_messages)
+            return bool(response and response.content)
         except Exception as e:
             logger.warning(f"LangChain service not available: {e}")
             return False
@@ -166,20 +167,58 @@ class LangChainAdapter(LLMAdapterInterface):
         model: Optional[str] = None,
         config: Optional[GenerationConfig] = None,
     ) -> BaseModel:
-        """Generate structured output - simplified for LangChain"""
-        # Add schema instruction to prompt
-        schema_prompt = f"{prompt}\n\nPlease respond with valid JSON matching this schema: {output_schema.model_json_schema()}"
+        """
+        Generate structured output using LangChain's with_structured_output.
 
-        result = self.simple_generate(schema_prompt, model, config)
+        Args:
+            prompt: The user prompt.
+            output_schema: A Pydantic model defining the desired output structure.
+            model: Optional override of the model name.
+            config: Optional GenerationConfig for temperature, tokens, etc.
 
-        try:
-            import json
+        Returns:
+            An instance of output_schema populated with the LLM’s response.
+        """
+        # Choose model name and config
+        model_name = model or self.config.model_name
+        gen_config = config or GenerationConfig()
 
-            parsed_data = json.loads(result)
-            return output_schema(**parsed_data)
-        except Exception as e:
-            logger.error(f"Failed to parse structured output: {e}")
-            raise ValueError(f"Failed to parse response according to schema: {e}")
+        # Create a fresh ChatOpenAI (or ChatGoogleGenerativeAI) client for this request
+        if self.provider_type == LLMProvider.OPENAI:
+            llm_client = ChatOpenAI(
+                model_name=model_name,
+                temperature=gen_config.temperature,
+                openai_api_key=self.config.api_key,
+                max_tokens=gen_config.max_tokens,
+                request_timeout=self.config.timeout,
+            )
+        else:
+            llm_client = ChatGoogleGenerativeAI(
+                model=model_name,
+                temperature=gen_config.temperature,
+                google_api_key=self.config.api_key,
+            )
+
+        # Bind the Pydantic schema to the model, creating a structured-output Runnable
+        structured_llm = llm_client.with_structured_output(output_schema)
+
+        start_time = time.time()
+        # Invoke the model; returns a Pydantic instance directly
+        structured_response: BaseModel = structured_llm.invoke(prompt)
+        elapsed = time.time() - start_time
+
+        # Record statistics (we approximate tokens by word count here)
+        approx_tokens = len(str(structured_response).split())
+        self.stats.record_request(
+            success=True,
+            tokens_used=approx_tokens,
+            response_time=elapsed,
+        )
+        logger.info(
+            f"LangChain structured generation successful ({approx_tokens} tokens)"
+        )
+
+        return structured_response
 
     def simple_generate(
         self,

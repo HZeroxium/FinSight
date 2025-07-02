@@ -21,6 +21,23 @@ def create_openai_llm(api_key: str = None, model: str = "gpt-4o-mini", **kwargs)
     return LLMFactory.create_openai_llm(api_key=api_key, model=model, **kwargs)
 
 
+def create_langchain_llm(
+    api_key: str = None,
+    model: str = "gpt-3.5-turbo",
+    langchain_provider: LLMProvider = LLMProvider.OPENAI,
+    **kwargs
+):
+    """Create LangChain LLM quickly"""
+    return LLMFactory.create_langchain_llm(
+        api_key=api_key, model=model, langchain_provider=langchain_provider, **kwargs
+    )
+
+
+def create_google_adk_llm(model: str = "gemini-pro", **kwargs):
+    """Create Google ADK LLM quickly"""
+    return LLMFactory.create_google_adk_llm(model=model, **kwargs)
+
+
 def generate_text(
     prompt: str, provider: str = "openai", model: str = "gpt-4o-mini", **kwargs
 ) -> str:
@@ -54,6 +71,8 @@ __all__ = [
     "get_llm",
     "get_facade",
     "create_openai_llm",
+    "create_langchain_llm",
+    "create_google_adk_llm",
     "generate_text",
     "generate_structured",
 ]

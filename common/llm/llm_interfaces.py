@@ -14,7 +14,7 @@ class LLMProvider(Enum):
     GEMINI = "gemini"  # Raw Google Gemini models
     LANGCHAIN = "langchain"  # LangChain wrapper for multiple providers
     GOOGLE_AGENT_DEVELOPMENT_KIT = (
-        "google_adk"  # Google Agent Development Kit (ADK) for Gemini and other models
+        "google-adk"  # Google Agent Development Kit (ADK) for Gemini and other models
     )
 
 
