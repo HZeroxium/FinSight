@@ -1,3 +1,5 @@
+# common/llm/adapters/openai_adapter.py
+
 import json
 import time
 from typing import List, Optional, Type
@@ -22,7 +24,7 @@ from ..llm_interfaces import (
     LLMMessage,
     LLMModel,
 )
-from ...logger import LoggerFactory, LoggerType, LogLevel
+from logger import LoggerFactory, LoggerType, LogLevel
 
 # Create logger for OpenAI adapter
 logger = LoggerFactory.get_logger(

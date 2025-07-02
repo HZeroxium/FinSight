@@ -1,3 +1,5 @@
+# common/llm/adapters/langchain_adapter.py
+
 import time
 from typing import List, Optional, Type
 from pydantic import BaseModel, Field
@@ -69,7 +71,7 @@ class LangChainAdapter(LLMAdapterInterface):
                 max_tokens=self.config.max_tokens,
                 request_timeout=self.config.timeout,
             )
-        elif self.provider_type == LLMProvider.GOOGLE_ADK:
+        elif self.provider_type == LLMProvider.GEMINI:
             return ChatGoogleGenerativeAI(
                 model=self.config.model_name,
                 temperature=self.config.temperature,
@@ -95,7 +97,7 @@ class LangChainAdapter(LLMAdapterInterface):
                 "gpt-4o",
                 "gpt-4o-mini",
             ]
-        elif self.provider_type == LLMProvider.GOOGLE_ADK:
+        elif self.provider_type == LLMProvider.GEMINI:
             return ["gemini-pro", "gemini-pro-vision"]
         return []
 

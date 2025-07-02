@@ -1,15 +1,12 @@
-import time
+# common/llm/adapters/google_adk_adapter.py
+
 import json
-from typing import List, Optional, Type, Dict, Any
+import time
+import uuid
+from typing import List, Optional, Type
+
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
-
-try:
-    import google.generativeai as genai
-
-    GOOGLE_AVAILABLE = True
-except ImportError:
-    GOOGLE_AVAILABLE = False
 
 from ..llm_interfaces import (
     LLMAdapterInterface,
@@ -20,7 +17,16 @@ from ..llm_interfaces import (
     GenerationConfig,
     LLMMessage,
 )
-from ...logger import LoggerFactory, LoggerType, LogLevel
+from logger import LoggerFactory, LoggerType, LogLevel
+
+# ADK imports
+from google.adk.agents import LlmAgent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.adk.artifacts import InMemoryArtifactService
+from google.adk.memory import InMemoryMemoryService
+from google.adk.models.lite_llm import LiteLlm
+from google.genai import types
 
 logger = LoggerFactory.get_logger(
     name="google-adk-adapter", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
@@ -28,135 +34,145 @@ logger = LoggerFactory.get_logger(
 
 
 class GoogleConfig(BaseSettings):
-    """Configuration for Google AI SDK adapter"""
+    """Configuration for Google ADK adapter"""
 
-    api_key: Optional[str] = Field(None, description="Google API key")
+    # Default to a Gemini model, or any provider/model string LiteLlm supports
     default_model: str = Field(default="gemini-pro", description="Default model")
-    timeout: int = Field(default=30, description="Request timeout")
+    timeout: int = Field(default=30, description="LLM call timeout (s)")
 
     class Config:
-        env_prefix = "GOOGLE_"
+        env_prefix = "GOOGLE_ADK_"
 
 
 class GoogleADKAdapter(LLMAdapterInterface):
-    """Google AI SDK adapter implementation"""
+    """Google ADK adapter implementation using LiteLlm"""
 
     def __init__(self, config: GoogleConfig):
-        if not GOOGLE_AVAILABLE:
-            raise ImportError(
-                "Google AI SDK not available. Install with: pip install google-generativeai"
-            )
-
+        # initialize config and stats
         self.config = config
         self.stats = LLMStats()
 
-        # Configure API key
-        if config.api_key:
-            genai.configure(api_key=config.api_key)
-
+        # create a LiteLlm client for direct LLM calls
+        self.llm = LiteLlm(model=self.config.default_model)
         logger.info(
-            f"Initialized Google AI SDK adapter with model: {config.default_model}"
+            f"Initialized Google ADK adapter with model: {self.config.default_model}"
         )
 
     def get_provider(self) -> LLMProvider:
-        return LLMProvider.GOOGLE_ADK
+        return LLMProvider.GOOGLE_AGENT_DEVELOPMENT_KIT
 
     def validate_model(self, model: str) -> bool:
-        """Validate if model is supported"""
-        supported = [
-            "gemini-pro",
-            "gemini-pro-vision",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash",
-        ]
-        return model in supported
+        # LiteLlm will error if unsupported; we do a basic length check here
+        return bool(model)
 
     def get_supported_models(self) -> List[str]:
-        """Get supported models"""
-        return ["gemini-pro", "gemini-pro-vision", "gemini-1.5-pro", "gemini-1.5-flash"]
+        # We don't maintain the full list here; adapters typically return their default
+        return [self.config.default_model]
 
     def is_available(self) -> bool:
-        """Check if Google AI service is available"""
         try:
-            model = genai.GenerativeModel(self.config.default_model)
-            model.generate_content(
-                "test",
-                generation_config=genai.types.GenerationConfig(max_output_tokens=1),
+            # Quick sanity check
+            _ = self.llm.generate_content(
+                types.LlmRequest(
+                    model=self.config.default_model,
+                    messages=[
+                        types.Content(role="user", parts=[types.Part(text="ping")])
+                    ],
+                )
             )
             return True
         except Exception as e:
-            logger.warning(f"Google AI service not available: {e}")
+            logger.warning(f"Google ADK service not available: {e}")
             return False
 
     def generate(self, request: LLMRequest) -> LLMResponse:
-        """Generate response using Google AI SDK"""
         start_time = time.time()
 
+        # prepare a fresh ADK session
+        session_svc = InMemorySessionService()
+        artifact_svc = InMemoryArtifactService()
+        memory_svc = InMemoryMemoryService()
+        session_id = str(uuid.uuid4())
+        user_id = "adapter"
+
+        session_svc.create_session(
+            app_name="google-adapter",
+            user_id=user_id,
+            session_id=session_id,
+            state={},
+        )
+
+        # wrap messages into a single instruction string
+        # we append system prompt first if present
+        instruction = ""
+        if request.system_prompt:
+            instruction += request.system_prompt + "\n\n"
+        instruction += "\n".join(
+            f"{msg.role}: {msg.content}" for msg in request.messages
+        )
+
+        # create the ADK agent
+        agent = LlmAgent(
+            name="google-adapter",
+            model=LiteLlm(model=request.model),
+            instruction=instruction,
+            input_schema=None,
+            output_schema=request.output_schema,
+            disallow_transfer_to_parent=True,
+            disallow_transfer_to_peers=True,
+        )
+
+        # runner to execute
+        runner = Runner(
+            app_name="google-adapter",
+            agent=agent,
+            session_service=session_svc,
+            artifact_service=artifact_svc,
+            memory_service=memory_svc,
+        )
+
+        # build the Content object
+        user_content = types.Content(role="user", parts=[types.Part(text=instruction)])
+
         try:
-            model = genai.GenerativeModel(request.model)
+            # collect streamed or sync parts
+            response_parts: List[str] = []
+            for event in runner.run(
+                session_id=session_id,
+                user_id=user_id,
+                new_message=user_content,
+            ):
+                if getattr(event, "content", None):
+                    for part in event.content.parts:
+                        if part.text:
+                            response_parts.append(part.text)
 
-            # Prepare content
-            content_parts = []
+            full_text = "".join(response_parts)
+            usage = {"tokens": len(full_text.split())}  # rough token count
 
-            # Add system prompt if provided
-            if request.system_prompt:
-                content_parts.append(f"System: {request.system_prompt}")
-
-            # Add conversation messages
-            for msg in request.messages:
-                content_parts.append(f"{msg.role.capitalize()}: {msg.content}")
-
-            content = "\n".join(content_parts)
-
-            # Configure generation
-            generation_config = genai.types.GenerationConfig(
-                temperature=request.config.temperature,
-                top_p=request.config.top_p,
-                max_output_tokens=request.config.max_tokens,
-                stop_sequences=request.config.stop,
-            )
-
-            # Handle structured output
-            if request.output_schema:
-                content += f"\n\nPlease respond with valid JSON that matches this schema: {request.output_schema.model_json_schema()}"
-
-            # Generate response
-            response = model.generate_content(
-                content, generation_config=generation_config
-            )
-
-            response_text = response.text
-            response_time = time.time() - start_time
-
-            # Parse structured output if needed
             parsed_output = None
             if request.output_schema:
-                try:
-                    parsed_data = json.loads(response_text)
-                    parsed_output = request.output_schema(**parsed_data)
-                except Exception as e:
-                    logger.error(f"Failed to parse structured output: {e}")
-                    raise ValueError(
-                        f"Failed to parse response according to schema: {e}"
-                    )
+                data = json.loads(full_text)
+                parsed_output = request.output_schema(**data)
 
-            # Record stats
-            self.stats.record_request(success=True, response_time=response_time)
-
-            logger.info("Google AI generation successful")
+            elapsed = time.time() - start_time
+            self.stats.record_request(
+                success=True, tokens_used=usage["tokens"], response_time=elapsed
+            )
+            logger.info(f"Google ADK generation successful ({usage['tokens']} tokens)")
 
             return LLMResponse(
-                content=response_text,
+                content=full_text,
                 model=request.model,
-                usage={"tokens": len(response_text.split())},  # Approximate
-                metadata={"response_time": response_time},
+                usage=usage,
+                metadata={"response_time": elapsed},
                 parsed_output=parsed_output,
             )
 
         except Exception as e:
-            response_time = time.time() - start_time
-            self.stats.record_request(success=False, response_time=response_time)
-            logger.error(f"Google AI generation failed: {e}")
+            elapsed = time.time() - start_time
+            self.stats.record_request(success=False, response_time=elapsed)
+            logger.error(f"Google ADK generation failed: {e}")
             raise
 
     def generate_with_schema(
@@ -166,22 +182,16 @@ class GoogleADKAdapter(LLMAdapterInterface):
         model: Optional[str] = None,
         config: Optional[GenerationConfig] = None,
     ) -> BaseModel:
-        """Generate structured output"""
-        model = model or self.config.default_model
-        config = config or GenerationConfig()
-
-        request = LLMRequest(
-            messages=[LLMMessage(role="user", content=prompt)],
-            model=model,
-            config=config,
-            output_schema=output_schema,
+        response = self.generate(
+            LLMRequest(
+                messages=[LLMMessage(role="user", content=prompt)],
+                model=model or self.config.default_model,
+                config=config or GenerationConfig(),
+                output_schema=output_schema,
+            )
         )
-
-        response = self.generate(request)
-
         if response.parsed_output is None:
             raise ValueError("Failed to generate structured output")
-
         return response.parsed_output
 
     def simple_generate(
@@ -190,17 +200,13 @@ class GoogleADKAdapter(LLMAdapterInterface):
         model: Optional[str] = None,
         config: Optional[GenerationConfig] = None,
     ) -> str:
-        """Simple text generation"""
-        model = model or self.config.default_model
-        config = config or GenerationConfig()
-
-        request = LLMRequest(
-            messages=[LLMMessage(role="user", content=prompt)],
-            model=model,
-            config=config,
+        response = self.generate(
+            LLMRequest(
+                messages=[LLMMessage(role="user", content=prompt)],
+                model=model or self.config.default_model,
+                config=config or GenerationConfig(),
+            )
         )
-
-        response = self.generate(request)
         return response.content
 
     def get_stats(self) -> LLMStats:
@@ -208,4 +214,4 @@ class GoogleADKAdapter(LLMAdapterInterface):
 
     def reset_stats(self) -> None:
         self.stats = LLMStats()
-        logger.info("Google AI adapter statistics reset")
+        logger.info("Google ADK adapter statistics reset")

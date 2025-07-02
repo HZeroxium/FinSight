@@ -1,3 +1,5 @@
+# common/llm/di_container.py
+
 from typing import Optional, Dict, Any
 from dependency_injector import containers, providers
 from pydantic_settings import BaseSettings
@@ -5,7 +7,7 @@ from pydantic_settings import BaseSettings
 from .llm_interfaces import LLMInterface
 from .llm_factory import LLMFactory, LLMProvider, StrategyType
 from .llm_facade import LLMFacade
-from ..logger import LoggerFactory, LoggerType, LogLevel
+from logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
     name="llm-di-container", logger_type=LoggerType.STANDARD, level=LogLevel.INFO

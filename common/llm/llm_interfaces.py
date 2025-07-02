@@ -1,5 +1,7 @@
+# common/llm/llm_interfaces.py
+
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Dict, List, Union, Type
+from typing import Any, Optional, Dict, List, Type
 from enum import Enum
 from pydantic import BaseModel, Field
 import time
@@ -8,9 +10,12 @@ import time
 class LLMProvider(Enum):
     """Supported LLM providers"""
 
-    OPENAI = "openai"
-    LANGCHAIN = "langchain"
-    GOOGLE_ADK = "google_adk"
+    OPENAI = "openai"  # Raw OpenAI API
+    GEMINI = "gemini"  # Raw Google Gemini models
+    LANGCHAIN = "langchain"  # LangChain wrapper for multiple providers
+    GOOGLE_AGENT_DEVELOPMENT_KIT = (
+        "google_adk"  # Google Agent Development Kit (ADK) for Gemini and other models
+    )
 
 
 class LLMModel(Enum):

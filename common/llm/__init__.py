@@ -1,3 +1,5 @@
+# common/llm/__init__.py
+
 """LLM module for FinSight - Simplified LLM integration with multiple providers"""
 
 from .llm_interfaces import (

@@ -1,4 +1,6 @@
-from typing import Optional, Dict, Any, Type
+# common/llm/llm_factory.py
+
+from typing import Optional, Dict, Any
 from enum import Enum
 from pydantic import BaseModel, Field
 
@@ -17,11 +19,15 @@ from .llm_strategies import (
     ChainOfThoughtStrategy,
     CostOptimizedStrategy,
 )
-from ..logger import LoggerFactory, LoggerType, LogLevel
+from logger import LoggerFactory, LoggerType, LogLevel
 
 # Create logger for factory
 logger = LoggerFactory.get_logger(
-    name="llm-factory", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
+    name="llm-factory",
+    logger_type=LoggerType.STANDARD,
+    level=LogLevel.INFO,
+    file_level=LogLevel.DEBUG,
+    log_file="logs/llm_factory.log",
 )
 
 
@@ -148,7 +154,7 @@ class LLMFactory:
             return cls._create_openai_adapter(**kwargs)
         elif provider == LLMProvider.LANGCHAIN:
             raise NotImplementedError("Langchain adapter not implemented yet")
-        elif provider == LLMProvider.GOOGLE_ADK:
+        elif provider == LLMProvider.GOOGLE_AGENT_DEVELOPMENT_KIT:
             raise NotImplementedError("Google ADK adapter not implemented yet")
         else:
             raise ValueError(f"Unknown provider: {provider}")

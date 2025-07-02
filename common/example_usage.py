@@ -10,7 +10,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 # Import the LLM module
-from . import (
+from llm import (
     generate_text,
     generate_structured,
     create_openai_llm,
@@ -228,17 +228,17 @@ def demo_usage_patterns():
     print("=== FinSight LLM Module Usage Examples ===\n")
 
     # Pattern 1: Quick text generation (80% of use cases)
-    print("1. Quick text generation:")
-    try:
-        result = generate_text(
-            "Explain the concept of compound interest in simple terms",
-            model="gpt-4o-mini",
-        )
-        print(f"Result: {result[:100]}...\n")
-    except Exception as e:
-        print(f"Error: {e}\n")
+    # print("1. Quick text generation:")
+    # try:
+    #     result = generate_text(
+    #         "Explain the concept of compound interest in simple terms",
+    #         model="gpt-4o-mini",
+    #     )
+    #     print(f"Result: {result}...\n")
+    # except Exception as e:
+    #     print(f"Error: {e}\n")
 
-    # Pattern 2: Structured output (15% of use cases)
+    # # Pattern 2: Structured output (15% of use cases)
     print("2. Structured output generation:")
     try:
         analysis = generate_structured(
@@ -252,15 +252,15 @@ def demo_usage_patterns():
     except Exception as e:
         print(f"Error: {e}\n")
 
-    # Pattern 3: Using the analyzer class (5% of use cases - for complex workflows)
-    print("3. Using analyzer class:")
-    try:
-        analyzer = FinancialAnalyzer()
-        portfolio = {"AAPL": 0.3, "GOOGL": 0.2, "MSFT": 0.3, "BONDS": 0.2}
-        insights = analyzer.analyze_portfolio(portfolio)
-        print(f"Portfolio analysis: {insights['analysis'][:100]}...\n")
-    except Exception as e:
-        print(f"Error: {e}\n")
+    # # Pattern 3: Using the analyzer class (5% of use cases - for complex workflows)
+    # print("3. Using analyzer class:")
+    # try:
+    #     analyzer = FinancialAnalyzer()
+    #     portfolio = {"AAPL": 0.3, "GOOGL": 0.2, "MSFT": 0.3, "BONDS": 0.2}
+    #     insights = analyzer.analyze_portfolio(portfolio)
+    #     print(f"Portfolio analysis: {insights['analysis'][:100]}...\n")
+    # except Exception as e:
+    #     print(f"Error: {e}\n")
 
 
 if __name__ == "__main__":
