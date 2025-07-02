@@ -12,10 +12,10 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
-from .data_storage import DataStorage
+from .market_data_storage import MarketDataStorage
 
 
-class DataAggregator:
+class MarketDataAggregator:
     """Aggregates market data into unified datasets for ML training"""
 
     def __init__(self, base_dir: str = "data", logger_name: str = "data_aggregator"):
@@ -35,7 +35,9 @@ class DataAggregator:
         )
 
         # Initialize dataset storage
-        self.dataset_storage = DataStorage(base_dir=str(self.base_dir / "datasets"))
+        self.dataset_storage = MarketDataStorage(
+            base_dir=str(self.base_dir / "datasets")
+        )
 
     def aggregate_symbol_data(
         self,

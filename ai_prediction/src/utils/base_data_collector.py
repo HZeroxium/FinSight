@@ -13,12 +13,9 @@ from functools import wraps
 import pandas as pd
 
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
-from .data_storage import DataStorage
+from .market_data_storage import MarketDataStorage
 from .market_data_processor import MarketDataProcessor
 from ..core.config import ConfigManager
-
-
-
 
 
 class BaseDataCollector(ABC):
@@ -59,7 +56,7 @@ class BaseDataCollector(ABC):
 
         # Initialize storage and processor
         storage_base_dir = base_dir or f"data/{exchange_name}"
-        self.storage = DataStorage(base_dir=storage_base_dir)
+        self.storage = MarketDataStorage(base_dir=storage_base_dir)
         self.processor = MarketDataProcessor()
 
         # Create dataset structure

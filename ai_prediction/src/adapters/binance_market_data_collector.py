@@ -1,3 +1,5 @@
+# adapters/binance_market_data_collector.py
+
 """
 Binance Market Data Collector Implementation
 

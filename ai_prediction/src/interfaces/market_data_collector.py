@@ -1,3 +1,5 @@
+# interfaces/market_data_collector.py
+
 """
 Market Data Collector Interface
 
@@ -6,8 +8,7 @@ Focuses solely on data collection logic without storage concerns.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional
-from datetime import datetime
+from typing import Dict, List, Any
 
 
 class MarketDataCollector(ABC):

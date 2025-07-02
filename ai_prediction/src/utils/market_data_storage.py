@@ -14,7 +14,7 @@ from datetime import datetime
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
 
-class DataStorage:
+class MarketDataStorage:
     """Utility class for saving market data in various formats"""
 
     def __init__(self, base_dir: str = "data", logger_name: str = "data_storage"):

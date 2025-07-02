@@ -5,7 +5,7 @@ Utilities package for market data collection and processing.
 Provides common functionality for data storage, processing, and configuration.
 """
 
-from .data_storage import DataStorage
+from .market_data_storage import MarketDataStorage
 from .market_data_processor import MarketDataProcessor
 from ..core.config import (
     ConfigManager,
@@ -15,12 +15,12 @@ from ..core.config import (
 )
 from .base_data_collector import BaseDataCollector
 from .exchange_utils import ExchangeUtils
-from .data_validation import DataValidator
-from .data_aggregator import DataAggregator
+from .market_data_validator import DataValidator
+from .market_data_aggregator import MarketDataAggregator
 from .decorators import retry_on_error
 
 __all__ = [
-    "DataStorage",
+    "MarketDataStorage",
     "MarketDataProcessor",
     "ConfigManager",
     "ExchangeConfig",
@@ -30,5 +30,5 @@ __all__ = [
     "retry_on_error",
     "ExchangeUtils",
     "DataValidator",
-    "DataAggregator",
+    "MarketDataAggregator",
 ]

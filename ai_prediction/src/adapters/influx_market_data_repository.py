@@ -1,3 +1,5 @@
+# adapters/influx_market_data_repository.py
+
 """
 InfluxDB Market Data Repository Implementation
 
@@ -7,7 +9,6 @@ Provides efficient storage and querying for large volumes of market data.
 
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
-import json
 
 try:
     from influxdb_client import InfluxDBClient, Point, WritePrecision

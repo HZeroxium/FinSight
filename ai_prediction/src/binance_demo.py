@@ -33,7 +33,7 @@ from .utils import (
     ExchangeUtils,
     retry_on_error,
     DataValidator,
-    DataAggregator,
+    MarketDataAggregator,
 )
 
 
@@ -66,7 +66,7 @@ class BinanceDataCollector(BaseDataCollector):
         self.validator = DataValidator()
 
         # Initialize data aggregator
-        self.aggregator = DataAggregator(base_dir="data")
+        self.aggregator = MarketDataAggregator(base_dir="data")
 
         # Initialize Binance client
         self._initialize_client()

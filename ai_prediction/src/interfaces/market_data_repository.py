@@ -1,3 +1,5 @@
+# interfaces/market_data_repository.py
+
 """
 Market Data Repository Interface
 
@@ -358,4 +360,3 @@ class MarketDataRepository(ABC):
             RepositoryError: If optimization fails
         """
         pass
-
