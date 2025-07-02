@@ -7,7 +7,7 @@ Implements the MarketDataCollector interface for collecting data from Binance ex
 Focuses on OHLCV data collection using python-binance library.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Dict, List, Any, Optional
 import time
 
