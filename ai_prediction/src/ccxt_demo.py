@@ -32,7 +32,6 @@ from .utils import (
     BaseDataCollector,
     ExchangeUtils,
     retry_on_error,
-    RealTimeDataStorage,
     DataValidator,
 )
 
@@ -47,7 +46,6 @@ class CCXTDataCollector(BaseDataCollector):
         exchange_ids: Optional[List[str]] = None,
         enable_rate_limit: bool = True,
         sandbox: bool = False,
-        enable_realtime: bool = False,
         logger_name: str = "ccxt_collector",
     ):
         """
@@ -65,15 +63,7 @@ class CCXTDataCollector(BaseDataCollector):
         self.exchange_ids = exchange_ids or ["binance", "kraken"]
         self.enable_rate_limit = enable_rate_limit
         self.sandbox = sandbox
-        self.enable_realtime = enable_realtime
         self.exchanges: Dict[str, ccxt.Exchange] = {}
-
-        # Initialize real-time storage if enabled
-        self.realtime_storage = None
-        if self.enable_realtime:
-            self.realtime_storage = RealTimeDataStorage(
-                base_dir="data/ccxt/realtime", buffer_size=1000, flush_interval=30
-            )
 
         # Initialize data validator
         self.validator = DataValidator()

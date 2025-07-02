@@ -32,7 +32,6 @@ from .utils import (
     BaseDataCollector,
     ExchangeUtils,
     retry_on_error,
-    RealTimeDataStorage,
     DataValidator,
     DataAggregator,
 )
@@ -45,7 +44,6 @@ class BinanceDataCollector(BaseDataCollector):
         self,
         testnet: bool = False,
         rate_limit: bool = True,
-        enable_realtime: bool = False,
         logger_name: str = "binance_collector",
     ):
         """
@@ -61,16 +59,8 @@ class BinanceDataCollector(BaseDataCollector):
 
         self.testnet = testnet
         self.rate_limit = rate_limit
-        self.enable_realtime = enable_realtime
         self.client = None
         self.twm = None
-
-        # Initialize real-time storage if enabled
-        self.realtime_storage = None
-        if self.enable_realtime:
-            self.realtime_storage = RealTimeDataStorage(
-                base_dir="data/binance/realtime", buffer_size=1000, flush_interval=30
-            )
 
         # Initialize data validator
         self.validator = DataValidator()
@@ -1328,7 +1318,7 @@ def main():
             # "4h",
             # "1d",
         ]
-        
+
         # Configuration for data collection
         days_back = 2874  # Now this will actually fetch 1000 days of data
         max_trades_per_symbol = 10000  # Fetch up to 10k trades per symbol
