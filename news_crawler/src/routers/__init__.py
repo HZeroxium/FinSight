@@ -4,9 +4,8 @@
 FastAPI routers for REST API endpoints.
 """
 
-from . import search, crawler
+from . import search
 
 __all__ = [
     "search",
-    "crawler",
 ]

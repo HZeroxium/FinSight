@@ -14,8 +14,6 @@ from ..schemas.search_schemas import (
     SearchResponseSchema,
     SearchResultSchema,
 )
-from ..services.crawler_service import CrawlerService
-from ..repositories.article_repository import ArticleRepository
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 from ..common.cache import CacheFactory, CacheType
 from ..core.config import settings
@@ -35,8 +33,6 @@ class SearchService:
         self,
         search_engine: SearchEngine,
         message_broker: MessageBroker,
-        article_repository: ArticleRepository,
-        crawler_service: CrawlerService,
     ):
         """
         Initialize search service.
@@ -49,8 +45,6 @@ class SearchService:
         """
         self.search_engine = search_engine
         self.message_broker = message_broker
-        self.article_repository = article_repository
-        self.crawler_service = crawler_service
 
         # Initialize cache for search results with enhanced configuration
         try:
