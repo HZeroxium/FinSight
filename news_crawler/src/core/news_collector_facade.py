@@ -8,7 +8,7 @@ from ..schemas.news_schemas import (
     NewsCollectionResult,
     NewsSource,
 )
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class NewsCollectorFacade:

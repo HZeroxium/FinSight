@@ -1,3 +1,5 @@
+# adapters/rss_news_collector.py
+
 import asyncio
 import aiohttp
 import feedparser
@@ -9,7 +11,7 @@ from ..schemas.news_schemas import (
     NewsCollectorConfig,
 )
 from ..core.rss_parsing_strategies import get_parsing_strategy
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class RSSNewsCollector(NewsCollectorInterface):
@@ -81,6 +83,8 @@ class RSSNewsCollector(NewsCollectorInterface):
                     continue
 
             self.logger.info(f"Successfully collected {len(items)} news items")
+
+            self.logger.debug(items)
 
             return NewsCollectionResult(
                 source=self.config.source, items=items, success=True

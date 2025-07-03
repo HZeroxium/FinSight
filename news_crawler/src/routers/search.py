@@ -82,34 +82,6 @@ async def get_financial_sentiment(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/trending", response_model=SearchResponseSchema)
-async def get_trending_topics(
-    topic: str = Query("finance", description="Topic category"),
-    search_service: SearchService = Depends(get_search_service),
-) -> SearchResponseSchema:
-    """
-    Get trending topics in a specific category.
-
-    Args:
-        topic: Topic category
-        search_service: Injected search service
-
-    Returns:
-        SearchResponseSchema: Trending topics
-    """
-    try:
-        logger.info(f"Trending topics search for {topic}")
-        result = await search_service.get_trending_topics(topic)
-        return result
-
-    except SearchEngineError as e:
-        logger.error(f"Trending topics search failed: {e.message}")
-        raise HTTPException(status_code=502, detail=e.message)
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
 @router.get("/health", response_model=HealthCheckSchema)
 async def health_check(
     search_service: SearchService = Depends(get_search_service),

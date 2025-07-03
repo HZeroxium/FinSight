@@ -4,7 +4,7 @@ from enum import Enum
 from ..interfaces.news_collector_interface import NewsCollectorInterface
 from ..adapters.rss_news_collector import RSSNewsCollector
 from ..schemas.news_schemas import NewsCollectorConfig, NewsSource
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class CollectorType(Enum):

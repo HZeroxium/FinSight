@@ -4,7 +4,7 @@
 Search service layer for business logic.
 """
 
-from typing import List, Dict, Any
+from typing import Dict, Any
 from datetime import datetime, timezone
 
 from ..interfaces.search_engine import SearchEngine, SearchEngineError
@@ -17,7 +17,7 @@ from ..schemas.search_schemas import (
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 from ..common.cache import CacheFactory, CacheType
 from ..core.config import settings
-from ..schemas.message_schemas import ArticleMessageSchema, SearchEventMessageSchema
+from ..schemas.message_schemas import ArticleMessageSchema
 
 logger = LoggerFactory.get_logger(
     name="search-service", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
@@ -122,20 +122,6 @@ class SearchService:
             # Apply business logic filters
             filtered_response = self._filter_results(schema_response)
 
-            # Perform deep crawling if enabled
-            if enhanced_request.enable_crawler and filtered_response.results:
-                try:
-                    crawled_results = await self._deep_crawl_search(
-                        enhanced_request, filtered_response
-                    )
-                    if crawled_results:
-                        filtered_response = self._merge_search_results(
-                            filtered_response, crawled_results
-                        )
-                        logger.info(f"Added {len(crawled_results)} crawled results")
-                except Exception as crawl_error:
-                    logger.warning(f"Deep crawling failed: {crawl_error}")
-
             # Cache the result
             try:
                 cache_data = filtered_response.model_dump()
@@ -146,9 +132,6 @@ class SearchService:
 
             # Publish articles for sentiment analysis
             await self._publish_articles_for_sentiment_analysis(filtered_response)
-
-            # # Publish search event for analytics
-            # await self._publish_search_event(request, filtered_response)
 
             logger.info(
                 f"Search completed with {len(filtered_response.results)} final results"
@@ -426,62 +409,6 @@ class SearchService:
         except Exception as e:
             logger.error(f"Failed to publish articles for sentiment analysis: {str(e)}")
 
-    async def _publish_search_event(
-        self, request: SearchRequestSchema, response: SearchResponseSchema
-    ) -> None:
-        """
-        Publish search event for analytics using schema.
-
-        Args:
-            request: Search request
-            response: Search response
-        """
-        try:
-            # Create search event using schema
-            event = SearchEventMessageSchema(
-                event_type="search_performed",
-                query=request.query,
-                topic=request.topic,
-                results_count=len(response.results),
-                response_time=response.response_time,
-                crawler_used=response.crawler_used,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-            )
-
-            # Ensure analytics exchange exists
-            try:
-                logger.debug(
-                    f"Creating exchange: {settings.rabbitmq_analytics_exchange}"
-                )
-                await self.message_broker.declare_exchange(
-                    settings.rabbitmq_analytics_exchange, "topic"
-                )
-                logger.debug(
-                    f"Exchange {settings.rabbitmq_analytics_exchange} created/verified successfully"
-                )
-            except Exception as exchange_error:
-                logger.warning(
-                    f"Failed to create exchange {settings.rabbitmq_analytics_exchange}: {exchange_error}"
-                )
-
-            # Try to publish the event
-            try:
-                success = await self.message_broker.publish(
-                    exchange=settings.rabbitmq_analytics_exchange,
-                    routing_key=settings.rabbitmq_routing_key_search_event,
-                    message=event.model_dump(),
-                )
-                if success:
-                    logger.debug("Search event published successfully")
-                else:
-                    logger.warning("Search event publish returned False")
-
-            except Exception as pub_error:
-                logger.warning(f"Failed to publish search event: {str(pub_error)}")
-
-        except Exception as e:
-            logger.warning(f"Failed to prepare/publish search event: {str(e)}")
-
     def _generate_cache_key(self, request: SearchRequestSchema) -> str:
         """Generate cache key for search request with improved hashing."""
         import hashlib
@@ -558,103 +485,6 @@ class SearchService:
             time_range=request.time_range,
             crawler_used=search_engine_response.get("crawler_used", False),
         )
-
-    async def _deep_crawl_search(
-        self, request: SearchRequestSchema, initial_response: SearchResponseSchema
-    ) -> List[SearchResultSchema]:
-        """
-        Perform deep crawling on search results for additional content.
-
-        Args:
-            request: Original search request
-            initial_response: Initial search response
-
-        Returns:
-            List[SearchResultSchema]: Additional crawled results
-        """
-        logger.info("Starting deep crawl for additional content")
-
-        try:
-            # Extract URLs from initial results for crawling
-            urls_to_crawl = [str(result.url) for result in initial_response.results]
-
-            # Perform deep crawling
-            crawled_articles = []
-            for url in urls_to_crawl[:5]:  # Limit to top 5 for performance
-                try:
-                    # Check if already crawled
-                    if await self.article_repository.article_exists(url):
-                        continue
-
-                    # Use crawler service to get enhanced content
-                    article = await self.crawler_service.crawl_single_url(url)
-                    if article:
-                        crawled_articles.append(article)
-
-                except Exception as e:
-                    logger.warning(f"Failed to crawl {url}: {str(e)}")
-                    continue
-
-            # Convert crawled articles to search results
-            search_results = []
-            for article in crawled_articles:
-                result = SearchResultSchema(
-                    url=article.url,
-                    title=article.title,
-                    content=article.content[:1000],  # Truncate for response
-                    score=0.8,  # High score for crawled content
-                    published_at=article.published_at,
-                    source=article.source.domain,
-                    is_crawled=True,
-                )
-                search_results.append(result)
-
-            logger.info(
-                f"Deep crawl completed with {len(search_results)} additional results"
-            )
-            return search_results
-
-        except Exception as e:
-            logger.error(f"Deep crawl failed: {str(e)}")
-            return []
-
-    def _merge_search_results(
-        self,
-        original_response: SearchResponseSchema,
-        crawled_results: List[SearchResultSchema],
-    ) -> SearchResponseSchema:
-        """
-        Merge original search results with crawled results.
-
-        Args:
-            original_response: Original search response
-            crawled_results: Additional crawled results
-
-        Returns:
-            SearchResponseSchema: Merged response
-        """
-        # Combine results and remove duplicates
-        all_results = list(original_response.results) + crawled_results
-
-        # Deduplicate by URL
-        seen_urls = set()
-        unique_results = []
-        for result in all_results:
-            if str(result.url) not in seen_urls:
-                seen_urls.add(str(result.url))
-                unique_results.append(result)
-
-        # Sort by score and recency
-        unique_results.sort(
-            key=lambda x: (x.score, x.published_at or datetime.min), reverse=True
-        )
-
-        # Update response
-        original_response.results = unique_results
-        original_response.total_results = len(unique_results)
-        original_response.crawler_used = len(crawled_results) > 0
-
-        return original_response
 
     async def health_check(self) -> bool:
         """Check service health with cache health check."""

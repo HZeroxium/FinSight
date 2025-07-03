@@ -4,7 +4,6 @@
 Shared message schemas for communication between services.
 """
 
-from datetime import datetime
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 
@@ -49,15 +48,3 @@ class SentimentResultMessageSchema(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(
         default_factory=dict, description="Additional metadata"
     )
-
-
-class SearchEventMessageSchema(BaseModel):
-    """Schema for search analytics events."""
-
-    event_type: str = Field(..., description="Event type")
-    query: str = Field(..., description="Search query")
-    topic: Optional[str] = Field(None, description="Search topic")
-    results_count: int = Field(..., description="Number of results")
-    response_time: Optional[float] = Field(None, description="Response time")
-    crawler_used: bool = Field(default=False, description="Whether crawler was used")
-    timestamp: str = Field(..., description="Event timestamp ISO format")

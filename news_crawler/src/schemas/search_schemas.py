@@ -27,7 +27,6 @@ class SearchRequestSchema(BaseModel):
     chunks_per_source: int = Field(
         3, ge=1, le=10, description="Content chunks per source"
     )
-    enable_crawler: bool = Field(False, description="Enable deep crawling for results")
 
 
 class SearchResultSchema(BaseModel):

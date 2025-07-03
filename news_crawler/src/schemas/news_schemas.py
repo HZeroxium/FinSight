@@ -1,22 +1,18 @@
-from typing import Optional, Dict, Any, List
+# schemas/news_schemas.py
+
+from typing import Optional, Dict, Any, List, Annotated
 from datetime import datetime
-from pydantic import BaseModel, HttpUrl, Field, field_validator
+from pydantic import BaseModel, HttpUrl, Field, field_validator, model_validator
 from enum import Enum
+import re
 
 
 class NewsSource(str, Enum):
-    """Supported news sources"""
-
     COINDESK = "coindesk"
     COINTELEGRAPH = "cointelegraph"
 
 
 class NewsItem(BaseModel):
-    """
-    Core news item schema with essential fields found in most RSS feeds.
-    Additional fields are stored in metadata.
-    """
-
     source: NewsSource = Field(..., description="News source identifier")
     title: str = Field(..., description="Article title")
     url: HttpUrl = Field(..., description="Article URL")
@@ -24,56 +20,56 @@ class NewsItem(BaseModel):
     published_at: datetime = Field(..., description="Publication timestamp")
     author: Optional[str] = Field(None, description="Article author")
     guid: Optional[str] = Field(None, description="Unique identifier from RSS feed")
-    tags: List[str] = Field(default_factory=list, description="Article tags/categories")
-    metadata: Dict[str, Any] = Field(
+    tags: Annotated[
+        Optional[List[str]], Field(default_factory=list, validate_default=True)
+    ] = None
+    metadata: Optional[Dict[str, Any]] = Field(
         default_factory=dict, description="Additional fields"
     )
 
-    @field_validator("tags", pre=True)
+    @field_validator("tags", mode="before")
+    @classmethod
     def clean_tags(cls, v):
-        """Clean and normalize tags"""
         if isinstance(v, str):
             return [v.strip()]
         if isinstance(v, list):
             return [str(tag).strip() for tag in v if tag]
         return []
 
-    @field_validator("description", pre=True)
+    @field_validator("description", mode="before")
+    @classmethod
     def clean_description(cls, v):
-        """Clean description by removing HTML tags and extra whitespace"""
         if not v:
             return None
-
-        import re
-
-        # Remove HTML tags
         v = re.sub(r"<[^>]+>", "", str(v))
-        # Clean up whitespace
         v = " ".join(v.split())
-        return v.strip() if v else None
+        return v.strip() or None
 
 
 class NewsCollectionResult(BaseModel):
-    """Result of news collection operation"""
-
-    source: NewsSource
+    source: Optional[NewsSource]
     items: List[NewsItem]
     collected_at: datetime = Field(default_factory=datetime.now)
-    total_items: int = Field(..., description="Total number of items collected")
+    total_items: int = Field(
+        ..., description="Total number of items collected", default_factory=lambda: 0
+    )
     success: bool = Field(True, description="Whether collection was successful")
     error_message: Optional[str] = Field(
         None, description="Error message if collection failed"
     )
 
-    @field_validator("total_items", always=True)
-    def set_total_items(cls, v, values):
-        """Set total_items based on items list length"""
-        return len(values.get("items", []))
+    @field_validator("total_items")
+    @classmethod
+    def set_total_items(cls, v, info):
+        return len(info.data.get("items") or [])
+
+    @model_validator(mode="after")
+    def compute_total(self):
+        self.total_items = len(self.items)
+        return self
 
 
 class NewsCollectorConfig(BaseModel):
-    """Configuration for news collectors"""
-
     source: NewsSource
     url: HttpUrl
     timeout: int = Field(30, description="Request timeout in seconds")

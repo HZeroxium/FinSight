@@ -15,7 +15,6 @@ from .routers import search, crawler
 from .services.sentiment_consumer import SentimentConsumerService
 from .utils.dependencies import (
     get_search_service,
-    get_article_repository,
     get_message_broker,
 )
 from .common.logger import LoggerFactory, LoggerType, LogLevel
@@ -46,12 +45,10 @@ async def lifespan(app: FastAPI):
 
     # Initialize services
     search_service = get_search_service()
-    article_repository = get_article_repository()
     message_broker = get_message_broker()
 
     # Initialize database indexes
     try:
-        await article_repository.initialize()
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
@@ -83,7 +80,6 @@ async def lifespan(app: FastAPI):
     try:
         if sentiment_consumer:
             await sentiment_consumer.stop_consuming()
-        await article_repository.close()
         logger.info("All services cleaned up successfully")
     except Exception as e:
         logger.error(f"Error during cleanup: {str(e)}")

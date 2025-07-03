@@ -4,34 +4,6 @@
 Data models for persistence and domain logic.
 """
 
-from .article import (
-    ArticleSource,
-    ArticleMetadata,
-    CrawledArticle,
-    ProcessedArticle,
-    ArticleSearchQuery,
-    PyObjectId,
-)
-from .crawler import (
-    CrawlerConfig,
-    CrawlerStats,
-    CrawlJob,
-    CrawlResult,
-    CrawlerStatus,
-)
+from .news_model import NewsModel
 
-__all__ = [
-    # Article models
-    "ArticleSource",
-    "ArticleMetadata",
-    "CrawledArticle",
-    "ProcessedArticle",
-    "ArticleSearchQuery",
-    "PyObjectId",
-    # Crawler models
-    "CrawlerConfig",
-    "CrawlerStats",
-    "CrawlJob",
-    "CrawlResult",
-    "CrawlerStatus",
-]
+__all__ = ["NewsModel"]
