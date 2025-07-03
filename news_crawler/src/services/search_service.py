@@ -497,12 +497,6 @@ class SearchService:
             broker_healthy = await self.message_broker.health_check()
             logger.debug(f"Message broker health: {broker_healthy}")
 
-            # Check crawler service health
-            crawler_healthy = (
-                self.crawler_service.get_crawler_stats()["total_crawlers"] >= 0
-            )
-            logger.debug(f"Crawler service health: {crawler_healthy}")
-
             # Check cache health
             cache_healthy = True
             try:
@@ -533,12 +527,7 @@ class SearchService:
                 logger.warning(f"Cache health check failed: {cache_error}")
                 cache_healthy = False
 
-            is_healthy = (
-                search_engine_healthy
-                and broker_healthy
-                and crawler_healthy
-                and cache_healthy
-            )
+            is_healthy = search_engine_healthy and broker_healthy and cache_healthy
 
             logger.debug(f"Overall health check completed: {is_healthy}")
             return is_healthy

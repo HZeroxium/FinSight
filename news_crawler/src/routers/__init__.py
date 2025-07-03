@@ -1,11 +1,10 @@
 # routers/__init__.py
 
 """
-FastAPI routers for REST API endpoints.
+Routers package for the news crawler service.
+Contains all FastAPI route definitions.
 """
 
-from . import search
+from . import search, news
 
-__all__ = [
-    "search",
-]
+__all__ = ["search", "news"]
