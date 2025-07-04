@@ -341,24 +341,30 @@ class OHLCVConverter:
         Returns:
             OHLCV schema instance
         """
-        # Handle timestamp parsing
-        timestamp = data.get("timestamp")
-        if isinstance(timestamp, str):
-            timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-        elif isinstance(timestamp, datetime):
-            timestamp = self._ensure_utc_timezone(timestamp)
+        try:
+            # Handle timestamp parsing
+            timestamp = data.get("timestamp")
+            if isinstance(timestamp, str):
+                timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            elif isinstance(timestamp, datetime):
+                timestamp = self._ensure_utc_timezone(timestamp)
+            elif timestamp is None:
+                raise ValueError("Timestamp is required")
 
-        return OHLCVSchema(
-            timestamp=timestamp,
-            open=float(data["open"]),
-            high=float(data["high"]),
-            low=float(data["low"]),
-            close=float(data["close"]),
-            volume=float(data["volume"]),
-            symbol=data["symbol"],
-            exchange=data["exchange"],
-            timeframe=data["timeframe"],
-        )
+            return OHLCVSchema(
+                timestamp=timestamp,
+                open=float(data["open"]),
+                high=float(data["high"]),
+                low=float(data["low"]),
+                close=float(data["close"]),
+                volume=float(data["volume"]),
+                symbol=str(data["symbol"]),
+                exchange=str(data["exchange"]),
+                timeframe=str(data["timeframe"]),
+            )
+        except (KeyError, ValueError, TypeError) as e:
+            self.logger.error(f"Error converting dict to schema: {e}")
+            raise ValueError(f"Invalid dictionary format for OHLCV data: {e}")
 
     def schema_to_dict(self, schema: OHLCVSchema) -> Dict[str, Any]:
         """

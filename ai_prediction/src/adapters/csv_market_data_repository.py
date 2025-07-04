@@ -124,8 +124,11 @@ class CSVMarketDataRepository(MarketDataRepository):
             else:
                 df.index = df.index.tz_convert("UTC")
 
-            # Filter by date range
-            mask = (df.index >= query.start_date) & (df.index <= query.end_date)
+            # Filter by date range - ensure query dates are timezone-aware
+            start_date = self._ensure_utc_timezone(query.start_date)
+            end_date = self._ensure_utc_timezone(query.end_date)
+
+            mask = (df.index >= start_date) & (df.index <= end_date)
             filtered_df = df.loc[mask]
 
             # Apply limit if specified
@@ -135,18 +138,22 @@ class CSVMarketDataRepository(MarketDataRepository):
             # Convert to CSV models, then to schemas
             models = []
             for timestamp, row in filtered_df.iterrows():
-                model = OHLCVModelCSV(
-                    timestamp=timestamp,
-                    open=float(row["open"]),
-                    high=float(row["high"]),
-                    low=float(row["low"]),
-                    close=float(row["close"]),
-                    volume=float(row["volume"]),
-                    symbol=row["symbol"],
-                    exchange=row["exchange"],
-                    timeframe=row["timeframe"],
-                )
-                models.append(model)
+                try:
+                    model = OHLCVModelCSV(
+                        timestamp=timestamp.to_pydatetime(),
+                        open=float(row["open"]),
+                        high=float(row["high"]),
+                        low=float(row["low"]),
+                        close=float(row["close"]),
+                        volume=float(row["volume"]),
+                        symbol=str(row["symbol"]),
+                        exchange=str(row["exchange"]),
+                        timeframe=str(row["timeframe"]),
+                    )
+                    models.append(model)
+                except Exception as e:
+                    self.logger.warning(f"Skipping invalid row at {timestamp}: {e}")
+                    continue
 
             # Convert models to schemas
             schemas = [self.converter.csv_model_to_schema(model) for model in models]
@@ -519,8 +526,11 @@ class CSVMarketDataRepository(MarketDataRepository):
         Returns:
             UTC timezone-aware datetime
         """
-        if dt.tzinfo is None:
-            return dt.replace(tzinfo=timezone.utc)
-        elif dt.tzinfo != timezone.utc:
-            return dt.astimezone(timezone.utc)
-        return dt
+        if isinstance(dt, datetime):
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            elif dt.tzinfo != timezone.utc:
+                return dt.astimezone(timezone.utc)
+            return dt
+        else:
+            raise ValueError(f"Expected datetime object, got {type(dt)}")

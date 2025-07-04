@@ -128,7 +128,8 @@ class OHLCVModelTimeScaleDB(BaseModel):
 
     # TimeScaleDB specific fields
     created_at: datetime = Field(
-        default_factory=datetime.utcnow, description="Record creation time"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Record creation time",
     )
 
     model_config = ConfigDict(validate_assignment=True)
