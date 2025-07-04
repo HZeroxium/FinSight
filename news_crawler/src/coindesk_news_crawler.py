@@ -30,7 +30,7 @@ class CoinDeskCrawler:
         self,
         mongo_url: str = "mongodb://localhost:27017",
         database_name: str = "finsight_coindesk_news",
-        progress_file: str = "coindesk_progress.json",
+        progress_file: str = "data/progress/sequential/coindesk/coindesk_progress.json",
     ):
         """
         Initialize CoinDesk crawler

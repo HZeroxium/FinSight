@@ -30,7 +30,7 @@ class CoinTelegraphCrawler:
         self,
         mongo_url: str = "mongodb://localhost:27017",
         database_name: str = "finsight_news",
-        progress_file: str = "cointelegraph_progress.json",
+        progress_file: str = "data/progress/sequential/cointelegraph/cointelegraph_progress.json",
     ):
         """
         Initialize CoinTelegraph crawler

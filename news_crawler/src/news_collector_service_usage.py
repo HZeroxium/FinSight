@@ -339,7 +339,7 @@ async def quick_demo():
 
 if __name__ == "__main__":
     # Run the comprehensive demo
-    asyncio.run(main())
+    # asyncio.run(main())
 
     # Uncomment to run quick demo instead
-    # asyncio.run(quick_demo())
+    asyncio.run(quick_demo())

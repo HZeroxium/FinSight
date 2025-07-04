@@ -21,3 +21,6 @@ coverage.xml
 *.log
 *.pid
 *.env
+
+data/progress
+data/example

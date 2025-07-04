@@ -26,7 +26,7 @@ class CoinDeskParallelCrawler:
         self,
         mongo_url: str = "mongodb://localhost:27017",
         database_name: str = "finsight_coindesk_news",
-        progress_file: str = "coindesk_parallel_progress.json",
+        progress_file: str = "data/progress/parallel/coindesk_parallel_progress.json",
         max_concurrent_chunks: int = 3,  # Conservative default to avoid overwhelming the API
     ):
         """
@@ -288,7 +288,9 @@ class CoinDeskParallelCrawler:
                 # Create dedicated crawler for this chunk with unique database collection
                 # chunk_db_name = f"{self.database_name}_chunk_{chunk_id}"
                 chunk_db_name = self.database_name
-                chunk_progress_file = f"coindesk_chunk_{chunk_id}_progress.json"
+                chunk_progress_file = (
+                    f"data/progress/parallel/coindesk_chunk_{chunk_id}_progress.json"
+                )
 
                 crawler = CoinDeskCrawler(
                     mongo_url=self.mongo_url,
