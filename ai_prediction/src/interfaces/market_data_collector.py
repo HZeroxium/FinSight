@@ -9,6 +9,7 @@ Focuses solely on data collection logic without storage concerns.
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any
+from ..schemas.ohlcv_schemas import OHLCVSchema
 
 
 class MarketDataCollector(ABC):
@@ -51,7 +52,7 @@ class MarketDataCollector(ABC):
     @abstractmethod
     def collect_ohlcv(
         self, symbol: str, timeframe: str, start_date: str, end_date: str
-    ) -> List[Dict[str, Any]]:
+    ) -> List[OHLCVSchema]:
         """
         Collect OHLCV (candlestick) data for a symbol within date range.
 
@@ -62,20 +63,7 @@ class MarketDataCollector(ABC):
             end_date: End date in ISO 8601 format (e.g., '2024-01-31T23:59:59Z')
 
         Returns:
-            List of OHLCV records with standardized format:
-            [
-                {
-                    'timestamp': '2024-01-01T00:00:00Z',
-                    'open': 45000.0,
-                    'high': 46000.0,
-                    'low': 44000.0,
-                    'close': 45500.0,
-                    'volume': 1234.56,
-                    'symbol': 'BTCUSDT',
-                    'timeframe': '1h'
-                },
-                ...
-            ]
+            List of OHLCV schema instances with standardized format
 
         Raises:
             CollectionError: If unable to collect data

@@ -4,11 +4,12 @@
 Market Data Repository Interface
 
 Defines the contract for storing and retrieving market data.
-Handles CRUD operations for different types of market data.
+Handles CRUD operations for different types of market data using proper schemas.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional
+from typing import List, Optional, Dict, Any
+from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVBatchSchema, OHLCVQuerySchema
 
 
 class MarketDataRepository(ABC):
@@ -25,7 +26,7 @@ class MarketDataRepository(ABC):
     # OHLCV Operations
     @abstractmethod
     def save_ohlcv(
-        self, exchange: str, symbol: str, timeframe: str, data: List[Dict[str, Any]]
+        self, exchange: str, symbol: str, timeframe: str, data: List[OHLCVSchema]
     ) -> bool:
         """
         Save OHLCV data to repository.
@@ -34,7 +35,7 @@ class MarketDataRepository(ABC):
             exchange: Exchange name (e.g., 'binance')
             symbol: Trading symbol (e.g., 'BTCUSDT')
             timeframe: Time interval (e.g., '1h')
-            data: List of OHLCV records
+            data: List of OHLCV schema instances
 
         Returns:
             True if save successful
@@ -45,25 +46,19 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    def get_ohlcv(
-        self, exchange: str, symbol: str, timeframe: str, start_date: str, end_date: str
-    ) -> List[Dict[str, Any]]:
+    def get_ohlcv(self, query: OHLCVQuerySchema) -> List[OHLCVSchema]:
         """
         Retrieve OHLCV data from repository.
 
         Args:
-            exchange: Exchange name
-            symbol: Trading symbol
-            timeframe: Time interval
-            start_date: Start date in ISO 8601 format
-            end_date: End date in ISO 8601 format
+            query: OHLCV query schema instance
 
         Returns:
-            List of OHLCV records within date range
+            List of OHLCV schema instances
 
         Raises:
             RepositoryError: If retrieval fails
-            ValidationError: If date format is invalid
+            ValidationError: If query is invalid
         """
         pass
 
@@ -327,18 +322,12 @@ class MarketDataRepository(ABC):
 
     # Batch Operations
     @abstractmethod
-    def batch_save_ohlcv(self, data: List[Dict[str, Any]]) -> bool:
+    def batch_save_ohlcv(self, data: List[OHLCVBatchSchema]) -> bool:
         """
-        Save multiple OHLCV datasets in a batch operation.
+        Save multiple OHLCV batch schemas in a batch operation.
 
         Args:
-            data: List of dictionaries containing:
-                {
-                    'exchange': 'binance',
-                    'symbol': 'BTCUSDT',
-                    'timeframe': '1h',
-                    'records': [...]
-                }
+            data: List of OHLCV batch schema instances
 
         Returns:
             True if all saves successful

@@ -10,12 +10,15 @@ Provides file-based persistence for market data with proper organization.
 import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..interfaces.market_data_repository import MarketDataRepository
 from ..interfaces.errors import RepositoryError, ValidationError
 from ..common.logger import LoggerFactory
 from ..utils.datetime_utils import DateTimeUtils
+from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVBatchSchema, OHLCVQuerySchema
+from ..models.ohlcv_models import OHLCVModelCSV
+from ..converters.ohlcv_converter import OHLCVConverter
 
 
 class CSVMarketDataRepository(MarketDataRepository):
@@ -30,6 +33,7 @@ class CSVMarketDataRepository(MarketDataRepository):
         """
         self.base_directory = Path(base_directory)
         self.logger = LoggerFactory.get_logger(name="csv_repository")
+        self.converter = OHLCVConverter()
 
         # Create base directory structure
         self._initialize_directory_structure()
@@ -37,7 +41,7 @@ class CSVMarketDataRepository(MarketDataRepository):
         self.logger.info(f"Initialized CSV repository at {self.base_directory}")
 
     def save_ohlcv(
-        self, exchange: str, symbol: str, timeframe: str, data: List[Dict[str, Any]]
+        self, exchange: str, symbol: str, timeframe: str, data: List[OHLCVSchema]
     ) -> bool:
         """Save OHLCV data to CSV file"""
         try:
@@ -47,18 +51,20 @@ class CSVMarketDataRepository(MarketDataRepository):
                 )
                 return True
 
-            # Validate data format
-            self._validate_ohlcv_data(data)
+            # Convert schemas to CSV models
+            models = [self.converter.schema_to_csv_model(schema) for schema in data]
 
-            # Convert to DataFrame with standardized timestamps
+            # Validate models
+            for model in models:
+                self._validate_ohlcv_model(model)
+
+            # Convert models to DataFrame
             df_data = []
-            for record in data:
-                # Standardize timestamp
-                standardized_record = record.copy()
-                standardized_record["timestamp"] = DateTimeUtils.to_iso_string(
-                    record["timestamp"]
-                )
-                df_data.append(standardized_record)
+            for model in models:
+                model_dict = model.model_dump()
+                # Ensure timestamp is properly formatted
+                model_dict["timestamp"] = self._ensure_utc_timezone(model.timestamp)
+                df_data.append(model_dict)
 
             df = pd.DataFrame(df_data)
 
@@ -97,16 +103,13 @@ class CSVMarketDataRepository(MarketDataRepository):
         except Exception as e:
             raise RepositoryError(f"Failed to save OHLCV data: {str(e)}")
 
-    def get_ohlcv(
-        self, exchange: str, symbol: str, timeframe: str, start_date: str, end_date: str
-    ) -> List[Dict[str, Any]]:
+    def get_ohlcv(self, query: OHLCVQuerySchema) -> List[OHLCVSchema]:
         """Retrieve OHLCV data from CSV file"""
         try:
-            # Validate date format
-            start_dt, end_dt = DateTimeUtils.validate_date_range(start_date, end_date)
-
             # Get file path
-            file_path = self._get_ohlcv_file_path(exchange, symbol, timeframe)
+            file_path = self._get_ohlcv_file_path(
+                query.exchange, query.symbol, query.timeframe
+            )
 
             if not file_path.exists():
                 self.logger.warning(f"No data file found at {file_path}")
@@ -122,26 +125,34 @@ class CSVMarketDataRepository(MarketDataRepository):
                 df.index = df.index.tz_convert("UTC")
 
             # Filter by date range
-            mask = (df.index >= start_dt) & (df.index <= end_dt)
+            mask = (df.index >= query.start_date) & (df.index <= query.end_date)
             filtered_df = df.loc[mask]
 
-            # Convert back to list of dicts
-            result = []
-            for timestamp, row in filtered_df.iterrows():
-                record = {
-                    "timestamp": DateTimeUtils.to_iso_string(timestamp),
-                    "open": float(row["open"]),
-                    "high": float(row["high"]),
-                    "low": float(row["low"]),
-                    "close": float(row["close"]),
-                    "volume": float(row["volume"]),
-                    "symbol": row["symbol"],
-                    "timeframe": row["timeframe"],
-                }
-                result.append(record)
+            # Apply limit if specified
+            if query.limit:
+                filtered_df = filtered_df.head(query.limit)
 
-            self.logger.info(f"Retrieved {len(result)} OHLCV records from {file_path}")
-            return result
+            # Convert to CSV models, then to schemas
+            models = []
+            for timestamp, row in filtered_df.iterrows():
+                model = OHLCVModelCSV(
+                    timestamp=timestamp,
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=float(row["volume"]),
+                    symbol=row["symbol"],
+                    exchange=row["exchange"],
+                    timeframe=row["timeframe"],
+                )
+                models.append(model)
+
+            # Convert models to schemas
+            schemas = [self.converter.csv_model_to_schema(model) for model in models]
+
+            self.logger.info(f"Retrieved {len(schemas)} OHLCV records from {file_path}")
+            return schemas
 
         except Exception as e:
             raise RepositoryError(f"Failed to retrieve OHLCV data: {str(e)}")
@@ -413,27 +424,27 @@ class CSVMarketDataRepository(MarketDataRepository):
         except Exception as e:
             raise RepositoryError(f"Failed to get storage info: {str(e)}")
 
-    def batch_save_ohlcv(self, data: List[Dict[str, Any]]) -> bool:
-        """Save multiple OHLCV datasets in a batch operation"""
+    def batch_save_ohlcv(self, data: List[OHLCVBatchSchema]) -> bool:
+        """Save multiple OHLCV batch schemas in a batch operation"""
         try:
             success_count = 0
-            for dataset in data:
+            for batch in data:
                 try:
                     success = self.save_ohlcv(
-                        exchange=dataset["exchange"],
-                        symbol=dataset["symbol"],
-                        timeframe=dataset["timeframe"],
-                        data=dataset["records"],
+                        exchange=batch.exchange,
+                        symbol=batch.symbol,
+                        timeframe=batch.timeframe,
+                        data=batch.records,
                     )
                     if success:
                         success_count += 1
                 except Exception as e:
                     self.logger.error(
-                        f"Failed to save dataset {dataset.get('exchange')}/{dataset.get('symbol')}: {e}"
+                        f"Failed to save batch {batch.exchange}/{batch.symbol}: {e}"
                     )
 
             self.logger.info(
-                f"Batch save completed: {success_count}/{len(data)} datasets saved"
+                f"Batch save completed: {success_count}/{len(data)} batches saved"
             )
             return success_count == len(data)
 
@@ -489,26 +500,27 @@ class CSVMarketDataRepository(MarketDataRepository):
         """Get the file path for OHLCV data"""
         return self.base_directory / exchange / "ohlcv" / symbol / f"{timeframe}.csv"
 
-    def _validate_ohlcv_data(self, data: List[Dict[str, Any]]) -> None:
-        """Validate OHLCV data format"""
-        required_fields = [
-            "timestamp",
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-            "symbol",
-            "timeframe",
-        ]
+    def _validate_ohlcv_model(self, model: OHLCVModelCSV) -> None:
+        """Validate OHLCV model data"""
+        try:
+            # The model validation is already handled by Pydantic
+            # This method is kept for potential additional business logic validation
+            pass
+        except Exception as e:
+            raise ValidationError(f"Model validation failed: {str(e)}")
 
-        for record in data:
-            for field in required_fields:
-                if field not in record:
-                    raise ValidationError(f"Missing required field: {field}")
+    def _ensure_utc_timezone(self, dt: datetime) -> datetime:
+        """
+        Ensure datetime has UTC timezone.
 
-            # Validate timestamp format
-            try:
-                DateTimeUtils.to_utc_datetime(record["timestamp"])
-            except ValueError as e:
-                raise ValidationError(f"Invalid timestamp format: {e}")
+        Args:
+            dt: Datetime instance
+
+        Returns:
+            UTC timezone-aware datetime
+        """
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        elif dt.tzinfo != timezone.utc:
+            return dt.astimezone(timezone.utc)
+        return dt

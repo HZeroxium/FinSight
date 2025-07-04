@@ -22,6 +22,10 @@ except ImportError:
 from ..interfaces.market_data_repository import MarketDataRepository
 from ..interfaces.errors import RepositoryError, ValidationError
 from ..common.logger import LoggerFactory
+from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVBatchSchema, OHLCVQuerySchema
+from ..models.ohlcv_models import OHLCVModelInfluxDB
+from ..converters.ohlcv_converter import OHLCVConverter
+from ..utils.datetime_utils import DateTimeUtils
 
 
 class InfluxMarketDataRepository(MarketDataRepository):
@@ -53,9 +57,8 @@ class InfluxMarketDataRepository(MarketDataRepository):
         self.org = org
         self.bucket = bucket
 
-        self.logger = LoggerFactory.get_logger(
-            name="influx_repository",
-        )
+        self.logger = LoggerFactory.get_logger(name="influx_repository")
+        self.converter = OHLCVConverter()
 
         # Initialize client
         try:
@@ -72,7 +75,7 @@ class InfluxMarketDataRepository(MarketDataRepository):
             raise RepositoryError(f"Failed to initialize InfluxDB client: {str(e)}")
 
     def save_ohlcv(
-        self, exchange: str, symbol: str, timeframe: str, data: List[Dict[str, Any]]
+        self, exchange: str, symbol: str, timeframe: str, data: List[OHLCVSchema]
     ) -> bool:
         """Save OHLCV data to InfluxDB"""
         try:
@@ -82,25 +85,25 @@ class InfluxMarketDataRepository(MarketDataRepository):
                 )
                 return True
 
-            # Validate data format
-            self._validate_ohlcv_data(data)
+            # Convert schemas to InfluxDB models
+            models = [
+                self.converter.schema_to_influxdb_model(schema) for schema in data
+            ]
 
             # Convert to InfluxDB points
             points = []
-            for record in data:
-                timestamp = self._parse_timestamp(record["timestamp"])
-
+            for model in models:
                 point = (
                     Point("ohlcv")
-                    .tag("exchange", exchange)
-                    .tag("symbol", symbol)
-                    .tag("timeframe", timeframe)
-                    .field("open", float(record["open"]))
-                    .field("high", float(record["high"]))
-                    .field("low", float(record["low"]))
-                    .field("close", float(record["close"]))
-                    .field("volume", float(record["volume"]))
-                    .time(timestamp, WritePrecision.S)
+                    .tag("exchange", model.exchange)
+                    .tag("symbol", model.symbol)
+                    .tag("timeframe", model.timeframe)
+                    .field("open", float(model.open))
+                    .field("high", float(model.high))
+                    .field("low", float(model.low))
+                    .field("close", float(model.close))
+                    .field("volume", float(model.volume))
+                    .time(model.timestamp, WritePrecision.S)
                 )
                 points.append(point)
 
@@ -117,47 +120,52 @@ class InfluxMarketDataRepository(MarketDataRepository):
         except Exception as e:
             raise RepositoryError(f"Failed to save OHLCV data: {str(e)}")
 
-    def get_ohlcv(
-        self, exchange: str, symbol: str, timeframe: str, start_date: str, end_date: str
-    ) -> List[Dict[str, Any]]:
+    def get_ohlcv(self, query: OHLCVQuerySchema) -> List[OHLCVSchema]:
         """Retrieve OHLCV data from InfluxDB"""
         try:
-            # Validate and parse dates
-            start_dt, end_dt = self._parse_dates(start_date, end_date)
-
             # Build Flux query
-            query = f"""
+            flux_query = f"""
                 from(bucket: "{self.bucket}")
-                |> range(start: {start_dt.isoformat()}, stop: {end_dt.isoformat()})
+                |> range(start: {query.start_date.isoformat()}, stop: {query.end_date.isoformat()})
                 |> filter(fn: (r) => r._measurement == "ohlcv")
-                |> filter(fn: (r) => r.exchange == "{exchange}")
-                |> filter(fn: (r) => r.symbol == "{symbol}")
-                |> filter(fn: (r) => r.timeframe == "{timeframe}")
+                |> filter(fn: (r) => r.exchange == "{query.exchange}")
+                |> filter(fn: (r) => r.symbol == "{query.symbol}")
+                |> filter(fn: (r) => r.timeframe == "{query.timeframe}")
                 |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
                 |> sort(columns: ["_time"])
             """
 
-            # Execute query
-            result = self.query_api.query(org=self.org, query=query)
+            # Add limit if specified
+            if query.limit:
+                flux_query += f" |> limit(n: {query.limit})"
 
-            # Convert to standardized format
-            records = []
+            # Execute query
+            result = self.query_api.query(org=self.org, query=flux_query)
+
+            # Convert to InfluxDB models, then to schemas
+            models = []
             for table in result:
                 for record in table.records:
-                    data_record = {
-                        "timestamp": record.get_time().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "open": float(record.values.get("open", 0)),
-                        "high": float(record.values.get("high", 0)),
-                        "low": float(record.values.get("low", 0)),
-                        "close": float(record.values.get("close", 0)),
-                        "volume": float(record.values.get("volume", 0)),
-                        "symbol": symbol,
-                        "timeframe": timeframe,
-                    }
-                    records.append(data_record)
+                    model = OHLCVModelInfluxDB(
+                        timestamp=record.get_time(),
+                        open=float(record.values.get("open", 0)),
+                        high=float(record.values.get("high", 0)),
+                        low=float(record.values.get("low", 0)),
+                        close=float(record.values.get("close", 0)),
+                        volume=float(record.values.get("volume", 0)),
+                        symbol=query.symbol,
+                        exchange=query.exchange,
+                        timeframe=query.timeframe,
+                    )
+                    models.append(model)
 
-            self.logger.info(f"Retrieved {len(records)} OHLCV records from InfluxDB")
-            return records
+            # Convert models to schemas
+            schemas = [
+                self.converter.influxdb_model_to_schema(model) for model in models
+            ]
+
+            self.logger.info(f"Retrieved {len(schemas)} OHLCV records from InfluxDB")
+            return schemas
 
         except ApiException as e:
             raise RepositoryError(f"InfluxDB API error retrieving OHLCV data: {str(e)}")
@@ -179,13 +187,15 @@ class InfluxMarketDataRepository(MarketDataRepository):
 
             # Parse date range if provided
             if start_date and end_date:
-                start_dt, end_dt = self._parse_dates(start_date, end_date)
-                start_rfc = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-                end_rfc = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                start_dt, end_dt = DateTimeUtils.validate_date_range(
+                    start_date, end_date
+                )
+                start_rfc = DateTimeUtils.to_iso_string(start_dt)
+                end_rfc = DateTimeUtils.to_iso_string(end_dt)
             else:
                 # Delete all data for this series
                 start_rfc = "1970-01-01T00:00:00Z"
-                end_rfc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                end_rfc = DateTimeUtils.now_iso()
 
             # Execute delete
             delete_api = self.client.delete_api()
@@ -342,8 +352,8 @@ class InfluxMarketDataRepository(MarketDataRepository):
 
                 if min_time and max_time:
                     return {
-                        "start_date": min_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "end_date": max_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "start_date": DateTimeUtils.to_iso_string(min_time),
+                        "end_date": DateTimeUtils.to_iso_string(max_time),
                     }
 
             return None
@@ -363,7 +373,9 @@ class InfluxMarketDataRepository(MarketDataRepository):
         """Check if data exists for the specified criteria in InfluxDB"""
         try:
             if data_type == "ohlcv" and timeframe:
-                start_dt, end_dt = self._parse_dates(start_date, end_date)
+                start_dt, end_dt = DateTimeUtils.validate_date_range(
+                    start_date, end_date
+                )
 
                 query = f"""
                     from(bucket: "{self.bucket}")
@@ -441,32 +453,31 @@ class InfluxMarketDataRepository(MarketDataRepository):
         except Exception as e:
             raise RepositoryError(f"Failed to get storage info: {str(e)}")
 
-    def batch_save_ohlcv(self, data: List[Dict[str, Any]]) -> bool:
-        """Save multiple OHLCV datasets in a batch operation"""
+    def batch_save_ohlcv(self, data: List[OHLCVBatchSchema]) -> bool:
+        """Save multiple OHLCV batch schemas in a batch operation"""
         try:
             all_points = []
 
-            for dataset in data:
-                exchange = dataset["exchange"]
-                symbol = dataset["symbol"]
-                timeframe = dataset["timeframe"]
-                records = dataset["records"]
+            for batch in data:
+                # Convert schemas to InfluxDB models
+                models = [
+                    self.converter.schema_to_influxdb_model(schema)
+                    for schema in batch.records
+                ]
 
-                # Convert each record to InfluxDB point
-                for record in records:
-                    timestamp = self._parse_timestamp(record["timestamp"])
-
+                # Convert each model to InfluxDB point
+                for model in models:
                     point = (
                         Point("ohlcv")
-                        .tag("exchange", exchange)
-                        .tag("symbol", symbol)
-                        .tag("timeframe", timeframe)
-                        .field("open", float(record["open"]))
-                        .field("high", float(record["high"]))
-                        .field("low", float(record["low"]))
-                        .field("close", float(record["close"]))
-                        .field("volume", float(record["volume"]))
-                        .time(timestamp, WritePrecision.S)
+                        .tag("exchange", model.exchange)
+                        .tag("symbol", model.symbol)
+                        .tag("timeframe", model.timeframe)
+                        .field("open", float(model.open))
+                        .field("high", float(model.high))
+                        .field("low", float(model.low))
+                        .field("close", float(model.close))
+                        .field("volume", float(model.volume))
+                        .time(model.timestamp, WritePrecision.S)
                     )
                     all_points.append(point)
 
@@ -474,7 +485,7 @@ class InfluxMarketDataRepository(MarketDataRepository):
             self.write_api.write(bucket=self.bucket, org=self.org, record=all_points)
 
             self.logger.info(
-                f"Batch saved {len(all_points)} OHLCV points from {len(data)} datasets"
+                f"Batch saved {len(all_points)} OHLCV points from {len(data)} batches"
             )
             return True
 
@@ -501,45 +512,6 @@ class InfluxMarketDataRepository(MarketDataRepository):
                 raise RepositoryError(f"InfluxDB health check failed: {health.status}")
         except Exception as e:
             raise RepositoryError(f"InfluxDB connection test failed: {str(e)}")
-
-    def _validate_ohlcv_data(self, data: List[Dict[str, Any]]) -> None:
-        """Validate OHLCV data format"""
-        required_fields = ["timestamp", "open", "high", "low", "close", "volume"]
-
-        for record in data:
-            for field in required_fields:
-                if field not in record:
-                    raise ValidationError(f"Missing required field: {field}")
-
-    def _parse_timestamp(self, timestamp_str: str) -> datetime:
-        """Parse timestamp string to datetime object"""
-        try:
-            # Handle both with and without timezone
-            if timestamp_str.endswith("Z"):
-                return datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-            else:
-                dt = datetime.fromisoformat(timestamp_str)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt
-        except ValueError as e:
-            raise ValidationError(f"Invalid timestamp format: {str(e)}")
-
-    def _parse_dates(self, start_date: str, end_date: str) -> tuple:
-        """Parse and validate ISO 8601 date strings"""
-        try:
-            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-
-            if start_dt >= end_dt:
-                raise ValidationError("Start date must be before end date")
-
-            return start_dt, end_dt
-
-        except ValueError as e:
-            raise ValidationError(
-                f"Invalid date format. Expected ISO 8601 format: {str(e)}"
-            )
 
     def close(self) -> None:
         """Close InfluxDB client connection"""

@@ -18,6 +18,8 @@ from ..interfaces.market_data_collector import MarketDataCollector
 from ..interfaces.errors import CollectionError, ValidationError
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 from ..utils.datetime_utils import DateTimeUtils
+from ..schemas.ohlcv_schemas import OHLCVSchema
+from ..converters.ohlcv_converter import OHLCVConverter
 
 
 class BinanceMarketDataCollector(MarketDataCollector):
@@ -42,6 +44,9 @@ class BinanceMarketDataCollector(MarketDataCollector):
             logger_type=LoggerType.STANDARD,
             level=LogLevel.INFO,
         )
+
+        # Initialize converter
+        self.converter = OHLCVConverter()
 
         try:
             self.client = Client(
@@ -137,7 +142,7 @@ class BinanceMarketDataCollector(MarketDataCollector):
 
     def collect_ohlcv(
         self, symbol: str, timeframe: str, start_date: str, end_date: str
-    ) -> List[Dict[str, Any]]:
+    ) -> List[OHLCVSchema]:
         """
         Collect OHLCV data for a symbol within date range
 
@@ -148,7 +153,7 @@ class BinanceMarketDataCollector(MarketDataCollector):
             end_date: End date in ISO 8601 format (e.g., '2024-01-31T23:59:59Z')
 
         Returns:
-            List of OHLCV records with standardized format
+            List of OHLCV schema instances with standardized format
         """
         try:
             # Validate inputs
@@ -215,13 +220,13 @@ class BinanceMarketDataCollector(MarketDataCollector):
                     chunk_start = chunk_end
                     continue
 
-            # Convert to standardized format
+            # Convert to standardized format using schemas
             standardized_data = self._standardize_ohlcv_data(
                 all_klines, symbol, timeframe
             )
 
             # Filter by exact date range (use original end_dt)
-            filtered_data: List[Dict[str, Any]] = []
+            filtered_data: List[OHLCVSchema] = []
             original_end_dt = DateTimeUtils.to_utc_datetime(end_date)
             for record in standardized_data:
                 record_dt = DateTimeUtils.to_utc_datetime(record["timestamp"])
@@ -299,45 +304,32 @@ class BinanceMarketDataCollector(MarketDataCollector):
         if not self.validate_timeframe(timeframe):
             raise ValidationError(f"Timeframe {timeframe} is not supported by Binance")
 
-    def _validate_and_parse_dates(self, start_date: str, end_date: str) -> tuple:
-        """Validate and parse ISO 8601 date strings"""
-        try:
-            start_dt, end_dt = DateTimeUtils.validate_date_range(start_date, end_date)
-
-            # Check if date range is reasonable (not too far in the past or future)
-            now = DateTimeUtils.now_utc()
-            if end_dt > now:
-                raise ValidationError("End date cannot be in the future")
-
-            return start_dt, end_dt
-
-        except ValueError as e:
-            raise ValidationError(f"Date validation failed: {str(e)}")
-
     def _standardize_ohlcv_data(
         self, klines: List[List], symbol: str, timeframe: str
-    ) -> List[Dict[str, Any]]:
-        """Convert Binance klines to standardized OHLCV format"""
-        standardized = []
+    ) -> List[OHLCVSchema]:
+        """Convert Binance klines to standardized OHLCV format using schemas"""
+        schemas = []
 
         for kline in klines:
             # Binance kline format: [timestamp, open, high, low, close, volume, ...]
             timestamp_ms = kline[0]
             timestamp_dt = DateTimeUtils.from_timestamp_ms(timestamp_ms)
 
-            record = {
-                "timestamp": DateTimeUtils.to_iso_string(timestamp_dt),
-                "open": float(kline[1]),
-                "high": float(kline[2]),
-                "low": float(kline[3]),
-                "close": float(kline[4]),
-                "volume": float(kline[5]),
-                "symbol": symbol,
-                "timeframe": timeframe,
-            }
-            standardized.append(record)
+            # Create OHLCV schema
+            schema = OHLCVSchema(
+                timestamp=timestamp_dt,
+                open=float(kline[1]),
+                high=float(kline[2]),
+                low=float(kline[3]),
+                close=float(kline[4]),
+                volume=float(kline[5]),
+                symbol=symbol,
+                exchange="binance",
+                timeframe=timeframe,
+            )
+            schemas.append(schema)
 
-        return standardized
+        return schemas
 
     def _extract_rate_limits(self, exchange_info: Dict) -> Dict[str, Any]:
         """Extract rate limit information from exchange info"""

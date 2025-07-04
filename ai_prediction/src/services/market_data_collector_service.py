@@ -16,6 +16,7 @@ from ..interfaces.market_data_collector import MarketDataCollector
 from ..services.market_data_service import MarketDataService
 from ..common.logger import LoggerFactory
 from ..utils.datetime_utils import DateTimeUtils
+from ..schemas.ohlcv_schemas import OHLCVBatchSchema
 
 
 class MarketDataCollectorService:
@@ -44,9 +45,7 @@ class MarketDataCollectorService:
         self.data_service = data_service
         self.collection_interval = collection_interval_seconds
 
-        self.logger = LoggerFactory.get_logger(
-            name="market_data_collector_service",
-        )
+        self.logger = LoggerFactory.get_logger(name="market_data_collector_service")
 
         self._running = False
         self._collection_stats = {
@@ -105,7 +104,7 @@ class MarketDataCollectorService:
             data = self.collector.collect_ohlcv(symbol, timeframe, start_date, end_date)
 
             if data:
-                # Store collected data
+                # Store collected data using schemas
                 success = self.data_service.save_ohlcv_data(
                     exchange, symbol, timeframe, data, validate=True
                 )
@@ -599,4 +598,5 @@ if __name__ == "__main__":
 
 
 if __name__ == "__main__":
+    asyncio.run(main())
     asyncio.run(main())

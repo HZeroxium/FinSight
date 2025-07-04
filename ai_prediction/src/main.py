@@ -19,12 +19,18 @@ async def main():
     )
 
     # Start data collection
-    result = await market_data_collector_service.collect_and_store_ohlcv(
+    # result = await market_data_collector_service.collect_and_store_ohlcv(
+    #     exchange="binance",
+    #     symbol="BTCUSDT",
+    #     timeframe="12h",
+    #     start_date="2015-08-17",
+    #     end_date="2025-06-30",
+    # )
+
+    result = await market_data_collector_service.update_to_latest(
         exchange="binance",
         symbol="BTCUSDT",
-        timeframe="12h",
-        start_date="2015-08-17",
-        end_date="2025-06-30",
+        timeframe="1d",
     )
 
     # result = await market_data_collector_service.ensure_data_completeness(
