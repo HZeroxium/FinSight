@@ -5,53 +5,31 @@ Modern model factory for creating and configuring time series models with PEFT s
 """
 
 import torch
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
     AutoConfig,
-    T5ForConditionalGeneration,
-    T5Tokenizer,
+    AutoModel,
+    PatchTSTConfig,
+    PatchTSTForPrediction,
+    PatchTSMixerConfig,
+    PatchTSMixerForPrediction,
+    InformerConfig,
+    InformerForPrediction,
+    AutoformerConfig,
+    AutoformerForPrediction,
+    TimeSeriesTransformerConfig,
+    TimeSeriesTransformerForPrediction,
 )
 from peft import (
     get_peft_model,
     LoraConfig,
     TaskType as PeftTaskType,
 )
-import torch.nn as nn
 
 from ..common.logger.logger_factory import LoggerFactory, LoggerType, LogLevel
 from .config import FineTuneConfig, ModelType, PeftMethod, TaskType
-
-
-class SimpleTimeSeriesModel(nn.Module):
-    """Simple time series model for financial forecasting"""
-
-    def __init__(
-        self,
-        input_size: int,
-        hidden_size: int = 128,
-        num_layers: int = 2,
-        output_size: int = 1,
-    ):
-        super().__init__()
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=0.1 if num_layers > 1 else 0,
-        )
-        self.fc = nn.Linear(hidden_size, output_size)
-        self.dropout = nn.Dropout(0.1)
-
-    def forward(self, x):
-        # x shape: (batch_size, seq_len, features)
-        lstm_out, _ = self.lstm(x)
-        # Take the last time step
-        last_output = lstm_out[:, -1, :]
-        output = self.dropout(last_output)
-        return self.fc(output)
 
 
 class ModelFactory:
@@ -63,7 +41,9 @@ class ModelFactory:
             name="ModelFactory", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
         )
 
-    def create_model_and_tokenizer(self) -> tuple[torch.nn.Module, AutoTokenizer]:
+    def create_model_and_tokenizer(
+        self,
+    ) -> Tuple[torch.nn.Module, Optional[AutoTokenizer]]:
         """
         Create model and tokenizer based on configuration
 
@@ -71,9 +51,6 @@ class ModelFactory:
             Tuple of (model, tokenizer)
         """
         self.logger.info(f"Creating model: {self.config.model_name}")
-
-        # Load tokenizer (None for time series models)
-        tokenizer = self._create_tokenizer()
 
         # Load base model
         model = self._create_base_model()
@@ -100,82 +77,73 @@ class ModelFactory:
             f"✓ Model created with {self._count_parameters(model):,} parameters"
         )
 
-        return model, tokenizer
-
-    def _create_tokenizer(self) -> Optional[AutoTokenizer]:
-        """Create tokenizer for the specified model"""
-        # Time series models don't need tokenizers
-        if self.config.task_type == TaskType.FORECASTING:
-            return None
-
-        try:
-            if self.config.model_name in [ModelType.FLAN_T5]:
-                tokenizer = T5Tokenizer.from_pretrained(
-                    self.config.model_name, cache_dir=self.config.cache_dir
-                )
-            else:
-                tokenizer = AutoTokenizer.from_pretrained(
-                    self.config.model_name, cache_dir=self.config.cache_dir
-                )
-
-            # Add padding token if not present
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-
-            return tokenizer
-
-        except Exception as e:
-            self.logger.warning(f"Failed to create tokenizer: {e}, using None")
-            return None
+        return model, None  # Time series models don't need tokenizers
 
     def _create_base_model(self) -> torch.nn.Module:
         """Create the base model"""
         try:
-            # For time series models, create a simple LSTM-based model
-            if (
-                self.config.task_type == TaskType.FORECASTING
-                or "autoformer" in self.config.model_name.lower()
-                or "informer" in self.config.model_name.lower()
-                or "patchtst" in self.config.model_name.lower()
-                or "timesfm" in self.config.model_name.lower()
-            ):
-                # Create simple time series model
-                input_size = len(self.config.features)
-                model = SimpleTimeSeriesModel(
-                    input_size=input_size,
-                    hidden_size=128,
-                    num_layers=2,
-                    output_size=self.config.prediction_horizon,
+            model_name = self.config.model_name
+
+            # Configure model for forecasting
+            if model_name == ModelType.PATCH_TSMIXER:
+                config = PatchTSMixerConfig(
+                    context_length=self.config.sequence_length,
+                    prediction_length=self.config.prediction_horizon,
+                    num_input_channels=len(self.config.features),
+                    patch_length=8,
+                    num_patches=self.config.sequence_length // 8,
                 )
-                return model
+                model = PatchTSMixerForPrediction(config)
 
-            # For language models
-            model_config = AutoConfig.from_pretrained(
-                self.config.model_name, cache_dir=self.config.cache_dir
-            )
+            elif model_name == ModelType.PATCH_TST:
+                config = PatchTSTConfig(
+                    context_length=self.config.sequence_length,
+                    prediction_length=self.config.prediction_horizon,
+                    num_input_channels=len(self.config.features),
+                    patch_length=8,
+                    num_patches=self.config.sequence_length // 8,
+                )
+                model = PatchTSTForPrediction(config)
 
-            # Configure model for task
-            if self.config.task_type == TaskType.REGRESSION:
-                model_config.num_labels = 1
-                model_config.problem_type = "regression"
-            elif self.config.task_type == TaskType.CLASSIFICATION:
-                model_config.num_labels = 2
-                model_config.problem_type = "single_label_classification"
+            elif model_name == ModelType.INFORMER:
+                config = InformerConfig(
+                    context_length=self.config.sequence_length,
+                    prediction_length=self.config.prediction_horizon,
+                    num_input_channels=len(self.config.features),
+                )
+                model = InformerForPrediction(config)
 
-            # Load model based on type
-            if self.config.model_name == ModelType.FLAN_T5:
-                model = T5ForConditionalGeneration.from_pretrained(
-                    self.config.model_name,
-                    config=model_config,
+            elif model_name == ModelType.AUTOFORMER:
+                config = AutoformerConfig(
+                    context_length=self.config.sequence_length,
+                    prediction_length=self.config.prediction_horizon,
+                    num_input_channels=len(self.config.features),
+                )
+                model = AutoformerForPrediction(config)
+
+            elif model_name == ModelType.TIME_SERIES_TRANSFORMER:
+                config = TimeSeriesTransformerConfig(
+                    context_length=self.config.sequence_length,
+                    prediction_length=self.config.prediction_horizon,
+                    num_input_channels=len(self.config.features),
+                )
+                model = TimeSeriesTransformerForPrediction(config)
+
+            elif model_name == ModelType.TIMESFM:
+                # For TimesFM, use AutoModel as fallback
+                self.logger.warning("TimesFM not directly supported, using AutoModel")
+                model = AutoModel.from_pretrained(
+                    model_name,
                     cache_dir=self.config.cache_dir,
                     torch_dtype=(
                         torch.float16 if self.config.use_fp16 else torch.float32
                     ),
                 )
             else:
-                model = AutoModelForSequenceClassification.from_pretrained(
-                    self.config.model_name,
-                    config=model_config,
+                # Fallback to AutoModel
+                self.logger.info(f"Using AutoModel for {model_name}")
+                model = AutoModel.from_pretrained(
+                    model_name,
                     cache_dir=self.config.cache_dir,
                     torch_dtype=(
                         torch.float16 if self.config.use_fp16 else torch.float32
@@ -186,16 +154,25 @@ class ModelFactory:
 
         except Exception as e:
             self.logger.error(f"Failed to create base model: {e}")
-            # Fallback to simple model
-            input_size = len(self.config.features)
-            return SimpleTimeSeriesModel(input_size=input_size)
+            # Try AutoModel as final fallback
+            try:
+                self.logger.info("Trying AutoModel as fallback...")
+                model = AutoModel.from_pretrained(
+                    self.config.model_name,
+                    cache_dir=self.config.cache_dir,
+                    torch_dtype=(
+                        torch.float16 if self.config.use_fp16 else torch.float32
+                    ),
+                )
+                return model
+            except Exception as e2:
+                self.logger.error(f"All model creation attempts failed: {e2}")
+                raise
 
     def _supports_peft(self, model: torch.nn.Module) -> bool:
         """Check if model supports PEFT"""
-        # Simple models don't support PEFT
-        if isinstance(model, SimpleTimeSeriesModel):
-            return False
-        return True
+        # Most HuggingFace models support PEFT
+        return hasattr(model, "named_modules")
 
     def _apply_peft(self, model: torch.nn.Module) -> torch.nn.Module:
         """Apply PEFT to the model"""
@@ -253,7 +230,7 @@ class ModelFactory:
         elif self.config.task_type == TaskType.CLASSIFICATION:
             return PeftTaskType.SEQ_CLS
         else:
-            return PeftTaskType.CAUSAL_LM
+            return PeftTaskType.FEATURE_EXTRACTION
 
     def _get_target_modules(self, model: torch.nn.Module) -> List[str]:
         """Auto-detect target modules for PEFT"""
@@ -271,6 +248,8 @@ class ModelFactory:
             "o_proj",
             "dense",
             "fc",
+            "linear",
+            "projection",
         ]
 
         # Filter to common targets if they exist
@@ -282,7 +261,7 @@ class ModelFactory:
             return list(set(filtered_targets))[:4]  # Limit to avoid too many targets
 
         # Fallback to first few linear layers
-        return list(set(target_modules))[:4] if target_modules else ["fc"]
+        return list(set(target_modules))[:4] if target_modules else ["dense"]
 
     def _count_parameters(self, model: torch.nn.Module) -> int:
         """Count total model parameters"""

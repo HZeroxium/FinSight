@@ -108,7 +108,7 @@ class FineTuneTrainer:
         # Create output directory
         self.config.output_dir.mkdir(exist_ok=True, parents=True)
 
-        # Setup training arguments with updated API
+        # For time series models, use HuggingFace Trainer
         training_args = TrainingArguments(
             output_dir=str(self.config.output_dir),
             overwrite_output_dir=True,
@@ -120,9 +120,7 @@ class FineTuneTrainer:
             logging_steps=self.config.logging_steps,
             eval_steps=self.config.eval_steps if val_dataset else None,
             save_steps=self.config.save_steps,
-            eval_strategy=(
-                "steps" if val_dataset else "no"
-            ),  # Updated from evaluation_strategy
+            eval_strategy="steps" if val_dataset else "no",
             save_strategy="steps",
             load_best_model_at_end=True if val_dataset else False,
             fp16=self.config.use_fp16,
@@ -132,14 +130,7 @@ class FineTuneTrainer:
         )
 
         # Setup data collator
-        if self.tokenizer:
-            data_collator = DataCollatorWithPadding(self.tokenizer)
-        else:
-            data_collator = SimpleDataCollator()
-
-        # Custom training loop for simple models
-        if hasattr(self.model, "lstm"):  # Our simple time series model
-            return self._train_simple_model(train_dataset, val_dataset)
+        data_collator = SimpleDataCollator()
 
         # Create trainer
         self.trainer = Trainer(
@@ -147,7 +138,7 @@ class FineTuneTrainer:
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
-            tokenizer=self.tokenizer,
+            tokenizer=None,  # No tokenizer for time series
             data_collator=data_collator,
             compute_metrics=compute_metrics or self._default_compute_metrics,
         )
@@ -184,23 +175,28 @@ class FineTuneTrainer:
             for batch in train_loader:
                 optimizer.zero_grad()
 
-                # Get inputs and targets
+                # Get inputs and targets with correct shapes
                 if "past_values" in batch:
-                    inputs = batch["past_values"].to(device)
+                    inputs = batch["past_values"].to(
+                        device
+                    )  # (batch, seq_len, features)
                     targets = batch["future_values"].to(device)
                 else:
-                    inputs = batch["input_ids"].to(device).float()
-                    targets = batch["labels"].to(device).float()
+                    # Fallback for other formats
+                    inputs = batch["input_ids"].to(device)
+                    targets = batch["labels"].to(device)
 
-                # Reshape inputs for LSTM if needed
-                if len(inputs.shape) == 2:
-                    inputs = inputs.unsqueeze(-1)  # Add feature dimension
+                    # Reshape if needed for LSTM
+                    if inputs.dim() == 2:
+                        inputs = inputs.unsqueeze(-1)  # Add feature dimension
+
+                # Ensure targets are 1D
+                if targets.dim() > 1:
+                    targets = targets.squeeze()
 
                 outputs = self.model(inputs)
 
-                # Ensure target shape matches output
-                if targets.dim() > 1:
-                    targets = targets.squeeze()
+                # Ensure output shape matches target shape
                 if outputs.dim() > 1:
                     outputs = outputs.squeeze()
 
@@ -277,11 +273,11 @@ class FineTuneTrainer:
                     inputs = batch["past_values"].to(device)
                     batch_targets = batch["future_values"].to(device)
                 else:
-                    inputs = batch["input_ids"].to(device).float()
-                    batch_targets = batch["labels"].to(device).float()
+                    inputs = batch["input_ids"].to(device)
+                    batch_targets = batch["labels"].to(device)
 
-                if len(inputs.shape) == 2:
-                    inputs = inputs.unsqueeze(-1)
+                    if inputs.dim() == 2:
+                        inputs = inputs.unsqueeze(-1)
 
                 outputs = self.model(inputs)
 
@@ -312,17 +308,15 @@ class FineTuneTrainer:
 
         self.logger.info(f"Saving model to {save_path}")
 
-        # Save model
+        # Save using HuggingFace format
         if self.trainer:
             self.trainer.save_model(save_path)
-            if self.tokenizer:
-                self.tokenizer.save_pretrained(save_path)
         else:
-            # Save simple model
-            torch.save(self.model.state_dict(), f"{save_path}/model.bin")
+            # Manual save for models without trainer
+            self.model.save_pretrained(save_path)
 
         # Save config
-        config_path = Path(save_path) / "config.json"
+        config_path = Path(save_path) / "training_config.json"
         with open(config_path, "w") as f:
             f.write(self.config.model_dump_json(indent=2))
 

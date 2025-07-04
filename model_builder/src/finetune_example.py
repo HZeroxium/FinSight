@@ -8,7 +8,7 @@ Provides an easy-to-use interface for fine-tuning financial AI models.
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from .finetune.main import create_default_facade, quick_finetune
+from .finetune.main import create_default_facade
 
 
 def finetune_model(
@@ -62,87 +62,33 @@ def finetune_model(
     return facade.finetune(data_path)
 
 
-def predict_with_model(
-    model_path: str,
-    input_data: Any,
-) -> Dict[str, Any]:
-    """
-    Make predictions using a fine-tuned model.
-
-    Args:
-        model_path: Path to the saved fine-tuned model
-        input_data: Input data for prediction
-
-    Returns:
-        Prediction results
-    """
-    facade = create_default_facade()
-    return facade.predict(input_data, model_path)
-
-
-def evaluate_model(
-    model_path: str,
-    test_data_path: str,
-) -> Dict[str, Any]:
-    """
-    Evaluate a fine-tuned model on test data.
-
-    Args:
-        model_path: Path to the saved model
-        test_data_path: Path to test dataset
-
-    Returns:
-        Evaluation metrics
-    """
-    facade = create_default_facade()
-    return facade.evaluate_existing_model(model_path, test_data_path)
-
-
-# Convenience function for quick start
-def demo_finetune(
-    data_path: str = "data/1d.csv",
-) -> Dict[str, Any]:
-    """
-    Demo function for quick fine-tuning with default settings.
-
-    Args:
-        data_path: Path to the dataset
-
-    Returns:
-        Training results
-    """
-    return quick_finetune(
-        data_path=data_path,
-        output_dir="./demo_finetune_output",
-        model_name="ibm/patchtsmixer-forecasting",  # Smaller model for demo
-    )
-
-
 def main():
     """
     Main entry point for quick testing.
     """
     # Example usage with error handling
-    try:
-        results = finetune_model(
-            data_path="data/1d.csv",
-            model_name="ibm/patchtsmixer-forecasting",
-            num_epochs=3,
-            batch_size=4,
-            learning_rate=5e-5,
-        )
+    # try:
+    #     results = finetune_model(
+    #         data_path="data/1d.csv",
+    #         model_name="ibm/patchtsmixer-forecasting",
+    #         num_epochs=3,
+    #         batch_size=4,
+    #         learning_rate=5e-5,
+    #     )
 
-        if results["status"] == "success":
-            print(f"✅ Training completed successfully!")
-            print(f"Model saved to: {results['model_path']}")
-            print(
-                f"Training loss: {results.get('training', {}).get('training_loss', 'N/A')}"
-            )
-        else:
-            print(f"❌ Training failed: {results.get('error', 'Unknown error')}")
+    #     if results["status"] == "success":
+    #         print(f"✅ Training completed successfully!")
+    #         print(f"Model saved to: {results['model_path']}")
+    #         print(
+    #             f"Training loss: {results.get('training', {}).get('training_loss', 'N/A')}"
+    #         )
+    #     else:
+    #         print(f"❌ Training failed: {results.get('error', 'Unknown error')}")
 
-    except Exception as e:
-        print(f"❌ Unexpected error: {str(e)}")
+    # except Exception as e:
+    #     print(f"❌ Unexpected error: {str(e)}")
+
+    # Predict
 
 
 if __name__ == "__main__":

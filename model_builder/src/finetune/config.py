@@ -19,9 +19,6 @@ class ModelType(str, Enum):
     PATCH_TSMIXER = "ibm/patchtsmixer-forecasting"
     TIME_SERIES_TRANSFORMER = "huggingface/time-series-transformer"
     TIMESFM = "google/timesfm-1.0-200m"
-    # Fallback models for testing
-    FLAN_T5 = "google/flan-t5-small"
-    GPT2 = "gpt2"
 
 
 class PeftMethod(str, Enum):
@@ -59,8 +56,8 @@ class FineTuneConfig(BaseModel):
     )
 
     # Model configuration
-    model_name: ModelType = Field(
-        default=ModelType.FLAN_T5, description="Pre-trained model to fine-tune"
+    model_name: str = Field(
+        default=ModelType.PATCH_TSMIXER, description="Pre-trained model to fine-tune"
     )
     task_type: TaskType = Field(
         default=TaskType.FORECASTING, description="Type of prediction task"
@@ -68,7 +65,8 @@ class FineTuneConfig(BaseModel):
 
     # PEFT configuration
     use_peft: bool = Field(
-        default=True, description="Enable PEFT for efficient fine-tuning"
+        default=False,
+        description="Enable PEFT for efficient fine-tuning (disabled for time series models)",
     )
     peft_method: PeftMethod = Field(
         default=PeftMethod.LORA, description="PEFT method to use"
@@ -140,6 +138,12 @@ class FineTuneConfig(BaseModel):
     )
 
     def get_model_output_dir(self) -> Path:
+        """Get model-specific output directory"""
+        model_name = self.model_name.split("/")[-1]
+        return (
+            self.output_dir
+            / f"{model_name}_{self.peft_method if self.use_peft else 'full'}"
+        )
         """Get model-specific output directory"""
         model_name = self.model_name.split("/")[-1]
         return self.output_dir / f"{model_name}_{self.peft_method}"

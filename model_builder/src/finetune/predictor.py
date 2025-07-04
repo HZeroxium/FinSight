@@ -46,23 +46,24 @@ class FineTunePredictor:
             model_factory = ModelFactory(self.config)
             self.data_processor = FinancialDataProcessor(self.config)
 
-            # Load model and tokenizer
-            self.model, self.tokenizer = model_factory.create_model_and_tokenizer()
-
-            # Load fine-tuned weights
+            # Try to load from HuggingFace format first
             model_path = Path(model_path)
-            if model_path.is_dir():
-                # Load from directory (HuggingFace format)
+            if model_path.is_dir() and (model_path / "config.json").exists():
+                # Load using AutoModel
                 from transformers import AutoModel
 
-                self.model = AutoModel.from_pretrained(model_path)
+                self.model = AutoModel.from_pretrained(str(model_path))
+                self.tokenizer = None
             else:
-                # Load state dict
-                state_dict = torch.load(model_path, map_location="cpu")
-                self.model.load_state_dict(state_dict)
+                # Create new model and load weights
+                self.model, self.tokenizer = model_factory.create_model_and_tokenizer()
+
+                # Load state dict if available
+                if model_path.is_file():
+                    state_dict = torch.load(model_path, map_location="cpu")
+                    self.model.load_state_dict(state_dict)
 
             self.model.eval()
-
             self.logger.info("✅ Model loaded successfully")
 
         except Exception as e:

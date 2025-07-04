@@ -40,13 +40,13 @@ class FinancialTimeSeriesDataset(Dataset):
         sequence = self.sequences[idx]
         target = self.targets[idx]
 
-        # For time series models, return numerical data directly
+        # For time series models, maintain 3D shape: (batch, seq_len, features)
         if self.tokenizer is None or self.config.task_type == TaskType.FORECASTING:
             return {
-                "input_ids": sequence.flatten(),  # Use input_ids for consistency
-                "targets": target,
+                "past_values": sequence,  # Keep 3D shape: (seq_len, features)
+                "future_values": target.unsqueeze(0) if target.dim() == 0 else target,
                 "attention_mask": torch.ones(sequence.shape[0]),
-                "labels": target,  # Add labels for trainer compatibility
+                "labels": target.unsqueeze(0) if target.dim() == 0 else target,
             }
 
         # For language models, convert to text format
