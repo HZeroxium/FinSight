@@ -1,37 +1,39 @@
+# coindesk_news_crawler.py
+
 """
-CoinTelegraph Historical News Crawler
+CoinDesk Historical News Crawler
 
 This module implements a specialized crawler for collecting historical news data
-from CoinTelegraph's GraphQL API with comprehensive error handling and progress tracking.
+from CoinDesk's REST API with timestamp-based pagination and comprehensive error handling.
 """
 
 import asyncio
 import json
 import random
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from .adapters.api_cointelegraph_news_collector import APICoinTelegraphNewsCollector
+from .adapters.api_coindesk_news_collector import APICoinDeskNewsCollector
 from .schemas.news_schemas import NewsCollectorConfig, NewsSource
 from .services.news_service import NewsService
 from .repositories.mongo_news_repository import MongoNewsRepository
 from .common.logger import LoggerFactory, LoggerType, LogLevel
 
 
-class CoinTelegraphCrawler:
+class CoinDeskCrawler:
     """
-    Historical news crawler for CoinTelegraph with progress tracking and error recovery
+    Historical news crawler for CoinDesk with timestamp-based pagination and error recovery
     """
 
     def __init__(
         self,
         mongo_url: str = "mongodb://localhost:27017",
-        database_name: str = "finsight_news",
-        progress_file: str = "cointelegraph_progress.json",
+        database_name: str = "finsight_coindesk_news",
+        progress_file: str = "coindesk_progress.json",
     ):
         """
-        Initialize CoinTelegraph crawler
+        Initialize CoinDesk crawler
 
         Args:
             mongo_url: MongoDB connection URL
@@ -44,17 +46,17 @@ class CoinTelegraphCrawler:
 
         # Initialize logging
         self.logger = LoggerFactory.get_logger(
-            name="cointelegraph-crawler",
+            name="coindesk-crawler",
             logger_type=LoggerType.STANDARD,
             level=LogLevel.INFO,
             file_level=LogLevel.DEBUG,
-            log_file="logs/cointelegraph_crawler.log",
+            log_file="logs/coindesk_crawler.log",
         )
 
         # Initialize components
         self.repository: Optional[MongoNewsRepository] = None
         self.news_service: Optional[NewsService] = None
-        self.collector: Optional[APICoinTelegraphNewsCollector] = None
+        self.collector: Optional[APICoinDeskNewsCollector] = None
 
     async def initialize(self) -> None:
         """Initialize crawler components"""
@@ -68,19 +70,19 @@ class CoinTelegraphCrawler:
             # Initialize news service
             self.news_service = NewsService(self.repository)
 
-            # Initialize API collector with enhanced configuration
+            # Initialize API collector
             config = NewsCollectorConfig(
-                source=NewsSource.COINTELEGRAPH,
-                url="https://conpletus.cointelegraph.com/v1/",
-                timeout=45,  # Increased timeout
-                max_items=10,
-                retry_attempts=5,  # Increased retry attempts
-                retry_delay=3,  # Increased base delay
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",  # Will be overridden by BrowserSession
+                source=NewsSource.COINDESK,
+                url="https://data-api.coindesk.com/news/v1/article/list",
+                timeout=30,
+                max_items=50,
+                retry_attempts=5,
+                retry_delay=2,
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             )
-            self.collector = APICoinTelegraphNewsCollector(config)
+            self.collector = APICoinDeskNewsCollector(config)
 
-            self.logger.info("CoinTelegraph crawler initialized successfully")
+            self.logger.info("CoinDesk crawler initialized successfully")
 
         except Exception as e:
             self.logger.error(f"Failed to initialize crawler: {e}")
@@ -88,21 +90,31 @@ class CoinTelegraphCrawler:
 
     async def crawl_historical_data(
         self,
-        start_offset: int = 0,
-        end_offset: int = 49390,
-        batch_size: int = 10,
-        delay_between_requests: float = 3.0,  # Increased delay
-        checkpoint_interval: int = 50,  # Reduced checkpoint frequency
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        batch_size: int = 50,
+        delay_between_requests: float = 3.0,
+        checkpoint_interval: int = 50,
+        fallback_interval: timedelta = timedelta(days=1),
+        lang: str = "EN",
+        source_ids: Optional[list] = None,
+        categories: Optional[list] = None,
+        exclude_categories: Optional[list] = None,
     ) -> Dict[str, Any]:
         """
-        Crawl historical data with enhanced error handling and delays
+        Crawl historical data with timestamp-based pagination
 
         Args:
-            start_offset: Starting offset for crawling
-            end_offset: Ending offset for crawling
+            start_date: Starting date for crawling (defaults to 30 days ago)
+            end_date: Ending date for crawling (defaults to now)
             batch_size: Number of items per request
             delay_between_requests: Delay between requests in seconds
             checkpoint_interval: Save progress every N requests
+            fallback_interval: Minimum time to jump back when no data or small batches
+            lang: Language filter
+            source_ids: List of source keys to include
+            categories: List of categories to include
+            exclude_categories: List of categories to exclude
 
         Returns:
             Crawling results summary
@@ -110,12 +122,19 @@ class CoinTelegraphCrawler:
         if not all([self.repository, self.news_service, self.collector]):
             await self.initialize()
 
+        # Set default date range if not provided
+        if end_date is None:
+            end_date = datetime.now(timezone.utc)
+        if start_date is None:
+            start_date = end_date - timedelta(days=30)
+
         # Load previous progress
         progress = self._load_progress()
-        current_offset = max(start_offset, progress.get("last_offset", start_offset))
+        current_timestamp = progress.get("last_timestamp", int(end_date.timestamp()))
 
         self.logger.info(
-            f"Starting historical crawl from offset {current_offset} to {end_offset}"
+            f"Starting historical crawl from {start_date} to {end_date} "
+            f"(current timestamp: {current_timestamp})"
         )
 
         # Initialize counters
@@ -124,18 +143,34 @@ class CoinTelegraphCrawler:
         total_duplicates = progress.get("total_duplicates", 0)
         total_failed = progress.get("total_failed", 0)
         total_errors = progress.get("total_errors", 0)
+        request_count = progress.get("request_count", 0)
         start_time = datetime.now(timezone.utc)
 
+        end_timestamp = int(start_date.timestamp())
+        fallback_secs = int(fallback_interval.total_seconds())
+
         try:
-            while current_offset <= end_offset:
+            while current_timestamp > end_timestamp:
                 try:
+                    request_count += 1
+                    current_date = datetime.fromtimestamp(
+                        current_timestamp, tz=timezone.utc
+                    )
+
                     self.logger.info(
-                        f"Crawling offset {current_offset} (batch size: {batch_size})"
+                        f"Crawling batch {request_count} - timestamp: {current_timestamp} "
+                        f"({current_date.strftime('%Y-%m-%d %H:%M:%S UTC')}) - batch size: {batch_size}"
                     )
 
                     # Collect news batch
                     result = await self.collector.collect_news(
-                        max_items=batch_size, offset=current_offset, limit=batch_size
+                        max_items=batch_size,
+                        to_timestamp=current_timestamp,
+                        limit=batch_size,
+                        lang=lang,
+                        source_ids=source_ids,
+                        categories=categories,
+                        exclude_categories=exclude_categories,
                     )
 
                     if result.success and result.items:
@@ -161,50 +196,66 @@ class CoinTelegraphCrawler:
                             f"Failed: {batch_failed}"
                         )
 
-                        # Check if we got fewer items than requested (end of data)
-                        if len(result.items) < 2:
-                            self.logger.info("Reached end of available data")
-                            break
+                        # Update timestamp for next batch (get older articles)
+                        # Ensure we always jump back at least fallback_interval
+                        oldest_timestamp = min(
+                            int(item.published_at.timestamp()) for item in result.items
+                        )
+                        next_ts = oldest_timestamp - 1
+                        jump = current_timestamp - next_ts
+                        if jump < fallback_secs:
+                            # nếu khoảng cách thực tế quá nhỏ, lùi bằng fallback
+                            current_timestamp -= fallback_secs
+                            self.logger.debug(
+                                f"Jump too small ({jump}s), using fallback {fallback_secs}s"
+                            )
+                        else:
+                            current_timestamp = next_ts
+
+                        # Check if we got fewer items than requested (might be reaching end)
+                        if len(result.items) < batch_size // 2:
+                            self.logger.info(
+                                "Getting fewer items, might be reaching data limits"
+                            )
 
                     else:
                         self.logger.warning(
-                            f"Failed to collect batch at offset {current_offset}: {result.error_message}"
+                            f"Failed to collect batch at timestamp {current_timestamp}: {result.error_message}"
                         )
                         total_errors += 1
 
+                        # Move back in time even on failure by fallback interval
+                        current_timestamp -= fallback_secs
+
                         # Special handling for 403 errors - longer backoff
                         if "403" in str(result.error_message):
-                            backoff_time = random.uniform(
-                                30, 60
-                            )  # 30-60 second backoff
+                            backoff_time = random.uniform(30, 60)
                             self.logger.info(
                                 f"403 detected - backing off for {backoff_time:.1f} seconds"
                             )
                             await asyncio.sleep(backoff_time)
 
-                    # Update offset
-                    current_offset += batch_size
-
                     # Save progress at checkpoints
-                    if (current_offset - start_offset) % (
-                        checkpoint_interval * batch_size
-                    ) == 0:
+                    if request_count % checkpoint_interval == 0:
                         self._save_progress(
                             {
-                                "last_offset": current_offset,
+                                "last_timestamp": current_timestamp,
+                                "request_count": request_count,
                                 "total_collected": total_collected,
                                 "total_stored": total_stored,
                                 "total_duplicates": total_duplicates,
                                 "total_failed": total_failed,
                                 "total_errors": total_errors,
                                 "last_update": datetime.now(timezone.utc).isoformat(),
+                                "current_date": datetime.fromtimestamp(
+                                    current_timestamp, tz=timezone.utc
+                                ).isoformat(),
                             }
                         )
-                        self.logger.info(f"Progress saved at offset {current_offset}")
+                        self.logger.info(f"Progress saved at request {request_count}")
 
                     # Enhanced rate limiting with jitter
                     if delay_between_requests > 0:
-                        # Add random jitter to avoid patterns
                         jitter = random.uniform(0.5, 1.5)
                         actual_delay = delay_between_requests * jitter
                         self.logger.debug(f"Sleeping for {actual_delay:.1f} seconds")
@@ -212,12 +263,15 @@ class CoinTelegraphCrawler:
 
                 except Exception as e:
                     total_errors += 1
-                    self.logger.error(f"Error processing offset {current_offset}: {e}")
+                    self.logger.error(
+                        f"Error processing timestamp {current_timestamp}: {e}"
+                    )
 
                     # Save progress on error
                     self._save_progress(
                         {
-                            "last_offset": current_offset,
+                            "last_timestamp": current_timestamp,
+                            "request_count": request_count,
                             "total_collected": total_collected,
                             "total_stored": total_stored,
                             "total_duplicates": total_duplicates,
@@ -231,7 +285,7 @@ class CoinTelegraphCrawler:
                     # Enhanced exponential backoff on errors
                     error_delay = min(
                         delay_between_requests * (2 ** min(total_errors, 5)), 300
-                    )  # Max 5 minutes
+                    )
                     jitter = random.uniform(0.8, 1.2)
                     actual_error_delay = error_delay * jitter
 
@@ -240,7 +294,8 @@ class CoinTelegraphCrawler:
                     )
                     await asyncio.sleep(actual_error_delay)
 
-                    current_offset += batch_size  # Move to next batch even on error
+                    # Move back in time even on error by fallback interval
+                    current_timestamp -= fallback_secs
 
         except KeyboardInterrupt:
             self.logger.info("Crawling interrupted by user")
@@ -253,15 +308,21 @@ class CoinTelegraphCrawler:
             duration = (end_time - start_time).total_seconds()
 
             final_progress = {
-                "last_offset": current_offset,
+                "last_timestamp": current_timestamp,
+                "request_count": request_count,
                 "total_collected": total_collected,
                 "total_stored": total_stored,
                 "total_duplicates": total_duplicates,
                 "total_failed": total_failed,
                 "total_errors": total_errors,
                 "duration_seconds": duration,
-                "completed": current_offset > end_offset,
+                "completed": current_timestamp <= end_timestamp,
                 "last_update": end_time.isoformat(),
+                "date_range": {
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "final_timestamp": current_timestamp,
+                },
             }
 
             self._save_progress(final_progress)
@@ -269,6 +330,7 @@ class CoinTelegraphCrawler:
             self.logger.info(
                 f"Crawling session completed - "
                 f"Duration: {duration:.2f}s, "
+                f"Requests: {request_count}, "
                 f"Collected: {total_collected}, "
                 f"Stored: {total_stored}, "
                 f"Duplicates: {total_duplicates}, "
@@ -276,16 +338,17 @@ class CoinTelegraphCrawler:
             )
 
         return {
-            "start_offset": start_offset,
-            "end_offset": end_offset,
-            "final_offset": current_offset,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "final_timestamp": current_timestamp,
+            "request_count": request_count,
             "total_collected": total_collected,
             "total_stored": total_stored,
             "total_duplicates": total_duplicates,
             "total_failed": total_failed,
             "total_errors": total_errors,
             "duration_seconds": duration,
-            "completed": current_offset > end_offset,
+            "completed": current_timestamp <= end_timestamp,
         }
 
     def _load_progress(self) -> Dict[str, Any]:
@@ -336,28 +399,37 @@ class CoinTelegraphCrawler:
         try:
             if self.repository:
                 await self.repository.close()
-            self.logger.info("CoinTelegraph crawler closed")
+            self.logger.info("CoinDesk crawler closed")
         except Exception as e:
             self.logger.error(f"Error closing crawler: {e}")
 
 
 async def main():
-    """Main function for running the crawler"""
-    crawler = CoinTelegraphCrawler()
+    """Main function for running the CoinDesk crawler"""
+    crawler = CoinDeskCrawler()
 
     try:
         await crawler.initialize()
 
-        # Start crawling with more conservative settings
+        # Example: Crawl last 7 days of data
+        end_date = datetime.now(timezone.utc)
+        # start_date = end_date - timedelta(days=30)
+
+        # Start date is 2013-03-01
+
+        start_date = datetime(2013, 3, 1, tzinfo=timezone.utc)
+
         result = await crawler.crawl_historical_data(
-            start_offset=0,
-            end_offset=49390,  # Reduced for testing
-            batch_size=1000,  # Smaller batch size
-            delay_between_requests=5.0,  # Longer delay (5 seconds)
-            checkpoint_interval=20,  # More frequent checkpoints
+            start_date=start_date,
+            end_date=end_date,
+            batch_size=100,
+            delay_between_requests=3.0,
+            checkpoint_interval=20,
+            fallback_interval=timedelta(hours=24),
+            lang="EN",
         )
 
-        print("Crawling completed!")
+        print("CoinDesk crawling completed!")
         print(f"Results: {result}")
 
     except Exception as e:
