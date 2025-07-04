@@ -2,50 +2,99 @@
 
 import asyncio
 from .adapters.binance_market_data_collector import BinanceMarketDataCollector
-from .adapters.csv_market_data_repository import CSVMarketDataRepository
 from .services.market_data_service import MarketDataService
 from .common.logger import LoggerFactory
 from .services.market_data_collector_service import MarketDataCollectorService
+from .factories import create_repository
+from datetime import date, timedelta
+
+
+def get_symbol_timeframe_pairs():
+    return [
+        ("BTCUSDT", "1d"),
+        ("ETHUSDT", "1d"),
+        ("BTCUSDT", "4h"),
+        ("ETHUSDT", "4h"),
+        # ("BNBUSDT", "1d"),
+        # ("XRPUSDT", "1d"),
+        # ("ADAUSDT", "1d"),
+        # ("SOLUSDT", "1d"),
+        # ("DOGEUSDT", "1d"),
+        # ("DOTUSDT", "1d"),
+        # ("MATICUSDT", "1d"),
+        # ("LTCUSDT", "1d"),
+    ]
 
 
 async def main():
     # Initialize components
     logger = LoggerFactory.get_logger(name="main")
+
+    # Create repository using factory - easy to switch between different types
+    # Option 1: CSV Repository
+    # market_data_repository = create_repository("csv", {"base_directory": "data"})
+
+    # Option 2: MongoDB Repository (uncomment to use)
+    market_data_repository = create_repository(
+        "mongodb",
+        {
+            "connection_string": "mongodb://localhost:27017/",
+            "database_name": "finsight_market_data",
+        },
+    )
+
+    # Option 3: InfluxDB Repository (uncomment to use)
+    # market_data_repository = create_repository("influxdb", {
+    #     "url": "http://localhost:8086",
+    #     "token": "your-token",
+    #     "org": "finsight",
+    #     "bucket": "market_data"
+    # })
+
     market_data_collector = BinanceMarketDataCollector()
-    market_data_repository = CSVMarketDataRepository()
     market_data_service = MarketDataService(market_data_repository)
     market_data_collector_service = MarketDataCollectorService(
         market_data_collector, market_data_service
     )
 
-    # Start data collection
-    # result = await market_data_collector_service.collect_and_store_ohlcv(
-    #     exchange="binance",
-    #     symbol="BTCUSDT",
-    #     timeframe="12h",
-    #     start_date="2015-08-17",
-    #     end_date="2025-06-30",
-    # )
+    end_date = date.today().isoformat()
 
-    result = await market_data_collector_service.update_to_latest(
-        exchange="binance",
-        symbol="BTCUSDT",
-        timeframe="1d",
-    )
+    # Start date is very early to ensure we collect all historical data
+    start_date = (date.today() - timedelta(days=365 * 20)).isoformat()  # 10 years ago
 
-    # result = await market_data_collector_service.ensure_data_completeness(
+    pairs = get_symbol_timeframe_pairs()
+    for symbol, timeframe in pairs:
+        logger.info(
+            f"Starting collection for {symbol}/{timeframe} from {start_date} to {end_date}"
+        )
+        try:
+            result = await market_data_collector_service.ensure_data_completeness(
+                exchange="binance",
+                symbol=symbol,
+                timeframe=timeframe,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            # result = await market_data_collector_service.collect_and_store_ohlcv(
+            #     exchange="binance",
+            #     symbol=symbol,
+            #     timeframe=timeframe,
+            #     start_date=start_date,
+            #     end_date=end_date,
+            # )
+            if result:
+                logger.info(f"Collection successful for {symbol}/{timeframe}: {result}")
+            else:
+                logger.error(f"Collection failed for {symbol}/{timeframe}")
+        except Exception as e:
+            logger.error(f"Error during collection for {symbol}/{timeframe}: {e}")
+
+    # # Start data collection
+    # result = await market_data_collector_service.update_to_latest(
     #     exchange="binance",
     #     symbol="BTCUSDT",
     #     timeframe="1d",
-    #     start_date="2017-06-01",
-    #     end_date="2025-06-30",
     # )
-
-    if result:
-        logger.info("Data collection and storage successful")
-        logger.info(f"Collected data: {result}")
-    else:
-        logger.error("Data collection failed")
 
 
 if __name__ == "__main__":

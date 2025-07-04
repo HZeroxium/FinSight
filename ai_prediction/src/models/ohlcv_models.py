@@ -63,7 +63,8 @@ class OHLCVModelMongoDB(BaseModel):
 
     # MongoDB specific fields
     created_at: datetime = Field(
-        default_factory=datetime.now(timezone.utc), description="Record creation time"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Record creation time",
     )
     updated_at: Optional[datetime] = Field(None, description="Record last update time")
 
