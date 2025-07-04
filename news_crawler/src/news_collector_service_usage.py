@@ -1,3 +1,5 @@
+# news_collector_service_usage.py
+
 """
 News Collector Service Usage Examples
 
@@ -6,263 +8,338 @@ and storing crypto news from various sources.
 """
 
 import asyncio
+from datetime import datetime, timezone, timedelta
 
-from .services.news_collector_service import CollectionRequest
-from .schemas.news_schemas import NewsSource
-from .common.logger import LoggerFactory, LoggerType, LogLevel
-from .utils.dependencies import ServiceContext
+from .services.news_collector_service import (
+    NewsCollectorService,
+    CollectionRequest,
+    BatchCollectionRequest,
+)
+from .services.news_service import NewsService
 from .repositories.mongo_news_repository import MongoNewsRepository
-from .services.news_collector_service import NewsCollectorService
+from .schemas.news_schemas import NewsSource
+from .core.news_collector_factory import CollectorType
+from .common.logger import LoggerFactory, LoggerType, LogLevel
 
 
-async def demo_basic_collection():
-    """Demonstrate basic news collection from a single source"""
-    print("\n=== Basic Collection Demo ===")
-
-    async with ServiceContext() as ctx:
-        try:
-            service = ctx.get_news_collector_service()
-
-            # Create collection request
-            request = CollectionRequest(source=NewsSource.COINTELEGRAPH, max_items=10)
-
-            # Collect and store news
-            result = await service.collect_and_store_from_source(request)
-
-            print(f"Collection Result:")
-            print(f"  Source: {result.source}")
-            print(f"  Items Collected: {result.items_collected}")
-            print(f"  Items Stored: {result.items_stored}")
-            print(f"  Duplicates: {result.items_duplicated}")
-            print(f"  Failed: {result.items_failed}")
-
-            if result.collection_error:
-                print(f"  Collection Error: {result.collection_error}")
-
-            if result.storage_errors:
-                print(f"  Storage Errors: {result.storage_errors}")
-
-        except Exception as e:
-            print(f"Error in basic collection: {e}")
+# Initialize logging
+logger = LoggerFactory.get_logger(
+    name="news-collector-usage",
+    logger_type=LoggerType.STANDARD,
+    level=LogLevel.INFO,
+    file_level=LogLevel.DEBUG,
+    log_file="logs/news_collector_usage.log",
+)
 
 
-async def demo_multi_source_collection():
-    """Demonstrate collecting from multiple sources"""
-    print("\n=== Multi-Source Collection Demo ===")
+async def initialize_service() -> NewsCollectorService:
+    """
+    Initialize the NewsCollectorService with all dependencies
 
-    async with ServiceContext() as ctx:
-        try:
-            service = ctx.get_news_collector_service()
+    Returns:
+        NewsCollectorService: Initialized service instance
+    """
+    logger.info("Initializing NewsCollectorService...")
 
-            from .services.news_collector_service import MultiSourceCollectionRequest
-
-            # Collect from multiple sources
-            request = MultiSourceCollectionRequest(
-                sources=[NewsSource.COINDESK, NewsSource.COINTELEGRAPH],
-                max_items_per_source=15,
-            )
-
-            result = await service.collect_and_store_from_multiple_sources(request)
-
-            print(f"Multi-Source Collection Result:")
-            print(f"  Total Sources: {len(result['sources'])}")
-            print(f"  Total Collected: {result['total_items_collected']}")
-            print(f"  Total Stored: {result['total_items_stored']}")
-            print(f"  Total Duplicates: {result['total_items_duplicated']}")
-
-            print(f"\nPer-Source Results:")
-            for source, stats in result["source_results"].items():
-                print(f"  {source}:")
-                print(f"    Collected: {stats['items_collected']}")
-                print(f"    Success: {stats['collection_success']}")
-
-        except Exception as e:
-            print(f"Error in multi-source collection: {e}")
-
-
-async def demo_news_search_and_retrieval():
-    """Demonstrate searching and retrieving stored news"""
-    print("\n=== News Search and Retrieval Demo ===")
-
-    async with ServiceContext() as ctx:
-        try:
-            service = ctx.get_news_collector_service()
-
-            # First, collect some news
-            print("Collecting some news first...")
-            await service.collect_and_store_all_supported(max_items_per_source=10)
-
-            # Get recent news
-            print("\n--- Recent News (Last 24 hours) ---")
-            recent_news = await service.get_recent_news(hours=24, limit=5)
-
-            for i, item in enumerate(recent_news, 1):
-                print(f"{i}. {item.title} ({item.source.value})")
-                print(f"   Published: {item.published_at}")
-                print(f"   URL: {item.url}")
-                print()
-
-            # Search for specific keywords
-            print("--- Search Results for 'Bitcoin' ---")
-            bitcoin_news = await service.search_stored_news(
-                keywords=["Bitcoin"], limit=3
-            )
-
-            for i, item in enumerate(bitcoin_news, 1):
-                print(f"{i}. {item.title}")
-                print(f"   Source: {item.source.value}")
-                print(f"   Tags: {', '.join(item.tags[:3])}")
-                print()
-
-        except Exception as e:
-            print(f"Error in search demo: {e}")
-
-
-async def demo_repository_statistics():
-    """Demonstrate repository statistics"""
-    print("\n=== Repository Statistics Demo ===")
-
-    async with ServiceContext() as ctx:
-        try:
-            service = ctx.get_news_collector_service()
-
-            # Get repository stats
-            stats = await service.get_repository_stats()
-
-            print("Repository Statistics:")
-            print(f"  Database: {stats.get('database_name')}")
-            print(f"  Total Articles: {stats.get('total_articles', 0)}")
-            print(f"  Recent Articles (24h): {stats.get('recent_articles_24h', 0)}")
-
-            if stats.get("oldest_article"):
-                print(f"  Oldest Article: {stats['oldest_article']}")
-            if stats.get("newest_article"):
-                print(f"  Newest Article: {stats['newest_article']}")
-
-            print(f"\nArticles by Source:")
-            articles_by_source = stats.get("articles_by_source", {})
-            for source, count in articles_by_source.items():
-                print(f"  {source}: {count}")
-
-        except Exception as e:
-            print(f"Error getting stats: {e}")
-
-
-async def main():
-    """Run all demo functions"""
-    print("News Collector Service Usage Examples")
-    print("=" * 50)
-
-    # Set up logging
-    logger = LoggerFactory.get_logger(
-        name="news-collector-demo",
-        logger_type=LoggerType.STANDARD,
-        level=LogLevel.INFO,
-    )
-
-    logger.info("Starting news collector service demos")
-
-    demos = [
-        demo_basic_collection,
-        demo_multi_source_collection,
-        demo_news_search_and_retrieval,
-        demo_repository_statistics,
-    ]
-
-    for demo in demos:
-        try:
-            await demo()
-            await asyncio.sleep(1)  # Brief pause between demos
-        except Exception as e:
-            print(f"Demo {demo.__name__} failed: {e}")
-            logger.error(f"Demo {demo.__name__} failed: {e}")
-
-    print("\n" + "=" * 50)
-    print("All demos completed!")
-    logger.info("All news collector service demos completed")
-
-
-async def demo_custom_collection_config():
-    """Demonstrate custom collection configuration"""
-    print("\n=== Custom Collection Configuration Demo ===")
-
+    # Initialize MongoDB repository
     repository = MongoNewsRepository(
         mongo_url="mongodb://localhost:27017", database_name="finsight_news_demo"
     )
-
     await repository.initialize()
-    service = NewsCollectorService(repository)
 
+    # Initialize news service
+    news_service = NewsService(repository)
+
+    # Initialize collector service
+    collector_service = NewsCollectorService(
+        news_service=news_service, use_cache=True, enable_fallback=True
+    )
+
+    logger.info("NewsCollectorService initialized successfully")
+    return collector_service
+
+
+async def demo_single_source_collection(service: NewsCollectorService) -> None:
+    """
+    Demonstrate collecting news from a single source with specific collector type
+
+    Args:
+        service: NewsCollectorService instance
+    """
+    logger.info("=== Demo: Single Source Collection ===")
+
+    # Example 1: Collect from CoinDesk using API collector
+    request = CollectionRequest(
+        source=NewsSource.COINDESK,
+        collector_type=CollectorType.API_REST,
+        max_items=20,
+        enable_fallback=True,
+    )
+
+    result = await service.collect_and_store(request)
+
+    logger.info(f"CoinDesk Collection Result:")
+    logger.info(f"  - Success: {result['collection_success']}")
+    logger.info(f"  - Items Collected: {result['items_collected']}")
+    logger.info(f"  - Items Stored: {result['items_stored']}")
+    logger.info(f"  - Duplicates: {result['items_duplicated']}")
+
+    # Example 2: Collect from CoinTelegraph using auto-selection
+    request = CollectionRequest(
+        source=NewsSource.COINTELEGRAPH,
+        collector_type=None,  # Auto-select best collector
+        max_items=15,
+        enable_fallback=True,
+    )
+
+    result = await service.collect_and_store(request)
+
+    logger.info(f"CoinTelegraph Collection Result:")
+    logger.info(f"  - Success: {result['collection_success']}")
+    logger.info(f"  - Collector Used: {result['collector_type']}")
+    logger.info(f"  - Items Collected: {result['items_collected']}")
+    logger.info(f"  - Items Stored: {result['items_stored']}")
+
+
+async def demo_batch_collection(service: NewsCollectorService) -> None:
+    """
+    Demonstrate batch collection from multiple sources
+
+    Args:
+        service: NewsCollectorService instance
+    """
+    logger.info("=== Demo: Batch Collection ===")
+
+    # Batch collection with specific collector preferences
+    request = BatchCollectionRequest(
+        sources=[NewsSource.COINDESK, NewsSource.COINTELEGRAPH],
+        collector_preferences={
+            NewsSource.COINDESK.value: CollectorType.API_REST.value,
+            NewsSource.COINTELEGRAPH.value: CollectorType.API_GRAPHQL.value,
+        },
+        max_items_per_source=25,
+        enable_fallback=True,
+    )
+
+    result = await service.collect_and_store_batch(request)
+
+    logger.info(f"Batch Collection Result:")
+    logger.info(f"  - Sources: {result['sources']}")
+    logger.info(f"  - Total Collected: {result['total_items_collected']}")
+    logger.info(f"  - Total Stored: {result['total_items_stored']}")
+    logger.info(f"  - Total Duplicated: {result['total_items_duplicated']}")
+
+    # Show per-source results
+    for source, source_result in result["source_results"].items():
+        logger.info(f"  - {source}: {source_result['items_collected']} items")
+
+
+async def demo_all_sources_collection(service: NewsCollectorService) -> None:
+    """
+    Demonstrate collecting from all available sources with best adapters
+
+    Args:
+        service: NewsCollectorService instance
+    """
+    logger.info("=== Demo: All Sources Collection ===")
+
+    result = await service.collect_all_with_best_adapters(max_items_per_source=30)
+
+    logger.info(f"All Sources Collection Result:")
+    logger.info(f"  - Sources: {result['sources']}")
+    logger.info(f"  - Total Collected: {result['total_items_collected']}")
+    logger.info(f"  - Total Stored: {result['total_items_stored']}")
+    logger.info(f"  - Total Duplicated: {result['total_items_duplicated']}")
+
+
+async def demo_search_and_filtering(service: NewsCollectorService) -> None:
+    """
+    Demonstrate searching and filtering stored news
+
+    Args:
+        service: NewsCollectorService instance
+    """
+    logger.info("=== Demo: Search and Filtering ===")
+
+    # Search recent news
+    recent_news = await service.get_recent_news(
+        source=None, hours=24, limit=10  # All sources
+    )
+    logger.info(f"Found {len(recent_news)} recent news items")
+
+    # Search by keywords
+    bitcoin_news = await service.search_stored_news(
+        keywords=["bitcoin", "BTC"], limit=5
+    )
+    logger.info(f"Found {len(bitcoin_news)} Bitcoin-related articles")
+
+    # Search by date range
+    last_week = datetime.now(timezone.utc) - timedelta(days=7)
+    recent_coindesk = await service.search_stored_news(
+        source=NewsSource.COINDESK, start_date=last_week, limit=10
+    )
+    logger.info(f"Found {len(recent_coindesk)} CoinDesk articles from last week")
+
+    # Get news by specific source
+    cointelegraph_news = await service.get_news_by_source(
+        source=NewsSource.COINTELEGRAPH, limit=8
+    )
+    logger.info(f"Found {len(cointelegraph_news)} CoinTelegraph articles")
+
+
+async def demo_service_information(service: NewsCollectorService) -> None:
+    """
+    Demonstrate getting service information and statistics
+
+    Args:
+        service: NewsCollectorService instance
+    """
+    logger.info("=== Demo: Service Information ===")
+
+    # Get available adapters
+    adapters = service.get_available_adapters()
+    logger.info("Available Adapters:")
+    for source, adapter_types in adapters.items():
+        logger.info(f"  - {source}: {adapter_types}")
+
+    # Get repository statistics
+    stats = await service.get_repository_stats()
+    logger.info("Repository Statistics:")
+    logger.info(f"  - Total Articles: {stats.get('total_articles', 'N/A')}")
+    logger.info(f"  - Articles by Source: {stats.get('articles_by_source', {})}")
+    logger.info(f"  - Recent Articles (24h): {stats.get('recent_articles_24h', 'N/A')}")
+
+
+async def demo_error_handling(service: NewsCollectorService) -> None:
+    """
+    Demonstrate error handling and fallback mechanisms
+
+    Args:
+        service: NewsCollectorService instance
+    """
+    logger.info("=== Demo: Error Handling ===")
+
+    # Try collection with invalid configuration
     try:
-        # Custom configuration for specific sources
-        config_overrides = {
-            NewsSource.COINDESK: {
-                "timeout": 60,
-                "max_items": 25,
-                "retry_attempts": 5,
-            },
-            NewsSource.COINTELEGRAPH: {
-                "timeout": 45,
-                "max_items": 20,
-            },
-        }
-
-        result = await service.collect_and_store_from_multiple_sources(
-            sources=[NewsSource.COINDESK, NewsSource.COINTELEGRAPH],
-            config_overrides=config_overrides,
+        request = CollectionRequest(
+            source=NewsSource.COINDESK,
+            collector_type=CollectorType.API_REST,
+            max_items=5,
+            config_overrides={"invalid_param": "invalid_value"},
+            enable_fallback=True,
         )
 
-        print("Custom Configuration Collection Result:")
-        print(f"  Total Collected: {result['total_items_collected']}")
-        print(f"  Total Stored: {result['total_items_stored']}")
+        result = await service.collect_and_store(request)
 
-        for source, stats in result["source_results"].items():
-            print(f"  {source}: {stats['items_collected']} items")
+        if not result["collection_success"]:
+            logger.warning(
+                f"Collection failed as expected: {result['collection_error']}"
+            )
+        else:
+            logger.info("Collection succeeded with fallback mechanism")
 
     except Exception as e:
-        print(f"Error in custom config demo: {e}")
+        logger.error(f"Unexpected error during collection: {e}")
 
-    finally:
-        await service.close()
-        await repository.close()
+
+async def demo_performance_monitoring(service: NewsCollectorService) -> None:
+    """
+    Demonstrate performance monitoring during collection
+
+    Args:
+        service: NewsCollectorService instance
+    """
+    logger.info("=== Demo: Performance Monitoring ===")
+
+    start_time = datetime.now()
+
+    # Perform a batch collection and measure time
+    request = BatchCollectionRequest(
+        sources=[NewsSource.COINDESK, NewsSource.COINTELEGRAPH],
+        max_items_per_source=10,
+        enable_fallback=True,
+    )
+
+    result = await service.collect_and_store_batch(request)
+
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+
+    logger.info(f"Performance Metrics:")
+    logger.info(f"  - Duration: {duration:.2f} seconds")
+    logger.info(f"  - Items/Second: {result['total_items_collected'] / duration:.2f}")
+    logger.info(
+        f"  - Success Rate: {(result['total_items_stored'] / max(result['total_items_collected'], 1)) * 100:.1f}%"
+    )
 
 
 async def main():
-    """Run all demo functions"""
-    print("News Collector Service Usage Examples")
-    print("=" * 50)
+    """
+    Main function demonstrating comprehensive NewsCollectorService usage
+    """
+    logger.info("Starting NewsCollectorService Usage Demo")
 
-    # Set up logging
-    logger = LoggerFactory.get_logger(
-        name="news-collector-demo",
-        logger_type=LoggerType.STANDARD,
-        level=LogLevel.INFO,
-    )
+    try:
+        # Initialize service
+        service = await initialize_service()
 
-    logger.info("Starting news collector service demos")
+        # Run all demos
+        await demo_single_source_collection(service)
+        # await demo_batch_collection(service)
+        # await demo_all_sources_collection(service)
+        # await demo_search_and_filtering(service)
+        # await demo_service_information(service)
+        # await demo_error_handling(service)
+        # await demo_performance_monitoring(service)
 
-    demos = [
-        demo_basic_collection,
-        # demo_multi_source_collection,
-        # demo_all_sources_collection,
-        # demo_news_search_and_retrieval,
-        # demo_repository_statistics,
-        # demo_custom_collection_config,
-    ]
+        logger.info("All demos completed successfully!")
 
-    for demo in demos:
-        try:
-            await demo()
-            await asyncio.sleep(1)  # Brief pause between demos
-        except Exception as e:
-            print(f"Demo {demo.__name__} failed: {e}")
-            logger.error(f"Demo {demo.__name__} failed: {e}")
+        # Final statistics
+        final_stats = await service.get_repository_stats()
+        logger.info(f"Final Repository State:")
+        logger.info(f"  - Total Articles: {final_stats.get('total_articles', 'N/A')}")
+        logger.info(
+            f"  - Articles by Source: {final_stats.get('articles_by_source', {})}"
+        )
 
-    print("\n" + "=" * 50)
-    print("All demos completed!")
-    logger.info("All news collector service demos completed")
+    except Exception as e:
+        logger.error(f"Demo failed with error: {e}")
+        raise
+    finally:
+        # Cleanup
+        if "service" in locals():
+            await service.close()
+        logger.info("NewsCollectorService usage demo completed")
+
+
+async def quick_demo():
+    """
+    Quick demo for testing basic functionality
+    """
+    logger.info("Starting Quick Demo")
+
+    service = await initialize_service()
+
+    try:
+        # Quick single source collection
+        request = CollectionRequest(
+            source=NewsSource.COINDESK, max_items=5, enable_fallback=True
+        )
+
+        result = await service.collect_and_store(request)
+
+        logger.info(f"Quick Demo Result:")
+        logger.info(f"  - Success: {result['collection_success']}")
+        logger.info(f"  - Items: {result['items_collected']}")
+        logger.info(f"  - Stored: {result['items_stored']}")
+
+    finally:
+        await service.close()
 
 
 if __name__ == "__main__":
-    # Run the demos
+    # Run the comprehensive demo
     asyncio.run(main())
+
+    # Uncomment to run quick demo instead
+    # asyncio.run(quick_demo())

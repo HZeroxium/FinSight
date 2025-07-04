@@ -1,44 +1,57 @@
+# services/news_collector_service.py
+
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
 from ..core.news_collector_facade import NewsCollectorFacade
+from ..core.news_collector_factory import CollectorType
 from ..schemas.news_schemas import NewsSource, NewsItem
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 from .news_service import NewsService
 
 
 class CollectionRequest(BaseModel):
-    """Request model for news collection operations"""
+    """Enhanced request model for news collection operations"""
 
     source: NewsSource = Field(..., description="News source to collect from")
+    collector_type: Optional[CollectorType] = Field(
+        None, description="Preferred collector type"
+    )
     max_items: Optional[int] = Field(None, description="Maximum items to collect")
     config_overrides: Optional[Dict[str, Any]] = Field(
         None, description="Config overrides"
     )
+    enable_fallback: bool = Field(
+        True, description="Enable fallback collectors on failure"
+    )
 
 
-class MultiSourceCollectionRequest(BaseModel):
-    """Request model for multi-source news collection"""
+class BatchCollectionRequest(BaseModel):
+    """Request model for batch news collection from multiple sources"""
 
     sources: List[NewsSource] = Field(..., description="News sources to collect from")
+    collector_preferences: Optional[Dict[str, str]] = Field(
+        None, description="Collector preferences per source"
+    )
     max_items_per_source: Optional[int] = Field(
         None, description="Max items per source"
     )
-    config_overrides: Optional[Dict[NewsSource, Dict[str, Any]]] = Field(
+    config_overrides: Optional[Dict[str, Dict[str, Any]]] = Field(
         None, description="Config overrides per source"
     )
+    enable_fallback: bool = Field(True, description="Enable fallback collectors")
 
 
 class CollectionResult(BaseModel):
-    """Result model for news collection operations"""
+    """Result model for individual source collection operations"""
 
     source: str = Field(..., description="Source name")
-    collection_success: bool = Field(..., description="Collection success status")
+    collection_success: bool = Field(..., description="Whether collection succeeded")
     items_collected: int = Field(..., description="Number of items collected")
     items_stored: int = Field(..., description="Number of items stored")
     items_duplicated: int = Field(..., description="Number of duplicate items")
-    items_failed: int = Field(..., description="Number of failed items")
+    items_failed: int = Field(..., description="Number of items that failed to store")
     collection_error: Optional[str] = Field(
         None, description="Collection error message"
     )
@@ -49,21 +62,27 @@ class CollectionResult(BaseModel):
 
 class NewsCollectorService:
     """
-    Orchestrates news collection and storage operations.
-    Aggregates NewsCollectorFacade and NewsService to provide complete
-    news collection workflow with persistence.
+    Enhanced news collector service with flexible adapter support and fallback mechanisms
     """
 
-    def __init__(self, news_service: NewsService, use_cache: bool = True):
+    def __init__(
+        self,
+        news_service: NewsService,
+        use_cache: bool = True,
+        enable_fallback: bool = True,
+    ):
         """
-        Initialize news collector service
+        Initialize enhanced news collector service
 
         Args:
             news_service: News service for repository operations
             use_cache: Whether to cache collector instances
+            enable_fallback: Whether to enable fallback mechanisms
         """
         self.news_service = news_service
-        self.collector_facade = NewsCollectorFacade(use_cache=use_cache)
+        self.collector_facade = NewsCollectorFacade(
+            use_cache=use_cache, enable_fallback=enable_fallback
+        )
 
         self.logger = LoggerFactory.get_logger(
             name="news-collector-service",
@@ -73,25 +92,24 @@ class NewsCollectorService:
             log_file="logs/news_collector_service.log",
         )
 
-        self.logger.info("NewsCollectorService initialized")
+        self.logger.info("Enhanced NewsCollectorService initialized")
 
-    async def collect_and_store_from_source(
-        self, request: CollectionRequest
-    ) -> CollectionResult:
+    async def collect_and_store(self, request: CollectionRequest) -> Dict[str, Any]:
         """
-        Collect news from a specific source and store via news service
+        Enhanced collection with flexible collector selection and fallback
 
         Args:
-            request: Collection request parameters
+            request: Enhanced collection request parameters
 
         Returns:
-            CollectionResult: Collection and storage results
+            Detailed collection and storage results
         """
-        self.logger.info(f"Starting collection from {request.source.value}")
+        self.logger.info(f"Starting enhanced collection from {request.source.value}")
 
-        # Collect news using facade
+        # Collect news using enhanced facade
         collection_result = await self.collector_facade.collect_from_source(
             source=request.source,
+            collector_type=request.collector_type,
             max_items=request.max_items,
             config_overrides=request.config_overrides,
         )
@@ -109,45 +127,66 @@ class NewsCollectorService:
                 "errors": [],
             }
 
-        result = CollectionResult(
-            source=request.source.value,
-            collection_success=collection_result.success,
-            items_collected=collection_result.total_items,
-            items_stored=storage_result["stored_count"],
-            items_duplicated=storage_result["duplicate_count"],
-            items_failed=storage_result["failed_count"],
-            collection_error=collection_result.error_message,
-            storage_errors=storage_result["errors"],
-        )
+        result = {
+            "source": request.source.value,
+            "collector_type": (
+                request.collector_type.value if request.collector_type else "auto"
+            ),
+            "collection_success": collection_result.success,
+            "items_collected": collection_result.total_items,
+            "items_stored": storage_result["stored_count"],
+            "items_duplicated": storage_result["duplicate_count"],
+            "items_failed": storage_result["failed_count"],
+            "collection_error": collection_result.error_message,
+            "storage_errors": storage_result["errors"],
+        }
 
         self.logger.info(
-            f"Collection from {request.source.value} completed - "
-            f"Collected: {result.items_collected}, "
-            f"Stored: {result.items_stored}, "
-            f"Duplicates: {result.items_duplicated}"
+            f"Enhanced collection from {request.source.value} completed - "
+            f"Collected: {result['items_collected']}, "
+            f"Stored: {result['items_stored']}"
         )
 
         return result
 
-    async def collect_and_store_from_multiple_sources(
-        self, request: MultiSourceCollectionRequest
+    async def collect_and_store_batch(
+        self, request: BatchCollectionRequest
     ) -> Dict[str, Any]:
         """
-        Collect news from multiple sources and store via news service
+        Batch collection from multiple sources with flexible configuration
 
         Args:
-            request: Multi-source collection request
+            request: Batch collection request
 
         Returns:
-            Dict[str, Any]: Aggregated collection and storage results
+            Aggregated collection and storage results
         """
-        self.logger.info(f"Starting collection from {len(request.sources)} sources")
+        self.logger.info(
+            f"Starting batch collection from {len(request.sources)} sources"
+        )
+
+        # Convert string collector preferences to enum
+        collector_preferences = None
+        if request.collector_preferences:
+            collector_preferences = {
+                NewsSource(source): CollectorType(collector_type)
+                for source, collector_type in request.collector_preferences.items()
+            }
+
+        # Convert string source keys to NewsSource enum for config overrides
+        config_overrides = None
+        if request.config_overrides:
+            config_overrides = {
+                NewsSource(source): config
+                for source, config in request.config_overrides.items()
+            }
 
         # Collect from multiple sources
         collection_results = await self.collector_facade.collect_from_multiple_sources(
             sources=request.sources,
+            collector_preferences=collector_preferences,
             max_items_per_source=request.max_items_per_source,
-            config_overrides=request.config_overrides,
+            config_overrides=config_overrides,
         )
 
         # Process each source result
@@ -185,39 +224,72 @@ class NewsCollectorService:
         }
 
         self.logger.info(
-            f"Multi-source collection completed - "
+            f"Batch collection completed - "
             f"Sources: {len(request.sources)}, "
             f"Collected: {result['total_items_collected']}, "
-            f"Stored: {result['total_items_stored']}, "
-            f"Duplicates: {result['total_items_duplicated']}"
+            f"Stored: {result['total_items_stored']}"
         )
 
         return result
 
-    async def collect_and_store_all_supported(
+    async def collect_all_with_best_adapters(
         self, max_items_per_source: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Collect news from all supported sources
+        Collect from all sources using the best available adapters
 
         Args:
             max_items_per_source: Maximum items per source
 
         Returns:
-            Dict[str, Any]: Collection and storage results
+            Collection and storage results
         """
-        self.logger.info("Starting collection from all supported sources")
+        self.logger.info("Starting collection from all sources with best adapters")
 
-        # Get all supported sources
-        from ..core.news_collector_factory import NewsCollectorFactory
-
-        supported_sources = NewsCollectorFactory.get_supported_sources()
-
-        request = MultiSourceCollectionRequest(
-            sources=supported_sources, max_items_per_source=max_items_per_source
+        # Use all supported sources with best collectors
+        collection_results = await self.collector_facade.collect_all_supported_sources(
+            max_items_per_source=max_items_per_source, use_best_collectors=True
         )
 
-        return await self.collect_and_store_from_multiple_sources(request)
+        # Process and store results
+        all_items = []
+        source_results = {}
+
+        for source, collection_result in collection_results.items():
+            all_items.extend(collection_result.items)
+            source_results[source.value] = {
+                "collection_success": collection_result.success,
+                "items_collected": collection_result.total_items,
+                "collection_error": collection_result.error_message,
+            }
+
+        # Store all items
+        if all_items:
+            storage_result = await self.news_service.store_news_items_bulk(all_items)
+        else:
+            storage_result = {
+                "stored_count": 0,
+                "duplicate_count": 0,
+                "failed_count": 0,
+                "errors": [],
+            }
+
+        return {
+            "sources": list(source_results.keys()),
+            "total_items_collected": len(all_items),
+            "total_items_stored": storage_result["stored_count"],
+            "total_items_duplicated": storage_result["duplicate_count"],
+            "source_results": source_results,
+        }
+
+    def get_available_adapters(self) -> Dict[str, List[str]]:
+        """Get available adapters for each source"""
+        adapters = {}
+        for source in NewsSource:
+            adapters[source.value] = self.collector_facade.get_available_collectors(
+                source
+            )
+        return adapters
 
     async def get_recent_news(
         self,

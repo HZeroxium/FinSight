@@ -1,8 +1,10 @@
+# core/news_collector_facade.py
+
 from typing import List, Optional, Dict, Any
 import asyncio
 from datetime import datetime
 
-from .news_collector_factory import NewsCollectorFactory
+from .news_collector_factory import NewsCollectorFactory, CollectorType
 from ..schemas.news_schemas import (
     NewsItem,
     NewsCollectionResult,
@@ -13,18 +15,19 @@ from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
 class NewsCollectorFacade:
     """
-    Facade providing a simple API for news collection operations.
-    Abstracts away the complexity of different collectors and strategies.
+    Enhanced facade providing flexible API for news collection with multiple collector types
     """
 
-    def __init__(self, use_cache: bool = True):
+    def __init__(self, use_cache: bool = True, enable_fallback: bool = True):
         """
         Initialize the news collector facade
 
         Args:
             use_cache: Whether to cache collector instances
+            enable_fallback: Whether to try alternative collectors on failure
         """
         self.use_cache = use_cache
+        self.enable_fallback = enable_fallback
         self.logger = LoggerFactory.get_logger(
             name="news-collector-facade",
             logger_type=LoggerType.STANDARD,
@@ -33,60 +36,134 @@ class NewsCollectorFacade:
             log_file="logs/news_collector_facade.log",
         )
 
-        self.logger.info("NewsCollectorFacade initialized")
+        self.logger.info("Enhanced NewsCollectorFacade initialized")
 
     async def collect_from_source(
         self,
         source: NewsSource,
+        collector_type: Optional[CollectorType] = None,
         max_items: Optional[int] = None,
         config_overrides: Optional[Dict[str, Any]] = None,
     ) -> NewsCollectionResult:
         """
-        Collect news from a specific source
+        Collect news from a specific source with specified or best collector type
 
         Args:
             source: News source to collect from
+            collector_type: Specific collector type (uses best if None)
             max_items: Maximum number of items to collect
             config_overrides: Configuration overrides for the collector
 
         Returns:
             NewsCollectionResult with collected items
         """
-        self.logger.info(f"Collecting news from {source.value}")
+        self.logger.info(
+            f"Collecting news from {source.value} with collector type: {collector_type}"
+        )
 
         try:
-            collector = NewsCollectorFactory.get_collector(
-                source=source,
-                config_overrides=config_overrides,
-                use_cache=self.use_cache,
-            )
+            # Get primary collector
+            if collector_type:
+                collector = NewsCollectorFactory.get_collector(
+                    source=source,
+                    collector_type=collector_type,
+                    config_overrides=config_overrides,
+                    use_cache=self.use_cache,
+                )
+            else:
+                collector = NewsCollectorFactory.get_best_collector_for_source(
+                    source=source,
+                    config_overrides=config_overrides,
+                )
 
+            # Try primary collector
             result = await collector.collect_news(max_items=max_items)
 
-            self.logger.info(
-                f"Collected {result.total_items} items from {source.value} "
-                f"(success: {result.success})"
-            )
+            if result.success:
+                self.logger.info(
+                    f"Successfully collected {result.total_items} items from {source.value}"
+                )
+                return result
+
+            # Fallback mechanism if enabled and primary failed
+            if self.enable_fallback and not result.success:
+                self.logger.warning(
+                    f"Primary collector failed for {source.value}, trying fallback options"
+                )
+                return await self._try_fallback_collectors(
+                    source, max_items, config_overrides
+                )
 
             return result
 
         except Exception as e:
             self.logger.error(f"Failed to collect from {source.value}: {e}")
+
+            # Try fallback on exception if enabled
+            if self.enable_fallback:
+                try:
+                    return await self._try_fallback_collectors(
+                        source, max_items, config_overrides
+                    )
+                except Exception as fallback_error:
+                    self.logger.error(
+                        f"All fallback collectors failed: {fallback_error}"
+                    )
+
             return NewsCollectionResult(
                 source=source, items=[], success=False, error_message=str(e)
             )
 
+    async def _try_fallback_collectors(
+        self,
+        source: NewsSource,
+        max_items: Optional[int],
+        config_overrides: Optional[Dict[str, Any]],
+    ) -> NewsCollectionResult:
+        """Try alternative collectors for the source"""
+
+        collectors = NewsCollectorFactory.get_all_collectors_for_source(
+            source=source, config_overrides=config_overrides
+        )
+
+        for collector in collectors:
+            try:
+                self.logger.info(
+                    f"Trying fallback collector: {type(collector).__name__}"
+                )
+                result = await collector.collect_news(max_items=max_items)
+
+                if result.success:
+                    self.logger.info(
+                        f"Fallback collector succeeded with {result.total_items} items"
+                    )
+                    return result
+
+            except Exception as e:
+                self.logger.warning(f"Fallback collector failed: {e}")
+                continue
+
+        # All collectors failed
+        return NewsCollectionResult(
+            source=source,
+            items=[],
+            success=False,
+            error_message="All collectors failed",
+        )
+
     async def collect_from_multiple_sources(
         self,
         sources: List[NewsSource],
+        collector_preferences: Optional[Dict[NewsSource, CollectorType]] = None,
         max_items_per_source: Optional[int] = None,
         config_overrides: Optional[Dict[NewsSource, Dict[str, Any]]] = None,
     ) -> Dict[NewsSource, NewsCollectionResult]:
         """
-        Collect news from multiple sources concurrently
+        Collect news from multiple sources with flexible collector selection
 
         Args:
             sources: List of news sources to collect from
+            collector_preferences: Preferred collector type per source
             max_items_per_source: Maximum items per source
             config_overrides: Configuration overrides per source
 
@@ -98,9 +175,14 @@ class NewsCollectorFacade:
         # Prepare tasks for concurrent execution
         tasks = []
         for source in sources:
+            collector_type = (
+                collector_preferences.get(source) if collector_preferences else None
+            )
             source_config = config_overrides.get(source) if config_overrides else None
+
             task = self.collect_from_source(
                 source=source,
+                collector_type=collector_type,
                 max_items=max_items_per_source,
                 config_overrides=source_config,
             )
@@ -121,6 +203,7 @@ class NewsCollectorFacade:
             else:
                 results[source] = result
 
+        # Log summary
         total_items = sum(r.total_items for r in results.values())
         successful_sources = sum(1 for r in results.values() if r.success)
 
@@ -132,22 +215,49 @@ class NewsCollectorFacade:
         return results
 
     async def collect_all_supported_sources(
-        self, max_items_per_source: Optional[int] = None
+        self,
+        max_items_per_source: Optional[int] = None,
+        use_best_collectors: bool = True,
     ) -> Dict[NewsSource, NewsCollectionResult]:
         """
-        Collect news from all supported sources
+        Collect news from all supported sources using best available collectors
 
         Args:
             max_items_per_source: Maximum items per source
+            use_best_collectors: Whether to use best collectors for each source
 
         Returns:
             Dictionary mapping sources to their collection results
         """
-        supported_sources = NewsCollectorFactory.get_supported_sources()
+        supported_sources = list(NewsSource)
 
-        return await self.collect_from_multiple_sources(
-            sources=supported_sources, max_items_per_source=max_items_per_source
-        )
+        if use_best_collectors:
+            return await self.collect_from_multiple_sources(
+                sources=supported_sources, max_items_per_source=max_items_per_source
+            )
+        else:
+            # Use RSS as fallback for all
+            collector_preferences = {
+                source: CollectorType.RSS for source in supported_sources
+            }
+            return await self.collect_from_multiple_sources(
+                sources=supported_sources,
+                collector_preferences=collector_preferences,
+                max_items_per_source=max_items_per_source,
+            )
+
+    def get_available_collectors(self, source: NewsSource) -> List[str]:
+        """Get available collector types for a source"""
+        try:
+            supported_types = NewsCollectorFactory.get_supported_types_for_source(
+                source
+            )
+            return [t.value for t in supported_types]
+        except Exception as e:
+            self.logger.error(
+                f"Failed to get available collectors for {source.value}: {e}"
+            )
+            return []
 
     def aggregate_results(
         self, results: Dict[NewsSource, NewsCollectionResult], sort_by_date: bool = True

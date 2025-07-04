@@ -1,3 +1,5 @@
+# services/news_service.py
+
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel, Field
