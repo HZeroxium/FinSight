@@ -1,13 +1,18 @@
-# src/routers/news.py
+# routers/news.py
 
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..services.news_service import NewsService, NewsSearchRequest
-from ..schemas.news_schemas import NewsItem, NewsSource
+from ..schemas.news_schemas import (
+    NewsItem,
+    NewsSource,
+    NewsResponse,
+    NewsStatsResponse,
+    TimeRangeSearchParams,
+)
 from ..utils.dependencies import get_news_service
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
@@ -22,83 +27,6 @@ logger = LoggerFactory.get_logger(
     file_level=LogLevel.DEBUG,
     log_file="logs/news_router.log",
 )
-
-
-# Pydantic models for request/response
-class NewsSearchParams(BaseModel):
-    """News search parameters with validation"""
-
-    source: Optional[NewsSource] = Field(None, description="News source filter")
-    keywords: Optional[List[str]] = Field(None, description="Keywords to search for")
-    start_date: Optional[datetime] = Field(None, description="Start date (ISO format)")
-    end_date: Optional[datetime] = Field(None, description="End date (ISO format)")
-    limit: int = Field(100, ge=1, le=1000, description="Maximum items to return")
-    offset: int = Field(0, ge=0, description="Number of items to skip")
-
-    @field_validator("end_date")
-    def validate_date_range(cls, v, values):
-        """Validate that end_date is after start_date"""
-        if v and values.get("start_date") and v <= values["start_date"]:
-            raise ValueError("end_date must be after start_date")
-        return v
-
-
-class TimeRangeSearchParams(BaseModel):
-    """Optimized time-based search parameters"""
-
-    hours: Optional[int] = Field(
-        None, ge=1, le=8760, description="Hours to look back from now"
-    )
-    days: Optional[int] = Field(
-        None, ge=1, le=365, description="Days to look back from now"
-    )
-    start_date: Optional[datetime] = Field(None, description="Specific start date")
-    end_date: Optional[datetime] = Field(None, description="Specific end date")
-    source: Optional[NewsSource] = Field(None, description="News source filter")
-    keywords: Optional[List[str]] = Field(None, description="Keywords to search for")
-    limit: int = Field(100, ge=1, le=1000, description="Maximum items to return")
-    offset: int = Field(0, ge=0, description="Number of items to skip")
-
-    @model_validator(mode="before")
-    def validate_time_params(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Validate that only one time parameter is provided:
-        hours, days, or start_date (mutually exclusive)
-        """
-        provided = [
-            values.get("hours"),
-            values.get("days"),
-            values.get("start_date"),
-        ]
-        if sum(1 for v in provided if v is not None) > 1:
-            raise ValueError(
-                "Only one of hours, days, or start_date should be provided"
-            )
-        return values
-
-
-class NewsResponse(BaseModel):
-    """Standardized news response"""
-
-    items: List[NewsItem] = Field(..., description="List of news items")
-    total_count: int = Field(..., description="Total number of matching items")
-    limit: int = Field(..., description="Applied limit")
-    offset: int = Field(..., description="Applied offset")
-    has_more: bool = Field(..., description="Whether more items are available")
-    filters_applied: Dict[str, Any] = Field(..., description="Applied filters summary")
-
-
-class NewsStatsResponse(BaseModel):
-    """News statistics response"""
-
-    total_articles: int = Field(..., description="Total articles in database")
-    articles_by_source: Dict[str, int] = Field(
-        ..., description="Article count by source"
-    )
-    recent_articles_24h: int = Field(..., description="Articles from last 24 hours")
-    oldest_article: Optional[datetime] = Field(None, description="Oldest article date")
-    newest_article: Optional[datetime] = Field(None, description="Newest article date")
-    database_info: Dict[str, Any] = Field(..., description="Database information")
 
 
 @router.get("/", response_model=NewsResponse)

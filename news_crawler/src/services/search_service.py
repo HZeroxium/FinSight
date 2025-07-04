@@ -421,7 +421,6 @@ class SearchService:
             "search_depth": request.search_depth,
             "time_range": request.time_range,
             "max_results": min(request.max_results, 50),  # Cap for consistency
-            "enable_crawler": request.enable_crawler,
             "include_answer": request.include_answer,
             "chunks_per_source": request.chunks_per_source,
         }

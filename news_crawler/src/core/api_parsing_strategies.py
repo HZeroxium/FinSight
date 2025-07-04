@@ -6,6 +6,15 @@ from abc import ABC, abstractmethod
 import dateutil.parser
 
 from ..schemas.news_schemas import NewsItem, NewsSource
+from ..common.logger import LoggerFactory, LoggerType, LogLevel
+
+logger = LoggerFactory.get_logger(
+    name="api-parsing-strategies",
+    logger_type=LoggerType.STANDARD,
+    level=LogLevel.INFO,
+    file_level=LogLevel.DEBUG,
+    log_file="logs/api_parsing_strategies.log",
+)
 
 
 class APIParsingStrategy(ABC):
@@ -125,6 +134,149 @@ class CoinTelegraphAPIStrategy(APIParsingStrategy):
             return datetime.now(timezone.utc)
 
 
+class CoinDeskAPIStrategy(APIParsingStrategy):
+    """Parsing strategy for CoinDesk REST API responses"""
+
+    def parse_response(
+        self, response_data: Dict[str, Any], source: NewsSource
+    ) -> List[NewsItem]:
+        """
+        Parse CoinDesk API response into NewsItem objects
+
+        Args:
+            response_data: CoinDesk API response data
+            source: News source
+
+        Returns:
+            List[NewsItem]: Parsed news items
+        """
+        items: List[NewsItem] = []
+
+        try:
+            # Get articles from Data array
+            articles = response_data.get("Data", [])
+
+            for article in articles:
+                try:
+                    # Extract basic information
+                    title = (article.get("TITLE") or "").strip()
+                    if not title:
+                        continue
+
+                    url = (article.get("URL") or "").strip()
+                    if not url:
+                        continue
+
+                    # Parse publication date from Unix timestamp
+                    published_ts = article.get("PUBLISHED_ON")
+                    if published_ts:
+                        published_at = datetime.fromtimestamp(
+                            published_ts, tz=timezone.utc
+                        )
+                    else:
+                        published_at = datetime.now(timezone.utc)
+
+                    # Extract description/body safely
+                    subtitle = article.get("SUBTITLE") or ""
+                    description = subtitle.strip()
+                    if not description:
+                        description = (article.get("BODY") or "").strip()
+
+                    # Extract author
+                    author = (article.get("AUTHORS") or "").strip() or None
+
+                    # Extract and process tags from keywords and categories
+                    tags: List[str] = []
+                    # Keywords
+                    for k in (
+                        (article.get("KEYWORDS") or "").replace("|", ",").split(",")
+                    ):
+                        k = k.strip()
+                        if k:
+                            tags.append(k)
+                    # Categories
+                    for cat in article.get("CATEGORY_DATA", []):
+                        name = (cat.get("NAME") or "").strip()
+                        if name:
+                            tags.append(name)
+                    # Remove duplicates, preserve order
+                    tags = list(dict.fromkeys(tags))
+
+                    # Build metadata
+                    metadata: Dict[str, Any] = {
+                        "article_id": article.get("ID"),
+                        "guid_original": article.get("GUID"),
+                        "published_on_ns": article.get("PUBLISHED_ON_NS"),
+                        "image_url": article.get("IMAGE_URL"),
+                        "subtitle": article.get("SUBTITLE"),
+                        "source_id": article.get("SOURCE_ID"),
+                        "body": article.get("BODY"),
+                        "keywords": article.get("KEYWORDS"),
+                        "language": article.get("LANG", "EN"),
+                        "upvotes": article.get("UPVOTES", 0),
+                        "downvotes": article.get("DOWNVOTES", 0),
+                        "score": article.get("SCORE", 0),
+                        "sentiment": article.get("SENTIMENT"),
+                        "status": article.get("STATUS", "ACTIVE"),
+                        "created_on": article.get("CREATED_ON"),
+                        "updated_on": article.get("UPDATED_ON"),
+                        "created_by": article.get("CREATED_BY"),
+                        "updated_by": article.get("UPDATED_BY"),
+                        "created_by_username": article.get("CREATED_BY_USERNAME"),
+                        "updated_by_username": article.get("UPDATED_BY_USERNAME"),
+                    }
+
+                    # Source info
+                    source_data = article.get("SOURCE_DATA", {})
+                    if source_data:
+                        metadata["source_info"] = {
+                            "source_key": source_data.get("SOURCE_KEY"),
+                            "name": source_data.get("NAME"),
+                            "image_url": source_data.get("IMAGE_URL"),
+                            "source_url": source_data.get("URL"),
+                            "source_type": source_data.get("SOURCE_TYPE"),
+                            "launch_date": source_data.get("LAUNCH_DATE"),
+                            "benchmark_score": source_data.get("BENCHMARK_SCORE"),
+                            "last_updated_ts": source_data.get("LAST_UPDATED_TS"),
+                        }
+                    # Categories detail
+                    if article.get("CATEGORY_DATA"):
+                        metadata["categories"] = [
+                            {
+                                "id": cat.get("ID"),
+                                "name": cat.get("NAME"),
+                                "category": cat.get("CATEGORY"),
+                            }
+                            for cat in article["CATEGORY_DATA"]
+                            if cat.get("ID") is not None
+                        ]
+
+                    # Clean out None values
+                    metadata = {k: v for k, v in metadata.items() if v is not None}
+
+                    news_item = NewsItem(
+                        source=source,
+                        title=title,
+                        url=url,
+                        description=description or None,
+                        published_at=published_at,
+                        author=author,
+                        guid=article.get("GUID"),
+                        tags=tags or None,
+                        metadata=metadata,
+                    )
+                    items.append(news_item)
+
+                except Exception:
+                    # Skip this article but continue
+                    continue
+
+        except Exception as e:
+            raise ValueError(f"Failed to parse CoinDesk API response: {e}")
+
+        return items
+
+
 def get_api_parsing_strategy(source: NewsSource) -> APIParsingStrategy:
     """
     Get appropriate parsing strategy for the given source
@@ -137,6 +289,7 @@ def get_api_parsing_strategy(source: NewsSource) -> APIParsingStrategy:
     """
     strategies = {
         NewsSource.COINTELEGRAPH: CoinTelegraphAPIStrategy(),
+        NewsSource.COINDESK: CoinDeskAPIStrategy(),
     }
 
     strategy = strategies.get(source)
