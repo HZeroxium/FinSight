@@ -8,7 +8,7 @@ Provides an easy-to-use interface for fine-tuning financial AI models.
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from .finetune.main import create_default_facade
+from .finetune.finetune_facade import create_default_facade
 
 
 def finetune_model(

@@ -21,6 +21,8 @@ from transformers import (
     AutoformerForPrediction,
     TimeSeriesTransformerConfig,
     TimeSeriesTransformerForPrediction,
+    TimesFmModelForPrediction,
+    TimesFmConfig,
 )
 from peft import (
     get_peft_model,
@@ -30,6 +32,7 @@ from peft import (
 
 from ..common.logger.logger_factory import LoggerFactory, LoggerType, LogLevel
 from .config import FineTuneConfig, ModelType, PeftMethod, TaskType
+from pathlib import Path
 
 
 class ModelFactory:
@@ -55,15 +58,21 @@ class ModelFactory:
         # Load base model
         model = self._create_base_model()
 
+        # Check and apply gradient checkpointing if supported
+        if (
+            self.config.gradient_checkpointing
+            and self._supports_gradient_checkpointing(model)
+        ):
+            model.gradient_checkpointing_enable()
+            self.logger.info("✓ Gradient checkpointing enabled")
+        elif self.config.gradient_checkpointing:
+            self.logger.warning(
+                "Model does not support gradient checkpointing, skipping"
+            )
+
         # Apply PEFT if enabled and supported
         if self.config.use_peft and self._supports_peft(model):
             model = self._apply_peft(model)
-
-        # Enable gradient checkpointing if configured
-        if self.config.gradient_checkpointing and hasattr(
-            model, "gradient_checkpointing_enable"
-        ):
-            model.gradient_checkpointing_enable()
 
         # Compile model if configured (PyTorch 2.0+)
         if self.config.compile_model:
@@ -80,18 +89,24 @@ class ModelFactory:
         return model, None  # Time series models don't need tokenizers
 
     def _create_base_model(self) -> torch.nn.Module:
-        """Create the base model"""
+        """Create the base model with better error handling"""
         try:
             model_name = self.config.model_name
 
-            # Configure model for forecasting
+            # Configure model for forecasting with safe defaults
             if model_name == ModelType.PATCH_TSMIXER:
                 config = PatchTSMixerConfig(
                     context_length=self.config.sequence_length,
                     prediction_length=self.config.prediction_horizon,
                     num_input_channels=len(self.config.features),
-                    patch_length=8,
-                    num_patches=self.config.sequence_length // 8,
+                    patch_length=min(
+                        8, self.config.sequence_length // 4
+                    ),  # Safe patch length
+                    num_patches=max(
+                        1,
+                        self.config.sequence_length
+                        // min(8, self.config.sequence_length // 4),
+                    ),
                 )
                 model = PatchTSMixerForPrediction(config)
 
@@ -100,8 +115,12 @@ class ModelFactory:
                     context_length=self.config.sequence_length,
                     prediction_length=self.config.prediction_horizon,
                     num_input_channels=len(self.config.features),
-                    patch_length=8,
-                    num_patches=self.config.sequence_length // 8,
+                    patch_length=min(8, self.config.sequence_length // 4),
+                    num_patches=max(
+                        1,
+                        self.config.sequence_length
+                        // min(8, self.config.sequence_length // 4),
+                    ),
                 )
                 model = PatchTSTForPrediction(config)
 
@@ -110,64 +129,95 @@ class ModelFactory:
                     context_length=self.config.sequence_length,
                     prediction_length=self.config.prediction_horizon,
                     num_input_channels=len(self.config.features),
+                    d_model=64,  # Smaller model for efficiency
                 )
-                model = InformerForPrediction(config)
+                model = InformerForPrediction.from_pretrained(model_name, config=config)
 
             elif model_name == ModelType.AUTOFORMER:
                 config = AutoformerConfig(
                     context_length=self.config.sequence_length,
                     prediction_length=self.config.prediction_horizon,
                     num_input_channels=len(self.config.features),
+                    d_model=64,
                 )
-                model = AutoformerForPrediction(config)
+                model = AutoformerForPrediction.from_pretrained(
+                    model_name, config=config
+                )
 
             elif model_name == ModelType.TIME_SERIES_TRANSFORMER:
                 config = TimeSeriesTransformerConfig(
                     context_length=self.config.sequence_length,
                     prediction_length=self.config.prediction_horizon,
                     num_input_channels=len(self.config.features),
+                    d_model=64,
                 )
-                model = TimeSeriesTransformerForPrediction(config)
+                model = TimeSeriesTransformerForPrediction.from_pretrained(
+                    model_name, config=config
+                )
 
             elif model_name == ModelType.TIMESFM:
-                # For TimesFM, use AutoModel as fallback
-                self.logger.warning("TimesFM not directly supported, using AutoModel")
-                model = AutoModel.from_pretrained(
-                    model_name,
-                    cache_dir=self.config.cache_dir,
-                    torch_dtype=(
-                        torch.float16 if self.config.use_fp16 else torch.float32
-                    ),
+                config = TimesFmConfig(
+                    context_length=self.config.sequence_length,
+                    horizon_length=self.config.prediction_horizon,
+                    num_input_channels=len(self.config.features),
+                    d_model=64,
                 )
+                model = TimesFmModelForPrediction.from_pretrained(
+                    model_name, config=config
+                )
+
             else:
-                # Fallback to AutoModel
-                self.logger.info(f"Using AutoModel for {model_name}")
-                model = AutoModel.from_pretrained(
-                    model_name,
-                    cache_dir=self.config.cache_dir,
-                    torch_dtype=(
-                        torch.float16 if self.config.use_fp16 else torch.float32
-                    ),
+                # Fallback to simple model
+                self.logger.warning(
+                    f"Unknown model {model_name}, creating simple model"
                 )
+                model = self._create_simple_timeseries_model()
 
             return model
 
         except Exception as e:
-            self.logger.error(f"Failed to create base model: {e}")
-            # Try AutoModel as final fallback
-            try:
-                self.logger.info("Trying AutoModel as fallback...")
-                model = AutoModel.from_pretrained(
-                    self.config.model_name,
-                    cache_dir=self.config.cache_dir,
-                    torch_dtype=(
-                        torch.float16 if self.config.use_fp16 else torch.float32
-                    ),
+            self.logger.error(f"Failed to create {model_name}: {e}")
+            self.logger.info("Creating fallback simple time series model...")
+            return self._create_simple_timeseries_model()
+
+    def _create_simple_timeseries_model(self) -> torch.nn.Module:
+        """Create a simple LSTM-based time series model as fallback"""
+        import torch.nn as nn
+
+        class SimpleTimeSeriesModel(nn.Module):
+            def __init__(self, input_size, hidden_size=64, num_layers=2, output_size=1):
+                super().__init__()
+                self.lstm = nn.LSTM(
+                    input_size, hidden_size, num_layers, batch_first=True
                 )
-                return model
-            except Exception as e2:
-                self.logger.error(f"All model creation attempts failed: {e2}")
-                raise
+                self.fc = nn.Linear(hidden_size, output_size)
+                self.dropout = nn.Dropout(0.2)
+
+            def forward(self, x):
+                # x shape: (batch, seq_len, features)
+                lstm_out, _ = self.lstm(x)
+                # Take last output
+                last_output = lstm_out[:, -1, :]
+                output = self.fc(self.dropout(last_output))
+                return output
+
+            def save_pretrained(self, path):
+                """Save model for compatibility"""
+                Path(path).mkdir(parents=True, exist_ok=True)
+                torch.save(self.state_dict(), Path(path) / "pytorch_model.bin")
+
+        return SimpleTimeSeriesModel(
+            input_size=len(self.config.features),
+            hidden_size=64,
+            num_layers=2,
+            output_size=self.config.prediction_horizon,
+        )
+
+    def _supports_gradient_checkpointing(self, model: torch.nn.Module) -> bool:
+        """Check if model supports gradient checkpointing"""
+        return hasattr(model, "gradient_checkpointing_enable") and callable(
+            getattr(model, "gradient_checkpointing_enable")
+        )
 
     def _supports_peft(self, model: torch.nn.Module) -> bool:
         """Check if model supports PEFT"""

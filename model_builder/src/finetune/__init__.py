@@ -4,7 +4,7 @@ FinSight FineTune Module
 A comprehensive fine-tuning pipeline for financial AI models using HuggingFace transformers and PEFT.
 """
 
-from .main import FineTuneFacade, create_default_facade
+from .finetune_facade import FineTuneFacade, create_default_facade
 from .config import FineTuneConfig, ModelType, TaskType, PeftMethod
 from .data_processor import FinancialDataProcessor
 from .model_factory import ModelFactory

@@ -63,7 +63,7 @@ class FineTuneConfig(BaseModel):
         default=TaskType.FORECASTING, description="Type of prediction task"
     )
 
-    # PEFT configuration
+    # PEFT configuration - Disabled by default for time series models
     use_peft: bool = Field(
         default=False,
         description="Enable PEFT for efficient fine-tuning (disabled for time series models)",
@@ -100,13 +100,14 @@ class FineTuneConfig(BaseModel):
     train_split: float = Field(default=0.7, description="Training data split ratio")
     val_split: float = Field(default=0.15, description="Validation data split ratio")
 
-    # Optimization configuration
-    use_fp16: bool = Field(default=True, description="Use mixed precision training")
+    # Optimization configuration - Made more conservative for time series models
+    use_fp16: bool = Field(default=False, description="Use mixed precision training")
     gradient_checkpointing: bool = Field(
-        default=True, description="Enable gradient checkpointing"
+        default=False, description="Enable gradient checkpointing (auto-detected)"
     )
     dataloader_num_workers: int = Field(
-        default=2, description="Number of dataloader workers"
+        default=0,
+        description="Number of dataloader workers (0 for Windows compatibility)",
     )
 
     # Paths
@@ -140,10 +141,5 @@ class FineTuneConfig(BaseModel):
     def get_model_output_dir(self) -> Path:
         """Get model-specific output directory"""
         model_name = self.model_name.split("/")[-1]
-        return (
-            self.output_dir
-            / f"{model_name}_{self.peft_method if self.use_peft else 'full'}"
-        )
-        """Get model-specific output directory"""
-        model_name = self.model_name.split("/")[-1]
-        return self.output_dir / f"{model_name}_{self.peft_method}"
+        suffix = self.peft_method if self.use_peft else "full"
+        return self.output_dir / f"{model_name}_{suffix}"

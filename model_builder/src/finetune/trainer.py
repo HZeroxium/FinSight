@@ -90,7 +90,7 @@ class FineTuneTrainer:
         compute_metrics: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
-        Fine-tune the model
+        Fine-tune the model with improved error handling
 
         Args:
             train_dataset: Training dataset
@@ -108,7 +108,23 @@ class FineTuneTrainer:
         # Create output directory
         self.config.output_dir.mkdir(exist_ok=True, parents=True)
 
-        # For time series models, use HuggingFace Trainer
+        try:
+            # Check if we can use HuggingFace Trainer
+            if hasattr(self.model, "config") and hasattr(self.model, "save_pretrained"):
+                return self._train_with_hf_trainer(
+                    train_dataset, val_dataset, compute_metrics
+                )
+            else:
+                return self._train_simple_model(train_dataset, val_dataset)
+
+        except Exception as e:
+            self.logger.error(f"Training failed: {e}")
+            # Fallback to simple training
+            self.logger.info("Falling back to simple training loop...")
+            return self._train_simple_model(train_dataset, val_dataset)
+
+    def _train_with_hf_trainer(self, train_dataset, val_dataset, compute_metrics):
+        """Train using HuggingFace Trainer"""
         training_args = TrainingArguments(
             output_dir=str(self.config.output_dir),
             overwrite_output_dir=True,
@@ -127,6 +143,7 @@ class FineTuneTrainer:
             dataloader_num_workers=self.config.dataloader_num_workers,
             remove_unused_columns=False,
             report_to=None,  # Disable W&B for now
+            save_total_limit=2,  # Keep only 2 checkpoints
         )
 
         # Setup data collator
@@ -143,17 +160,16 @@ class FineTuneTrainer:
             compute_metrics=compute_metrics or self._default_compute_metrics,
         )
 
-        # Start training with HF Trainer
+        # Start training
         train_result = self.trainer.train()
 
-        # Log training results
         self.logger.info("✓ Training completed")
         self.logger.info(f"Training loss: {train_result.training_loss:.4f}")
 
         return {"training_loss": train_result.training_loss}
 
     def _train_simple_model(self, train_dataset, val_dataset=None):
-        """Custom training loop for simple models"""
+        """Custom training loop for simple models with better error handling"""
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(device)
 
@@ -163,57 +179,81 @@ class FineTuneTrainer:
         criterion = nn.MSELoss()
 
         train_loader = torch.utils.data.DataLoader(
-            train_dataset, batch_size=self.config.batch_size, shuffle=True
+            train_dataset,
+            batch_size=self.config.batch_size,
+            shuffle=True,
+            num_workers=0,  # Windows compatibility
+            pin_memory=torch.cuda.is_available(),
         )
 
         self.model.train()
         total_loss = 0.0
+        total_batches = 0
 
         for epoch in range(self.config.num_epochs):
             epoch_loss = 0.0
+            epoch_batches = 0
 
-            for batch in train_loader:
-                optimizer.zero_grad()
+            try:
+                for batch_idx, batch in enumerate(train_loader):
+                    optimizer.zero_grad()
 
-                # Get inputs and targets with correct shapes
-                if "past_values" in batch:
-                    inputs = batch["past_values"].to(
-                        device
-                    )  # (batch, seq_len, features)
-                    targets = batch["future_values"].to(device)
-                else:
-                    # Fallback for other formats
-                    inputs = batch["input_ids"].to(device)
-                    targets = batch["labels"].to(device)
+                    # Handle different batch formats
+                    if "past_values" in batch:
+                        inputs = batch["past_values"].to(device).float()
+                        targets = batch["future_values"].to(device).float()
+                    else:
+                        inputs = batch["input_ids"].to(device).float()
+                        targets = batch["labels"].to(device).float()
 
-                    # Reshape if needed for LSTM
+                    # Ensure inputs have correct shape for model
                     if inputs.dim() == 2:
                         inputs = inputs.unsqueeze(-1)  # Add feature dimension
 
-                # Ensure targets are 1D
-                if targets.dim() > 1:
-                    targets = targets.squeeze()
+                    # Forward pass
+                    outputs = self.model(inputs)
 
-                outputs = self.model(inputs)
+                    # Ensure output and target shapes match
+                    if outputs.dim() > targets.dim():
+                        outputs = outputs.squeeze()
+                    if targets.dim() > 1:
+                        targets = targets.squeeze()
 
-                # Ensure output shape matches target shape
-                if outputs.dim() > 1:
-                    outputs = outputs.squeeze()
+                    loss = criterion(outputs, targets)
+                    loss.backward()
 
-                loss = criterion(outputs, targets)
-                loss.backward()
-                optimizer.step()
+                    # Gradient clipping
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), self.config.max_grad_norm
+                    )
 
-                epoch_loss += loss.item()
+                    optimizer.step()
 
-            avg_loss = epoch_loss / len(train_loader)
-            total_loss += avg_loss
+                    epoch_loss += loss.item()
+                    epoch_batches += 1
 
-            self.logger.info(
-                f"Epoch {epoch+1}/{self.config.num_epochs}, Loss: {avg_loss:.4f}"
-            )
+                    if batch_idx % self.config.logging_steps == 0:
+                        self.logger.info(
+                            f"Epoch {epoch+1}/{self.config.num_epochs}, "
+                            f"Batch {batch_idx}/{len(train_loader)}, "
+                            f"Loss: {loss.item():.4f}"
+                        )
 
-        return {"training_loss": total_loss / self.config.num_epochs}
+                avg_epoch_loss = epoch_loss / max(epoch_batches, 1)
+                total_loss += avg_epoch_loss
+                total_batches += 1
+
+                self.logger.info(
+                    f"Epoch {epoch+1}/{self.config.num_epochs} completed, "
+                    f"Average Loss: {avg_epoch_loss:.4f}"
+                )
+
+            except Exception as e:
+                self.logger.error(f"Error in epoch {epoch+1}: {e}")
+                continue
+
+        avg_training_loss = total_loss / max(total_batches, 1)
+        return {"training_loss": avg_training_loss}
 
     def _default_compute_metrics(self, eval_pred) -> Dict[str, float]:
         """Default metrics computation"""

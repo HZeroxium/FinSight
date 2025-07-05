@@ -12,59 +12,16 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from pydantic import BaseModel
 
-from .finetune.main import FineTuneFacade, create_default_facade
+from .finetune.finetune_facade import FineTuneFacade, create_default_facade
 from .finetune.config import FineTuneConfig, ModelType, TaskType
 from .finetune.predictor import FineTunePredictor
 from .common.logger.logger_factory import LoggerFactory, LoggerType, LogLevel
-
-
-class TrainingRequest(BaseModel):
-    """Request schema for training service"""
-
-    data_path: str
-    model_name: str = ModelType.PATCH_TSMIXER
-    num_epochs: int = 3
-    batch_size: int = 4
-    learning_rate: float = 5e-5
-    sequence_length: int = 60
-    prediction_horizon: int = 1
-    features: List[str] = ["open", "high", "low", "close", "volume"]
-    target_column: str = "close"
-    use_peft: bool = False
-    output_dir: Optional[str] = None
-
-
-class TrainingResponse(BaseModel):
-    """Response schema for training service"""
-
-    success: bool
-    model_path: Optional[str] = None
-    training_loss: Optional[float] = None
-    validation_metrics: Optional[Dict[str, float]] = None
-    error_message: Optional[str] = None
-    training_duration: Optional[float] = None
-
-
-class PredictionRequest(BaseModel):
-    """Request schema for prediction service"""
-
-    model_path: str
-    data_path: Optional[str] = None
-    data: Optional[List[Dict[str, float]]] = None
-    prediction_timeframe: str = "1d"  # 1h, 4h, 12h, 1d, 1w
-    n_steps: int = 1
-
-
-class PredictionResponse(BaseModel):
-    """Response schema for prediction service"""
-
-    success: bool
-    predictions: Optional[List[float]] = None
-    prediction_dates: Optional[List[str]] = None
-    current_price: Optional[float] = None
-    predicted_change_pct: Optional[float] = None
-    confidence: Optional[float] = None
-    error_message: Optional[str] = None
+from .schemas.model import (
+    TrainingRequest,
+    TrainingResponse,
+    PredictionRequest,
+    PredictionResponse,
+)
 
 
 class FineTuneUsageDemo:
@@ -532,53 +489,71 @@ class FineTuneUsageDemo:
 
 def main():
     """
-    Main function demonstrating all capabilities
+    Main function demonstrating all capabilities with better error handling
     """
     demo = FineTuneUsageDemo()
 
     print("🚀 FineTune Usage Demo")
     print("=" * 50)
 
-    # 1. Basic Training
-    print("\n1. Basic Training Example")
-    print("-" * 30)
-    training_results = demo.basic_training_example("data/1d.csv")
-
-    if training_results["status"] == "success":
-        model_path = training_results["model_path"]
-
-        # 2. Prediction Example (skip for now due to loading issues)
-        print("\n2. Prediction Example (Skipped - will be fixed in next iteration)")
+    try:
+        # 1. Basic Training
+        print("\n1. Basic Training Example")
         print("-" * 30)
+        training_results = demo.basic_training_example("data/1d.csv")
 
-        # 3. Service Examples
-        print("\n3. Service API Examples")
-        print("-" * 30)
+        if training_results.get("status") == "success":
+            model_path = training_results["model_path"]
+            print(f"✅ Training successful! Model saved to: {model_path}")
 
-        # Training service
-        training_request = TrainingRequest(
-            data_path="data/1d.csv",
-            model_name=ModelType.PATCH_TSMIXER,
-            num_epochs=2,
-            batch_size=4,
-        )
-        training_response = demo.training_service(training_request)
-        print(f"Training Service Success: {training_response.success}")
-        if training_response.success:
-            print(f"Model Path: {training_response.model_path}")
-            print(f"Training Loss: {training_response.training_loss}")
+            # 2. Service Examples
+            # print("\n2. Service API Examples")
+            # print("-" * 30)
 
-    print("\n✅ Demo completed!")
+            # # Training service
+            # training_request = TrainingRequest(
+            #     data_path="data/1d.csv",
+            #     model_name=ModelType.TIMESFM,
+            #     num_epochs=2,
+            #     batch_size=4,
+            #     learning_rate=1e-4,  # Lower learning rate for stability
+            # )
+            # training_response = demo.training_service(training_request)
+            # print(f"Training Service Success: {training_response.success}")
+            # if training_response.success:
+            #     print(f"Model Path: {training_response.model_path}")
+            #     print(f"Training Loss: {training_response.training_loss}")
+            # else:
+            #     print(f"Training Error: {training_response.error_message}")
 
+            # Prediction service
+            prediction_request = PredictionRequest(
+                model_path=model_path,
+                data_path="data/1d.csv",
+                prediction_timeframe="1d",  # Daily predictions
+                n_steps=5,  # Predict next 5 days
+            )
+            prediction_response = demo.prediction_service(prediction_request)
+            print(f"Prediction Service Success: {prediction_response.success}")
 
-if __name__ == "__main__":
-    main()
-    #     print(f"Prediction Service Success: {prediction_response.success}")
-    #     if prediction_response.success:
-    #         print(f"Predicted Price: {prediction_response.predictions[0]:.4f}")
-    #         print(
-    #             f"Expected Change: {prediction_response.predicted_change_pct:.2f}%"
-    #         )
+            # Backtest and visualize
+            backtest_results = demo.backtest_and_visualize(
+                model_path=model_path, data_path="data/1d.csv"
+            )
+
+            if "error" not in backtest_results:
+                print(f"Backtest Results: {backtest_results}")
+                print(
+                    f"Visualization saved to: {backtest_results['visualization_path']}"
+                )
+
+        else:
+            print(
+                f"❌ Training failed: {training_results.get('error', 'Unknown error')}"
+            )
+
+    except Exception as e:
+        print(f"❌ Demo failed with error: {str(e)}")
 
     print("\n✅ Demo completed!")
 

@@ -1,4 +1,4 @@
-# finetune/main.py
+# finetune/finetune_facade.py
 
 """
 Enhanced main facade for the finetune module providing a comprehensive API for fine-tuning models.
@@ -11,7 +11,8 @@ import time
 from datetime import datetime
 
 from ..common.logger.logger_factory import LoggerFactory, LoggerType, LogLevel
-from .config import FineTuneConfig, WandBConfig, ModelType, TaskType
+from ..schemas.model import TrainingRequest, TrainingResponse
+from .config import FineTuneConfig, ModelType, TaskType
 from .data_processor import FinancialDataProcessor
 from .model_factory import ModelFactory
 from .trainer import FineTuneTrainer
@@ -386,13 +387,92 @@ class FineTuneFacade:
         """Get history of all training sessions"""
         return self._training_history.copy()
 
+    def training_service(self, request: TrainingRequest) -> TrainingResponse:
+        """
+        Training service for API endpoint with improved error handling
+
+        Args:
+            request: Training request parameters
+
+        Returns:
+            Training response with results
+        """
+        start_time = datetime.now()
+
+        try:
+            self.logger.info(
+                f"Starting training service with model: {request.model_name}"
+            )
+
+            # Validate model name
+            valid_models = [model.value for model in ModelType]
+            if request.model_name not in valid_models:
+                return TrainingResponse(
+                    success=False,
+                    error_message=f"Invalid model name. Must be one of: {valid_models}",
+                    training_duration=0.0,
+                )
+
+            # Create custom configuration
+            config = FineTuneConfig()
+            config.model_name = request.model_name
+            config.task_type = TaskType.FORECASTING
+            config.num_epochs = request.num_epochs
+            config.batch_size = request.batch_size
+            config.learning_rate = request.learning_rate
+            config.sequence_length = request.sequence_length
+            config.prediction_horizon = request.prediction_horizon
+            config.features = request.features
+            config.target_column = request.target_column
+            config.use_peft = request.use_peft
+
+            # Disable problematic features for time series models
+            config.gradient_checkpointing = False
+            config.use_fp16 = False
+            config.dataloader_num_workers = 0
+
+            if request.output_dir:
+                config.output_dir = Path(request.output_dir)
+
+            # Create facade and run training
+            facade = FineTuneFacade(config)
+            results = facade.finetune(request.data_path)
+
+            training_duration = (datetime.now() - start_time).total_seconds()
+
+            if results["status"] == "success":
+                return TrainingResponse(
+                    success=True,
+                    model_path=results["model_path"],
+                    training_loss=results.get("training", {}).get("training_loss"),
+                    validation_metrics=results.get("evaluation", {}).get(
+                        "basic_metrics"
+                    ),
+                    training_duration=training_duration,
+                )
+            else:
+                return TrainingResponse(
+                    success=False,
+                    error_message=results.get("error", "Unknown training error"),
+                    training_duration=training_duration,
+                )
+
+        except Exception as e:
+            training_duration = (datetime.now() - start_time).total_seconds()
+            self.logger.error(f"Training service failed: {str(e)}")
+            return TrainingResponse(
+                success=False,
+                error_message=str(e),
+                training_duration=training_duration,
+            )
+
 
 def create_default_facade() -> FineTuneFacade:
     """Create a facade with default configuration for quick start"""
     config = FineTuneConfig()
 
     # Set sensible defaults for financial data
-    config.model_name = ModelType.PATCH_TSMIXER
+    config.model_name = ModelType.TIMESFM
     config.task_type = TaskType.FORECASTING
     config.num_epochs = 3
     config.batch_size = 4
