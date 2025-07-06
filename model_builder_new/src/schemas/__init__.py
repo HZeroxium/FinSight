@@ -1,6 +1,5 @@
 # schemas/__init__.py
 
-from .enums import ModelType, TaskType, TimeFrame
 from .model_schemas import (
     ModelConfig,
     TrainingRequest,
@@ -8,21 +7,19 @@ from .model_schemas import (
     PredictionRequest,
     PredictionResponse,
     ModelInfo,
-    ModelListResponse,
 )
-from .base_schemas import BaseResponse, ErrorResponse
+from .enums import ModelType, TimeFrame
+from .base_schemas import BaseResponse, HealthResponse
 
 __all__ = [
-    "ModelType",
-    "TaskType",
-    "TimeFrame",
     "ModelConfig",
     "TrainingRequest",
     "TrainingResponse",
     "PredictionRequest",
     "PredictionResponse",
     "ModelInfo",
-    "ModelListResponse",
+    "ModelType",
+    "TimeFrame",
     "BaseResponse",
-    "ErrorResponse",
+    "HealthResponse",
 ]

@@ -248,10 +248,26 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
             train_sequences, train_targets = train_dataset
             val_sequences, val_targets = val_dataset
 
+            # Validate inputs
+            if train_sequences is None or train_targets is None:
+                raise ValueError("Training sequences and targets cannot be None")
+
+            if len(train_sequences) == 0 or len(train_targets) == 0:
+                raise ValueError("Training sequences and targets cannot be empty")
+
             # Update hyperparameters with kwargs if provided
             batch_size = kwargs.get("batch_size", self.batch_size)
             num_epochs = kwargs.get("num_epochs", self.num_epochs)
             learning_rate = kwargs.get("learning_rate", self.learning_rate)
+
+            # Ensure model exists before training
+            if self.model is None:
+                self.model = self._create_model()
+
+            if self.model is None:
+                raise ValueError(
+                    "Failed to create model - model is still None after creation"
+                )
 
             # Update model's learning rate if provided
             if "learning_rate" in kwargs:
@@ -299,7 +315,7 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
             return {
                 "train_loss": 0.0,  # PL doesn't easily expose final train loss
                 "eval_loss": val_loss,
-                "epochs_trained": self.num_epochs,
+                "epochs_trained": num_epochs,
                 "model_type": "PyTorchLightningTransformer",
             }
 

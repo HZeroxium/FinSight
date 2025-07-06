@@ -6,5 +6,4 @@ from .prediction import router as prediction_router
 __all__ = [
     "training_router",
     "prediction_router",
-    "models_router",
 ]

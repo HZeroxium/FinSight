@@ -58,6 +58,13 @@ class ModelFacade:
                 f"Training {model_type.value} model for {symbol} {timeframe}"
             )
 
+            # Validate inputs
+            if train_data is None or train_data.empty:
+                raise ValueError("Training data cannot be None or empty")
+
+            if val_data is None or val_data.empty:
+                raise ValueError("Validation data cannot be None or empty")
+
             # Create model configuration for adapter
             adapter_config = {
                 "context_length": config.context_length,
@@ -72,6 +79,9 @@ class ModelFacade:
             # Create model using factory
             model = ModelFactory.create_model(model_type, adapter_config)
 
+            if model is None:
+                raise ValueError(f"Failed to create model of type {model_type}")
+
             # Train model
             training_result = model.train(
                 train_data=train_data,
@@ -82,28 +92,46 @@ class ModelFacade:
 
             if training_result.get("success", False):
                 # Save model
-                model_path = self.model_utils.ensure_model_directory(
-                    symbol, timeframe, model_type
-                )
-                model.save_model(model_path)
+                try:
+                    model_path = self.model_utils.ensure_model_directory(
+                        symbol, timeframe, model_type
+                    )
+                    model.save_model(model_path)
 
-                # Save metadata
-                self._save_model_metadata(
-                    symbol, timeframe, model_type, config, training_result
-                )
+                    # Save metadata
+                    self._save_model_metadata(
+                        symbol, timeframe, model_type, config, training_result
+                    )
 
-                # Cache model
-                cache_key = self.model_utils.generate_model_identifier(
-                    symbol, timeframe, model_type
-                )
-                self._cached_models[cache_key] = model
+                    # Cache model
+                    cache_key = self.model_utils.generate_model_identifier(
+                        symbol, timeframe, model_type
+                    )
+                    self._cached_models[cache_key] = model
 
-                training_result.update(
-                    {
-                        "model_path": str(model_path),
-                        "model_identifier": cache_key,
-                    }
-                )
+                    training_result.update(
+                        {
+                            "model_path": str(model_path),
+                            "model_identifier": cache_key,
+                        }
+                    )
+
+                    self.logger.info(
+                        f"Model training and saving completed successfully"
+                    )
+
+                except Exception as save_error:
+                    self.logger.error(
+                        f"Training succeeded but saving failed: {save_error}"
+                    )
+                    training_result.update(
+                        {
+                            "success": False,
+                            "error": f"Training succeeded but saving failed: {str(save_error)}",
+                            "training_success": True,
+                            "save_success": False,
+                        }
+                    )
 
             return training_result
 

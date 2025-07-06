@@ -282,8 +282,9 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
     def _save_model_specific(self, model_dir: Path) -> None:
         """Save PatchTSMixer specific components"""
         try:
-            # Save model state dict
+            # Save model state dict directly (avoid trainer pickle issues)
             if self.model is not None:
+                # Save model state dict instead of the full model
                 torch.save(self.model.state_dict(), model_dir / "model_state_dict.pt")
 
             # Save model config
@@ -291,6 +292,32 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
 
             with open(model_dir / "model_config.json", "w") as f:
                 json.dump(self.model_config, f, indent=2)
+
+            # Save trainer state if needed (optional)
+            if self.trainer is not None:
+                try:
+                    # Only save essential trainer information, not the trainer object itself
+                    trainer_info = {
+                        "training_completed": True,
+                        "final_train_loss": (
+                            getattr(self.trainer.state, "log_history", [{}])[-1].get(
+                                "train_loss", None
+                            )
+                            if hasattr(self.trainer, "state")
+                            else None
+                        ),
+                        "total_steps": (
+                            getattr(self.trainer.state, "global_step", 0)
+                            if hasattr(self.trainer, "state")
+                            else 0
+                        ),
+                    }
+                    with open(model_dir / "trainer_info.json", "w") as f:
+                        json.dump(trainer_info, f, indent=2)
+                except Exception as trainer_save_error:
+                    self.logger.warning(
+                        f"Could not save trainer info: {trainer_save_error}"
+                    )
 
             self.logger.info("PatchTSMixer model components saved")
 
@@ -317,6 +344,20 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
                 self.model.load_state_dict(state_dict)
 
             self.model.to(self.device)
+            self.model.eval()
+
+            # Load trainer info if available
+            trainer_info_path = model_dir / "trainer_info.json"
+            if trainer_info_path.exists():
+                try:
+                    with open(trainer_info_path, "r") as f:
+                        trainer_info = json.load(f)
+                    self.logger.info(f"Loaded trainer info: {trainer_info}")
+                except Exception as trainer_load_error:
+                    self.logger.warning(
+                        f"Could not load trainer info: {trainer_load_error}"
+                    )
+
             self.logger.info("PatchTSMixer model components loaded")
 
         except Exception as e:

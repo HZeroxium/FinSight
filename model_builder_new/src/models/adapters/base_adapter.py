@@ -531,8 +531,38 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
 
             # Save feature engineering if available
             if self.feature_engineering is not None:
-                with open(path / "feature_engineering.pkl", "wb") as f:
-                    pickle.dump(self.feature_engineering, f)
+                try:
+                    with open(path / "feature_engineering.pkl", "wb") as f:
+                        pickle.dump(self.feature_engineering, f)
+                except Exception as e:
+                    self.logger.warning(f"Could not pickle feature engineering: {e}")
+                    # Save as JSON fallback if possible
+                    try:
+                        fe_config = {
+                            "feature_columns": getattr(
+                                self.feature_engineering, "feature_columns", []
+                            ),
+                            "add_technical_indicators": getattr(
+                                self.feature_engineering,
+                                "add_technical_indicators",
+                                True,
+                            ),
+                            "add_datetime_features": getattr(
+                                self.feature_engineering, "add_datetime_features", False
+                            ),
+                            "normalize_features": getattr(
+                                self.feature_engineering, "normalize_features", True
+                            ),
+                            "fitted_feature_names": getattr(
+                                self.feature_engineering, "fitted_feature_names", []
+                            ),
+                        }
+                        with open(path / "feature_engineering_config.json", "w") as f:
+                            json.dump(fe_config, f, indent=2)
+                    except Exception as fe_error:
+                        self.logger.error(
+                            f"Could not save feature engineering config: {fe_error}"
+                        )
 
             # Save model-specific components
             self._save_model_specific(path)
@@ -586,8 +616,48 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
             # Load feature engineering
             fe_path = path / "feature_engineering.pkl"
             if fe_path.exists():
-                with open(fe_path, "rb") as f:
-                    self.feature_engineering = pickle.load(f)
+                try:
+                    with open(fe_path, "rb") as f:
+                        self.feature_engineering = pickle.load(f)
+                except Exception as e:
+                    self.logger.warning(
+                        f"Could not load pickled feature engineering: {e}"
+                    )
+                    # Try loading from JSON config fallback
+                    fe_config_path = path / "feature_engineering_config.json"
+                    if fe_config_path.exists():
+                        try:
+                            with open(fe_config_path, "r") as f:
+                                fe_config = json.load(f)
+                            # Recreate feature engineering from config
+                            from ...data.feature_engineering import (
+                                BasicFeatureEngineering,
+                            )
+
+                            self.feature_engineering = BasicFeatureEngineering(
+                                feature_columns=fe_config.get("feature_columns"),
+                                add_technical_indicators=fe_config.get(
+                                    "add_technical_indicators", True
+                                ),
+                                add_datetime_features=fe_config.get(
+                                    "add_datetime_features", False
+                                ),
+                                normalize_features=fe_config.get(
+                                    "normalize_features", True
+                                ),
+                            )
+                            # Restore fitted state
+                            self.feature_engineering.fitted_feature_names = (
+                                fe_config.get("fitted_feature_names", [])
+                            )
+                            self.feature_engineering.is_fitted = True
+                            self.logger.info(
+                                "Recreated feature engineering from config"
+                            )
+                        except Exception as fe_error:
+                            self.logger.error(
+                                f"Could not recreate feature engineering: {fe_error}"
+                            )
 
             # Load model-specific components
             self._load_model_specific(path)
