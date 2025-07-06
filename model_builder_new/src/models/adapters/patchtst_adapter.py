@@ -5,24 +5,19 @@ PatchTST adapter implementing the base adapter pattern
 Clean implementation focused on forecasting vs backtesting separation
 """
 
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Tuple
 import torch
-import torch.nn as nn
-import numpy as np
-import pandas as pd
+
 from pathlib import Path
 from transformers import (
     PatchTSTConfig,
     PatchTSTForPrediction,
     TrainingArguments,
     Trainer,
-    EarlyStoppingCallback,
 )
-from datasets import Dataset
 import os
 
 from .base_adapter import BaseTimeSeriesAdapter
-from ...logger.logger_factory import LoggerFactory
 
 # Disable wandb
 os.environ["WANDB_DISABLED"] = "true"
@@ -191,7 +186,7 @@ class PatchTSTAdapter(BaseTimeSeriesAdapter):
                 per_device_eval_batch_size=kwargs.get("batch_size", 32),
                 num_train_epochs=kwargs.get("num_epochs", 1),
                 weight_decay=kwargs.get("weight_decay", 0.01),
-                logging_steps=10,
+                logging_steps=100,
                 eval_strategy="epoch",
                 save_strategy="epoch",
                 load_best_model_at_end=False,  # Disable since eval_loss is not computed
@@ -210,6 +205,16 @@ class PatchTSTAdapter(BaseTimeSeriesAdapter):
 
             # Train
             self.logger.info("Starting PatchTST training...")
+            self.logger.info("Hyperparameters:")
+            arguments_dict = training_args.to_dict()
+            # Print some hyperparameters
+            for key, value in arguments_dict.items():
+                if key in [
+                    "learning_rate",
+                    "num_train_epochs",
+                    "per_device_train_batch_size",
+                ]:
+                    self.logger.info(f"  {key}: {value}")
             train_result = self.trainer.train()
 
             # Get final metrics

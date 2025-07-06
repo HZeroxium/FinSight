@@ -82,15 +82,33 @@ class ModelFacade:
             val_data = processed_data[train_size : train_size + val_size]
             test_data = processed_data[train_size + val_size :]
 
-            # Create model config
+            # Create model config with all hyperparameters
             config = {
                 "context_length": context_length,
                 "prediction_length": prediction_length,
                 "num_input_channels": len(feature_engineering.get_feature_names()),
                 "target_column": target_column,
+                "feature_columns": feature_engineering.get_feature_names(),
+                # Training hyperparameters
                 "num_epochs": training_kwargs.get("num_epochs", 10),
                 "batch_size": training_kwargs.get("batch_size", 32),
                 "learning_rate": training_kwargs.get("learning_rate", 1e-3),
+                # Model architecture parameters
+                "d_model": training_kwargs.get("d_model", 128),
+                "n_heads": training_kwargs.get("n_heads", 8),
+                "n_layers": training_kwargs.get("n_layers", 4),
+                "dropout": training_kwargs.get("dropout", 0.1),
+                # PatchTST/PatchTSMixer specific
+                "patch_length": training_kwargs.get("patch_length", 8),
+                "patch_stride": training_kwargs.get("patch_stride", 1),
+                # Feature engineering flags (for reference)
+                "use_technical_indicators": training_kwargs.get(
+                    "use_technical_indicators", True
+                ),
+                "add_datetime_features": training_kwargs.get(
+                    "add_datetime_features", False
+                ),
+                "normalize_features": training_kwargs.get("normalize_features", True),
             }
 
             # Create and train model

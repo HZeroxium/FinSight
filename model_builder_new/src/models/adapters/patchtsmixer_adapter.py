@@ -225,6 +225,17 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
 
             # Train
             self.logger.info("Starting PatchTSMixer training...")
+            self.logger.info("Hyperparameters:")
+            arguments_dict = training_args.to_dict()
+            # Print some hyperparameters
+            for key, value in arguments_dict.items():
+                if key in [
+                    "learning_rate",
+                    "num_train_epochs",
+                    "per_device_train_batch_size",
+                ]:
+                    self.logger.info(f"  {key}: {value}")
+
             train_result = self.trainer.train()
 
             # Get final metrics

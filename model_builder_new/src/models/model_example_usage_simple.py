@@ -17,7 +17,7 @@ This module demonstrates the core functionality:
 import json
 import asyncio
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, Any
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -90,7 +90,7 @@ class SimpleModelTester:
         models_to_test = [
             ModelType.PATCHTST,
             ModelType.PATCHTSMIXER,
-            ModelType.PYTORCH_TRANSFORMER,  # Temporarily disabled due to abstract method issues
+            ModelType.PYTORCH_TRANSFORMER,
         ]
 
         for model_type in models_to_test:
@@ -120,7 +120,6 @@ class SimpleModelTester:
                 alt_paths = [
                     Path("data/BTCUSDT_1d.csv"),
                     Path("../data/BTCUSDT_1d.csv"),
-                    Path("../../finetuning/data/BTCUSDT_1d.csv"),
                 ]
 
                 for alt_path in alt_paths:
@@ -152,11 +151,11 @@ class SimpleModelTester:
         # Use smaller parameters for testing
         config = {
             "target_column": "close",
-            "context_length": 32,  # Smaller for faster training
+            "context_length": 64,  # Smaller for faster training
             "prediction_length": 1,
-            "num_epochs": 1,  # Fewer epochs for testing
-            "batch_size": 32,  # Smaller batch size
-            "learning_rate": 1e-3,
+            "num_epochs": 2,  # Fewer epochs for testing
+            "batch_size": 16,  # Smaller batch size
+            "learning_rate": 1e-4,
             "use_technical_indicators": True,
             "normalize_features": True,
         }
@@ -297,6 +296,13 @@ async def run_simple_experiment():
                 else:
                     success_val = True if eval_result is not None else False
                 print(f"  [OK] Evaluation: {success_val}")
+            if "forecast" in model_results:
+                forecast_result = model_results["forecast"]
+                if isinstance(forecast_result, dict):
+                    success_val = forecast_result.get("success", "Unknown")
+                else:
+                    success_val = True if forecast_result is not None else False
+                print(f"  [OK] Forecasting: {success_val}")
         else:
             print(f"  [FAILED] Failed: {model_results.get('error', 'Unknown error')}")
 

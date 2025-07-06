@@ -470,6 +470,14 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
             metrics["smape"] = MetricUtils.calculate_smape(y_true, y_pred)
             metrics["r2"] = MetricUtils.calculate_r2(y_true, y_pred)
 
+            # Tolerance-based accuracy metrics
+            metrics["tolerance_accuracy_1pct"] = (
+                MetricUtils.calculate_tolerance_accuracy(y_true, y_pred, 1.0)
+            )
+            metrics["tolerance_accuracy_5pct"] = (
+                MetricUtils.calculate_tolerance_accuracy(y_true, y_pred, 5.0)
+            )
+
             # Financial metrics
             metrics["directional_accuracy"] = (
                 MetricUtils.calculate_directional_accuracy(y_true, y_pred)

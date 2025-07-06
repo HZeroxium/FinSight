@@ -4,7 +4,7 @@
 Comprehensive metrics utilities for time series model evaluation
 """
 
-from typing import Union, Tuple, Dict, Any
+from typing import Union, Tuple, Dict, List, List
 import numpy as np
 import torch
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -80,6 +80,68 @@ class MetricUtils:
             y_pred_np = y_pred_np[valid_mask]
 
         return y_true_np, y_pred_np
+
+    @staticmethod
+    @staticmethod
+    def calculate_tolerance_accuracy(
+        y_true: Union[np.ndarray, torch.Tensor],
+        y_pred: Union[np.ndarray, torch.Tensor],
+        tolerance_pct: float = 5.0,
+    ) -> float:
+        """
+        Calculate accuracy within tolerance percentage
+
+        Args:
+            y_true: True values
+            y_pred: Predicted values
+            tolerance_pct: Tolerance percentage (e.g., 5.0 for 5%)
+
+        Returns:
+            float: Accuracy percentage within tolerance
+        """
+        y_true_np, y_pred_np = MetricUtils._validate_inputs(y_true, y_pred)
+
+        # Calculate percentage error
+        with np.errstate(divide="ignore", invalid="ignore"):
+            pct_error = np.abs((y_pred_np - y_true_np) / y_true_np) * 100
+            # Handle division by zero
+            pct_error = np.where(
+                y_true_np == 0, np.abs(y_pred_np - y_true_np), pct_error
+            )
+
+        # Count predictions within tolerance
+        within_tolerance = pct_error <= tolerance_pct
+        accuracy = np.mean(within_tolerance) * 100
+
+        return float(accuracy)
+
+    @staticmethod
+    def calculate_directional_accuracy(
+        y_true: Union[np.ndarray, torch.Tensor], y_pred: Union[np.ndarray, torch.Tensor]
+    ) -> float:
+        """
+        Calculate directional accuracy (sign prediction accuracy)
+
+        Args:
+            y_true: True values
+            y_pred: Predicted values
+
+        Returns:
+            float: Directional accuracy percentage
+        """
+        y_true_np, y_pred_np = MetricUtils._validate_inputs(y_true, y_pred)
+
+        if len(y_true_np) < 2:
+            return 0.0
+
+        # Calculate direction changes
+        true_directions = np.diff(y_true_np) > 0
+        pred_directions = np.diff(y_pred_np) > 0
+
+        # Calculate accuracy
+        directional_accuracy = np.mean(true_directions == pred_directions) * 100
+
+        return float(directional_accuracy)
 
     @staticmethod
     def calculate_mse(
@@ -303,6 +365,106 @@ class MetricUtils:
         }
 
     @staticmethod
+    def calculate_tolerance_accuracy(
+        y_true: Union[np.ndarray, torch.Tensor],
+        y_pred: Union[np.ndarray, torch.Tensor],
+        tolerance: float = 0.01,
+    ) -> float:
+        """
+        Calculate accuracy based on tolerance threshold
+
+        Args:
+            y_true: True values
+            y_pred: Predicted values
+            tolerance: Tolerance as fraction (e.g., 0.01 for 1%, 0.05 for 5%)
+
+        Returns:
+            float: Accuracy percentage (0-100)
+        """
+        y_true_np, y_pred_np = MetricUtils._validate_inputs(y_true, y_pred)
+
+        # Calculate absolute percentage error
+        abs_pct_error = np.abs(
+            (y_true_np - y_pred_np) / np.maximum(np.abs(y_true_np), 1e-8)
+        )
+
+        # Calculate accuracy based on tolerance
+        within_tolerance = abs_pct_error <= tolerance
+        accuracy = np.mean(within_tolerance) * 100
+
+        return float(accuracy)
+
+    @staticmethod
+    def calculate_multiple_tolerance_accuracies(
+        y_true: Union[np.ndarray, torch.Tensor],
+        y_pred: Union[np.ndarray, torch.Tensor],
+        tolerances: List[float] = None,
+    ) -> Dict[str, float]:
+        """
+        Calculate accuracy for multiple tolerance levels
+
+        Args:
+            y_true: True values
+            y_pred: Predicted values
+            tolerances: List of tolerance levels (default: [0.01, 0.05, 0.10])
+
+        Returns:
+            Dict with tolerance accuracies
+        """
+        if tolerances is None:
+            tolerances = [0.01, 0.05, 0.10]  # 1%, 5%, 10%
+
+        accuracies = {}
+        for tolerance in tolerances:
+            pct = int(tolerance * 100)
+            key = f"accuracy_{pct}pct_tolerance"
+            accuracies[key] = MetricUtils.calculate_tolerance_accuracy(
+                y_true, y_pred, tolerance
+            )
+
+        return accuracies
+
+    @staticmethod
+    def calculate_hit_rate(
+        y_true: Union[np.ndarray, torch.Tensor], y_pred: Union[np.ndarray, torch.Tensor]
+    ) -> float:
+        """
+        Calculate hit rate (percentage of predictions with correct direction)
+
+        Args:
+            y_true: True values
+            y_pred: Predicted values
+
+        Returns:
+            float: Hit rate percentage (0-100)
+        """
+        return MetricUtils.calculate_directional_accuracy(y_true, y_pred)
+
+    @staticmethod
+    def calculate_sharpe_ratio(
+        returns: Union[np.ndarray, torch.Tensor], risk_free_rate: float = 0.0
+    ) -> float:
+        """
+        Calculate Sharpe ratio for returns
+
+        Args:
+            returns: Return series
+            risk_free_rate: Risk-free rate (default 0.0)
+
+        Returns:
+            float: Sharpe ratio
+        """
+        returns_np = MetricUtils._to_numpy(returns)
+
+        excess_returns = returns_np - risk_free_rate
+
+        if np.std(excess_returns) == 0:
+            return 0.0
+
+        sharpe = np.mean(excess_returns) / np.std(excess_returns)
+        return float(sharpe)
+
+    @staticmethod
     def calculate_all_metrics(
         y_true: Union[np.ndarray, torch.Tensor], y_pred: Union[np.ndarray, torch.Tensor]
     ) -> Dict[str, float]:
@@ -338,6 +500,15 @@ class MetricUtils:
 
             volatility_metrics = MetricUtils.calculate_volatility(y_true, y_pred)
             metrics.update(volatility_metrics)
+
+            # Tolerance-based metrics
+            tolerance_metrics = MetricUtils.calculate_multiple_tolerance_accuracies(
+                y_true, y_pred
+            )
+            metrics.update(tolerance_metrics)
+
+            # Hit rate
+            metrics["hit_rate"] = MetricUtils.calculate_hit_rate(y_true, y_pred)
 
             return metrics
 

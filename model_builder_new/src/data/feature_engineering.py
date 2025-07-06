@@ -25,7 +25,6 @@ class BasicFeatureEngineering(IFeatureEngineering):
         feature_columns: Optional[List[str]] = None,
         add_technical_indicators: bool = True,
         add_datetime_features: bool = False,
-        add_day_time_features: bool = False,
         normalize_features: bool = True,
     ):
         self.feature_columns = feature_columns or [
@@ -37,7 +36,6 @@ class BasicFeatureEngineering(IFeatureEngineering):
         ]
         self.add_technical_indicators = add_technical_indicators
         self.add_datetime_features = add_datetime_features
-        self.add_day_time_features = add_day_time_features
         self.normalize_features = normalize_features
 
         self.scalers: Dict[str, StandardScaler] = {}
@@ -163,9 +161,7 @@ class BasicFeatureEngineering(IFeatureEngineering):
             df = self._add_technical_indicators(df)
 
         # Add datetime features if requested
-        if (
-            self.add_datetime_features or self.add_day_time_features
-        ) and "timestamp" in df.columns:
+        if self.add_datetime_features and "timestamp" in df.columns:
             df = self._add_datetime_features(df)
 
         # Select only specified features (if provided) plus any new technical indicators

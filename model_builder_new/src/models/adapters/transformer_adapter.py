@@ -271,6 +271,10 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
 
             # Train
             self.logger.info("Starting PyTorch Lightning training...")
+            self.logger.info("Hyperparameters:")
+            for key, value in kwargs.items():
+                self.logger.info(f"  {key}: {value}")
+
             trainer.fit(self.model, train_loader, val_loader)
 
             # After training, ensure model is properly configured for inference
