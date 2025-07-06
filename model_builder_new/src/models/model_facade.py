@@ -117,19 +117,19 @@ class ModelFacade:
             self.logger.error(f"Failed to create and train model: {e}")
             return {"success": False, "error": str(e)}
 
-    def quick_predict(
+    def quick_forecast(
         self, model_key: str, data: pd.DataFrame, n_steps: int = 1
     ) -> Dict[str, Any]:
         """
-        Make predictions using a cached model
+        Make forecasting predictions using a cached model
 
         Args:
             model_key: Key of the cached model
-            data: Input data for prediction
+            data: Input data for forecasting
             n_steps: Number of prediction steps
 
         Returns:
-            Prediction results
+            Forecasting results
         """
         if model_key not in self._models:
             return {
@@ -139,20 +139,20 @@ class ModelFacade:
 
         try:
             model = self._models[model_key]
-            return model.predict(data, n_steps)
+            return model.forecast(data, n_steps)
         except Exception as e:
-            self.logger.error(f"Prediction failed: {e}")
+            self.logger.error(f"Forecasting failed: {e}")
             return {"success": False, "error": str(e)}
 
-    def predict(
+    def forecast(
         self, model_type: ModelType, data: pd.DataFrame, n_steps: int = 1
     ) -> Dict[str, Any]:
-        """Make predictions using a model type"""
+        """Make forecasting predictions using a model type"""
 
         # Look for an existing model of this type
         for model_key, model in self._models.items():
             if model_type.value in model_key:
-                return model.predict(data, n_steps)
+                return model.forecast(data, n_steps)
 
         # If no model found, return error
         return {

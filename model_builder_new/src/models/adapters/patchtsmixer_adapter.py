@@ -1,8 +1,8 @@
 # models/adapters/patchtsmixer_adapter.py
 
 """
-Working PatchTSMixer adapter based on the successful experimental patterns.
-This implementation follows the exact patterns from patchtsmixer.py experiment.
+PatchTSMixer adapter implementing the base adapter pattern
+Clean implementation focused on forecasting vs backtesting separation
 """
 
 from typing import Dict, Any, Tuple, Optional, List
@@ -18,26 +18,37 @@ from transformers import (
     Trainer,
     EarlyStoppingCallback,
 )
-from sklearn.metrics import mean_squared_error, mean_absolute_error
-from sklearn.preprocessing import StandardScaler
 from datasets import Dataset
 import os
 
-from ...interfaces.model_interface import ITimeSeriesModel
+from .base_adapter import BaseTimeSeriesAdapter
 from ...logger.logger_factory import LoggerFactory
-from ...schemas.enums import ModelType
 
 # Disable wandb
 os.environ["WANDB_DISABLED"] = "true"
 
 
+class PatchTSMixerDataset(torch.utils.data.Dataset):
+    """Dataset for PatchTSMixer training"""
+
+    def __init__(self, sequences: torch.Tensor, targets: torch.Tensor):
+        self.sequences = sequences
+        self.targets = targets
+
+    def __len__(self):
+        return len(self.sequences)
+
+    def __getitem__(self, idx):
+        return {"past_values": self.sequences[idx], "future_values": self.targets[idx]}
+
+
 class PatchTSMixerTrainer(Trainer):
-    """Custom trainer for PatchTSMixer to handle loss computation correctly."""
+    """Custom trainer for PatchTSMixer with proper loss computation"""
 
     def compute_loss(
         self, model, inputs, return_outputs=False, num_items_in_batch=None
     ):
-        """Custom loss computation to ensure eval_loss is available."""
+        """Custom loss computation for PatchTSMixer"""
         try:
             past_values = inputs["past_values"]
             future_values = inputs["future_values"]
@@ -51,34 +62,12 @@ class PatchTSMixerTrainer(Trainer):
             outputs = model(past_values=past_values)
             predictions = outputs.prediction_outputs
 
-            # Handle different output shapes for PatchTSMixer
-            if predictions.dim() == 3:
-                # Take mean over the channel dimension or select first channel
-                if predictions.shape[2] > 1:
-                    predictions = predictions[:, :, 0:1]  # Take first channel
-            elif predictions.dim() == 2:
-                # Add prediction length dimension if needed
-                predictions = predictions.unsqueeze(-1)
+            # Handle shape consistency
+            if predictions.dim() == 3 and predictions.shape[2] > 1:
+                predictions = predictions[:, :, 0]  # Take first channel
 
-            # Ensure future_values is properly shaped
-            if future_values.dim() == 1:
-                future_values = future_values.unsqueeze(-1)
-            elif future_values.dim() == 2 and future_values.shape[1] == 1:
-                # Already correct shape [batch, 1]
-                future_values = future_values.unsqueeze(-1)  # [batch, 1, 1]
-
-            # Match shapes
-            if predictions.shape != future_values.shape:
-                # Flatten both to 1D and then match
-                pred_flat = predictions.reshape(-1)
-                target_flat = future_values.reshape(-1)
-
-                min_len = min(len(pred_flat), len(target_flat))
-                pred_flat = pred_flat[:min_len]
-                target_flat = target_flat[:min_len]
-
-                predictions = pred_flat
-                future_values = target_flat
+            predictions = predictions.squeeze()
+            future_values = future_values.squeeze()
 
             # Calculate MSE loss
             loss = torch.nn.functional.mse_loss(predictions, future_values)
@@ -86,738 +75,239 @@ class PatchTSMixerTrainer(Trainer):
             return (loss, outputs) if return_outputs else loss
 
         except Exception as e:
-            # Log the error and return a default loss
-            print(f"Loss computation error: {e}")
+            # Return a default loss instead of using logger
             return torch.tensor(
                 0.1, requires_grad=True, device=next(model.parameters()).device
             )
 
-    def evaluation_loop(
-        self,
-        dataloader,
-        description: str,
-        prediction_loss_only=None,
-        ignore_keys=None,
-        metric_key_prefix="eval",
-    ):
-        """Override to ensure eval_loss is included."""
-        output = super().evaluation_loop(
-            dataloader,
-            description,
-            prediction_loss_only,
-            ignore_keys,
-            metric_key_prefix,
-        )
 
-        # Ensure eval_loss exists
-        if "eval_loss" not in output.metrics:
-            output.metrics["eval_loss"] = 0.0
+class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
+    """
+    PatchTSMixer adapter with clean forecasting implementation
 
-        return output
-
-
-class PatchTSMixerAdapter(ITimeSeriesModel):
-    """Working adapter for PatchTSMixer model based on successful experimental patterns."""
+    Separates training (with scaler fitting) from inference (scaler transform only)
+    """
 
     def __init__(self, config: Dict[str, Any]):
-        self.logger = LoggerFactory.get_logger("PatchTSMixerAdapter")
-
-        # Extract configuration
-        self.context_length = config.get("context_length", 32)
-        self.prediction_length = config.get("prediction_length", 1)
-        self.target_column = config.get("target_column", "close")
-
-        # Training parameters
-        self.num_epochs = config.get("num_epochs", 10)
-        self.batch_size = config.get("batch_size", 32)
-        self.learning_rate = config.get("learning_rate", 1e-3)
-
-        # Model parameters
-        self.d_model = config.get("d_model", 128)
-        self.num_layers = config.get("num_layers", 3)
-        self.expansion_factor = config.get("expansion_factor", 2)
-        self.dropout = config.get("dropout", 0.1)
-
-        # Initialize model and trainer
-        self.model = None
-        self.trainer = None
-        self.feature_scaler = StandardScaler()
-        self.target_scaler = StandardScaler()
-        self.original_close_prices = None
-
-        self.logger.info(
-            f"Initialized PatchTSMixerAdapter with context_length={self.context_length}"
+        # Extract configuration parameters
+        context_length = config.get("context_length", 64)
+        prediction_length = config.get("prediction_length", 1)
+        target_column = config.get("target_column", "close")
+        feature_columns = config.get(
+            "feature_columns", ["open", "high", "low", "close", "volume"]
         )
+        patch_length = config.get("patch_length", 8)
+        num_patches = config.get("num_patches", context_length // patch_length)
 
-    def _prepare_data(self, data: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
-        """Prepare data following the working experimental pattern."""
-        # Extract features
-        feature_cols = ["open", "high", "low", "close", "volume"]
-        feature_data = data[feature_cols].values.astype(np.float32)
-
-        # Store original close prices for inverse transformation
-        self.original_close_prices = feature_data[:, 3].copy()  # close price column
-
-        # Scale features
-        feature_data_scaled = self.feature_scaler.fit_transform(feature_data)
-
-        # Create sequences using scaled data
-        X, y = self._create_sequences(feature_data_scaled)
-
-        # Extract corresponding original close prices for targets
-        target_original_prices = []
-        for i in range(
-            len(feature_data) - self.context_length - self.prediction_length + 1
-        ):
-            target_idx = i + self.context_length
-            if target_idx < len(self.original_close_prices):
-                target_original_prices.append(self.original_close_prices[target_idx])
-
-        target_original_prices = np.array(target_original_prices)
-
-        # Fit target scaler on original target prices
-        self.target_scaler.fit(target_original_prices.reshape(-1, 1))
-
-        # Scale the targets using the fitted scaler
-        y_scaled = self.target_scaler.transform(
-            target_original_prices.reshape(-1, 1)
-        ).reshape(y.shape)
-
-        return X, y_scaled
-
-    def _create_sequences(self, data: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """Create sequences for time series prediction."""
-        X, y = [], []
-
-        for i in range(len(data) - self.context_length - self.prediction_length + 1):
-            # Input sequence (using scaled data)
-            X.append(data[i : i + self.context_length])
-            # Target (predict close price from scaled data)
-            y.append(
-                data[
-                    i
-                    + self.context_length : i
-                    + self.context_length
-                    + self.prediction_length,
-                    3,
-                ]
-            )  # close price
-
-        X = np.array(X, dtype=np.float32)
-        y = np.array(y, dtype=np.float32)
-
-        self.logger.info(f"Created sequences - X shape: {X.shape}, y shape: {y.shape}")
-        return X, y
-
-    def _create_datasets(
-        self, X: np.ndarray, y: np.ndarray
-    ) -> Tuple[Dataset, Dataset, Dataset]:
-        """Create train/val/test datasets."""
-        n_samples = len(X)
-        train_end = int(n_samples * 0.7)
-        val_end = int(n_samples * 0.85)
-
-        # Ensure minimum dataset sizes
-        if val_end - train_end < 5:  # Minimum 5 samples for validation
-            val_end = min(train_end + 5, n_samples)
-        if n_samples - val_end < 5:  # Minimum 5 samples for test
-            val_end = max(n_samples - 5, train_end)
-
-        X_train, y_train = X[:train_end], y[:train_end]
-        X_val, y_val = X[train_end:val_end], y[train_end:val_end]
-        X_test, y_test = X[val_end:], y[val_end:]
-
-        self.logger.info(
-            f"Dataset splits - Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}"
-        )
-
-        def create_dataset(X_data, y_data):
-            if len(X_data) == 0:
-                self.logger.warning(f"Creating empty dataset!")
-                return Dataset.from_dict({"past_values": [], "future_values": []})
-            return Dataset.from_dict(
-                {"past_values": X_data.tolist(), "future_values": y_data.tolist()}
-            )
-
-        return (
-            create_dataset(X_train, y_train),
-            create_dataset(X_val, y_val),
-            create_dataset(X_test, y_test),
-        )
-
-    def collate_fn(self, batch):
-        """Custom data collator for PatchTSMixer."""
-        # Extract past_values and future_values
-        past_values = []
-        future_values = []
-
-        for item in batch:
-            # Convert to tensors and ensure proper dtype
-            past_val = torch.tensor(item["past_values"], dtype=torch.float32)
-            future_val = torch.tensor(item["future_values"], dtype=torch.float32)
-
-            past_values.append(past_val)
-            future_values.append(future_val)
-
-        # Stack into batch tensors
-        past_values = torch.stack(
-            past_values
-        )  # Shape: [batch_size, context_length, num_features]
-        future_values = torch.stack(
-            future_values
-        )  # Shape: [batch_size, prediction_length]
-
-        # Ensure future_values has the right shape for PatchTSMixer
-        if future_values.dim() == 2:
-            future_values = future_values.unsqueeze(-1)  # [batch, pred_len, 1]
-
-        # Return both future_values and labels for the trainer
-        return {
-            "past_values": past_values,
-            "future_values": future_values,
-            "labels": future_values,  # Add this so trainer can use it for compute_metrics
+        # Filter out parameters that are already passed explicitly
+        filtered_config = {
+            k: v
+            for k, v in config.items()
+            if k
+            not in [
+                "context_length",
+                "prediction_length",
+                "target_column",
+                "feature_columns",
+            ]
         }
 
-    def compute_metrics(self, eval_pred):
-        """Custom compute metrics function following experimental pattern."""
-        predictions = eval_pred.predictions
-        labels = eval_pred.label_ids
-
-        try:
-            # Handle different shapes and types
-            if isinstance(predictions, tuple):
-                predictions = predictions[0]
-
-            # Convert to numpy if needed
-            if hasattr(predictions, "cpu"):
-                predictions = predictions.cpu().numpy()
-            elif hasattr(predictions, "numpy"):
-                predictions = predictions.numpy()
-            elif isinstance(predictions, (list, tuple)):
-                predictions = np.array(predictions)
-
-            if hasattr(labels, "cpu"):
-                labels = labels.cpu().numpy()
-            elif hasattr(labels, "numpy"):
-                labels = labels.numpy()
-            elif isinstance(labels, (list, tuple)):
-                labels = np.array(labels)
-
-            # Handle different shapes
-            if predictions.ndim > 2:
-                predictions = predictions.mean(axis=1)  # Average over samples
-            if predictions.ndim == 2 and predictions.shape[1] > 1:
-                predictions = predictions[:, 0]  # Take first feature
-
-            # Flatten if needed
-            if hasattr(predictions, "flatten"):
-                predictions = predictions.flatten()
-            if hasattr(labels, "flatten"):
-                labels = labels.flatten()
-
-            # Ensure same length and no empty arrays
-            min_len = min(len(predictions), len(labels))
-            if min_len == 0:
-                # This is normal during validation steps with PatchTSMixer
-                self.logger.debug(
-                    f"Empty predictions or labels in compute_metrics - predictions: {len(predictions)}, labels: {len(labels)}"
-                )
-                return {
-                    "eval_loss": 0.0,
-                    "mse": 0.0,
-                    "mae": 0.0,
-                    "rmse": 0.0,
-                    "directional_accuracy": 0.0,
-                }
-
-            predictions = predictions[:min_len]
-            labels = labels[:min_len]
-
-            # Calculate basic metrics
-            mse_loss = np.mean((predictions - labels) ** 2)
-            mae = mean_absolute_error(labels, predictions)
-            rmse = np.sqrt(mse_loss)
-
-            # Calculate directional accuracy if we have enough data points
-            directional_accuracy = 0.0
-            if min_len > 1:
-                try:
-                    pred_direction = np.diff(predictions) > 0
-                    actual_direction = np.diff(labels) > 0
-                    if len(pred_direction) > 0:
-                        directional_accuracy = (
-                            np.mean(pred_direction == actual_direction) * 100
-                        )
-                except Exception as e:
-                    self.logger.warning(
-                        f"Failed to calculate directional accuracy: {e}"
-                    )
-                    directional_accuracy = 0.0
-
-            return {
-                "eval_loss": float(mse_loss),
-                "mse": float(mse_loss),
-                "mae": float(mae),
-                "rmse": float(rmse),
-                "directional_accuracy": float(directional_accuracy),
-            }
-
-        except Exception as e:
-            self.logger.error(f"Error in compute_metrics: {e}")
-            return {
-                "eval_loss": 0.0,
-                "mse": 0.0,
-                "mae": 0.0,
-                "rmse": 0.0,
-                "directional_accuracy": 0.0,
-            }
-
-    def create_model_config(self) -> PatchTSMixerConfig:
-        """Create PatchTSMixer configuration."""
-        config = PatchTSMixerConfig(
-            context_length=self.context_length,
-            prediction_length=self.prediction_length,
-            num_input_channels=5,  # open, high, low, close, volume
-            patch_length=8,
-            patch_stride=8,
-            d_model=self.d_model,
-            num_layers=self.num_layers,
-            expansion_factor=self.expansion_factor,
-            dropout=self.dropout,
-            mode="mix_channel",
-            gated_attn=True,
-            norm_mlp="LayerNorm",
-            self_attn=False,
-            self_attn_heads=1,
-            use_positional_encoding=False,
-            positional_encoding_type="sincos",
-            scaling=True,
-            loss="mse",
+        super().__init__(
+            context_length=context_length,
+            prediction_length=prediction_length,
+            target_column=target_column,
+            feature_columns=feature_columns,
+            **filtered_config,
         )
-        return config
 
-    def train(
-        self, train_data: Dataset, val_data: Optional[Dataset] = None, **kwargs
-    ) -> Dict[str, Any]:
-        """Train the PatchTSMixer model."""
+        self.patch_length = patch_length
+        self.num_patches = num_patches
+        self.trainer = None
+
+        # Model-specific config
+        self.model_config = {
+            "patch_length": patch_length,
+            "num_patches": self.num_patches,
+            "num_input_channels": len(self.feature_columns),
+            "prediction_length": prediction_length,
+            "context_length": context_length,
+            # Only add config items that are not already set
+            **{
+                k: v
+                for k, v in config.items()
+                if k
+                not in [
+                    "patch_length",
+                    "num_patches",
+                    "num_input_channels",
+                    "prediction_length",
+                    "context_length",
+                    "target_column",
+                    "feature_columns",
+                ]
+            },
+        }
+
+    def _create_model(self) -> torch.nn.Module:
+        """Create PatchTSMixer model"""
         try:
-            self.logger.info("Starting PatchTSMixer training...")
+            # Update num_input_channels if feature engineering was applied
+            if self.feature_engineering is not None:
+                feature_names = self.feature_engineering.get_feature_names()
+                self.model_config["num_input_channels"] = len(feature_names)
 
-            # If datasets are pandas DataFrames, convert them
-            if hasattr(train_data, "columns"):  # It's a DataFrame
-                X, y = self._prepare_data(train_data)
-                train_dataset, val_dataset, _ = self._create_datasets(X, y)
-            else:
-                train_dataset = train_data
-                val_dataset = val_data
-
-            # Create model config and model
-            config = self.create_model_config()
-            self.model = PatchTSMixerForPrediction(config)
-
-            # Count parameters
-            num_params = sum(p.numel() for p in self.model.parameters())
-            self.logger.info(f"Created PatchTSMixer model with {num_params} parameters")
-
-            # Setup training arguments
-            training_args = TrainingArguments(
-                output_dir="./patchtsmixer_results",
-                num_train_epochs=self.num_epochs,
-                per_device_train_batch_size=self.batch_size,
-                per_device_eval_batch_size=self.batch_size,
-                learning_rate=self.learning_rate,
-                weight_decay=0.01,
-                logging_dir="./logs",
-                logging_steps=10,
-                eval_strategy="epoch" if val_dataset else "no",
-                save_strategy="epoch" if val_dataset else "no",
-                load_best_model_at_end=True if val_dataset else False,
-                metric_for_best_model="eval_loss" if val_dataset else None,
-                greater_is_better=False,
-                save_total_limit=3,
-                dataloader_drop_last=False,
-                remove_unused_columns=False,
-                report_to=None,  # Disable wandb
+            config = PatchTSMixerConfig(
+                num_input_channels=self.model_config["num_input_channels"],
+                context_length=self.context_length,
+                prediction_length=self.prediction_length,
+                patch_length=self.patch_length,
+                num_patches=self.num_patches,
+                d_model=self.model_config.get("d_model", 128),
+                num_layers=self.model_config.get("num_layers", 4),
+                expansion_factor=self.model_config.get("expansion_factor", 2),
+                dropout=self.model_config.get("dropout", 0.1),
+                head_dropout=self.model_config.get("head_dropout", 0.1),
+                pooling_type=self.model_config.get("pooling_type", "mean"),
+                norm_type=self.model_config.get("norm_type", "BatchNorm"),
+                activation=self.model_config.get("activation", "gelu"),
+                pre_norm=self.model_config.get("pre_norm", True),
+                norm_eps=1e-5,
             )
 
-            # Initialize trainer
+            model = PatchTSMixerForPrediction(config)
+            self.logger.info(f"Created PatchTSMixer model with config: {config}")
+
+            return model
+
+        except Exception as e:
+            self.logger.error(f"Error creating PatchTSMixer model: {e}")
+            raise
+
+    def _train_model(
+        self,
+        train_dataset: Tuple[torch.Tensor, torch.Tensor],
+        val_dataset: Tuple[torch.Tensor, torch.Tensor],
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Train PatchTSMixer model"""
+        try:
+            train_sequences, train_targets = train_dataset
+            val_sequences, val_targets = val_dataset
+
+            # Create datasets
+            train_ds = PatchTSMixerDataset(train_sequences, train_targets)
+            val_ds = PatchTSMixerDataset(val_sequences, val_targets)
+
+            # Training arguments
+            training_args = TrainingArguments(
+                output_dir="./tmp_trainer",
+                learning_rate=kwargs.get("learning_rate", 1e-3),
+                per_device_train_batch_size=kwargs.get("batch_size", 32),
+                per_device_eval_batch_size=kwargs.get("batch_size", 32),
+                num_train_epochs=kwargs.get("num_epochs", 1),
+                weight_decay=kwargs.get("weight_decay", 0.01),
+                logging_steps=100,
+                eval_strategy="epoch",
+                save_strategy="epoch",
+                load_best_model_at_end=False,  # Disable since eval_loss is not computed
+                report_to=None,  # Disable wandb
+                remove_unused_columns=False,
+            )
+
+            # Create trainer
             self.trainer = PatchTSMixerTrainer(
                 model=self.model,
                 args=training_args,
-                train_dataset=train_dataset,
-                eval_dataset=val_dataset,
-                data_collator=self.collate_fn,
-                compute_metrics=self.compute_metrics,
-                callbacks=(
-                    [EarlyStoppingCallback(early_stopping_patience=3)]
-                    if val_dataset
-                    else None
-                ),
+                train_dataset=train_ds,
+                eval_dataset=val_ds,
+                # Remove early stopping since eval_loss is not properly computed
             )
 
-            # Train the model
+            # Train
+            self.logger.info("Starting PatchTSMixer training...")
             train_result = self.trainer.train()
 
-            # Evaluate if validation data is available
-            eval_metrics = {}
-            if val_dataset:
-                eval_result = self.trainer.evaluate()
-                eval_metrics = eval_result
-
-            self.logger.info("PatchTSMixer training completed successfully")
+            # Get final metrics
+            final_metrics = self.trainer.evaluate()
 
             return {
-                "success": True,
                 "train_loss": train_result.training_loss,
-                "eval_metrics": eval_metrics,
-                "model_config": config.to_dict(),
+                "eval_loss": final_metrics.get("eval_loss", None),
+                "epochs_trained": int(train_result.global_step),
+                "model_type": "PatchTSMixer",
             }
 
         except Exception as e:
             self.logger.error(f"Training failed: {e}")
             raise
 
-    def predict(self, data: pd.DataFrame, n_steps: int = 1) -> Dict[str, Any]:
-        """Make predictions using the trained model following experimental pattern."""
+    def _model_predict(self, input_tensor: torch.Tensor) -> torch.Tensor:
+        """Make prediction with PatchTSMixer model"""
         try:
-            if self.model is None or self.trainer is None:
-                raise ValueError("Model must be trained before making predictions")
-
-            self.logger.info("Making predictions...")
-
-            # Get device for the model
-            device = next(self.model.parameters()).device
+            # Ensure model is in eval mode
             self.model.eval()
 
-            # Prepare test data
-            X_test, y_test = self._prepare_data(data)
-
-            # Create dataset
-            test_dataset = Dataset.from_dict(
-                {"past_values": X_test.tolist(), "future_values": y_test.tolist()}
-            )
-
-            predictions_scaled = []
-            actuals_scaled = []
-
-            # Create DataLoader for test data
-            from torch.utils.data import DataLoader
-
-            test_loader = DataLoader(
-                test_dataset,
-                batch_size=self.batch_size,
-                collate_fn=self.collate_fn,
-                shuffle=False,
-            )
-
             with torch.no_grad():
-                for batch in test_loader:
-                    past_values = batch["past_values"].to(device)
-                    future_values = batch["future_values"]
+                # PatchTSMixer expects past_values
+                outputs = self.model(past_values=input_tensor)
+                predictions = outputs.prediction_outputs
 
-                    # Generate prediction
-                    outputs = self.model(past_values=past_values)
-                    pred = outputs.prediction_outputs
+                # Handle output shape
+                if predictions.dim() == 3:
+                    if predictions.shape[2] > 1:
+                        predictions = predictions[:, :, 0]  # Take first channel
+                    predictions = predictions.squeeze()
 
-                    # Handle different output shapes for PatchTSMixer
-                    if pred.dim() == 3:
-                        pred = pred.mean(dim=1)  # Average over samples
-
-                    # If pred has multiple features, take only the first one (close price)
-                    if pred.dim() == 2 and pred.shape[1] > 1:
-                        pred = pred[:, 0:1]  # Take only first feature
-
-                    predictions_scaled.extend(pred.cpu().numpy())
-                    actuals_scaled.extend(future_values.numpy())
-
-            predictions_scaled = np.array(predictions_scaled).flatten()
-            actuals_scaled = np.array(actuals_scaled).flatten()
-
-            # Respect n_steps parameter - only return requested number of predictions
-            if n_steps > 0 and len(predictions_scaled) > n_steps:
-                predictions_scaled = predictions_scaled[:n_steps]
-                actuals_scaled = actuals_scaled[:n_steps]
-
-            # Inverse transform to get original price scale
-            predictions_orig = self.target_scaler.inverse_transform(
-                predictions_scaled.reshape(-1, 1)
-            ).flatten()
-            actuals_orig = self.target_scaler.inverse_transform(
-                actuals_scaled.reshape(-1, 1)
-            ).flatten()
-
-            # Calculate prediction accuracy metrics following experimental pattern
-            accuracy_metrics = self._calculate_prediction_accuracy(
-                predictions_orig, actuals_orig
-            )
-
-            self.logger.info(f"Generated {len(predictions_orig)} predictions")
-            self.logger.info(f"Prediction accuracy: {accuracy_metrics}")
-
-            return {
-                "predictions_scaled": predictions_scaled.tolist(),
-                "predictions_original": predictions_orig.tolist(),
-                "actuals_scaled": actuals_scaled.tolist(),
-                "actuals_original": actuals_orig.tolist(),
-                "accuracy_metrics": accuracy_metrics,
-                "predictions": predictions_orig.tolist(),  # Keep for backward compatibility
-                "success": True,
-            }
+                # Return single prediction for forecasting
+                if self.prediction_length == 1:
+                    return predictions[:, 0] if predictions.dim() > 1 else predictions
+                else:
+                    return predictions
 
         except Exception as e:
             self.logger.error(f"Prediction failed: {e}")
-            return {"success": False, "error": str(e)}
+            raise
 
-    def _calculate_prediction_accuracy(
-        self, predictions: np.ndarray, actuals: np.ndarray
-    ) -> dict:
-        """Calculate detailed prediction accuracy metrics following experimental pattern."""
+    def _save_model_specific(self, model_dir: Path) -> None:
+        """Save PatchTSMixer specific components"""
         try:
-            # Direction accuracy (up/down prediction) - the key missing metric!
-            if len(predictions) > 1 and len(actuals) > 1:
-                pred_direction = np.diff(predictions) > 0
-                actual_direction = np.diff(actuals) > 0
-                direction_accuracy = (
-                    np.mean(pred_direction == actual_direction) * 100
-                    if len(pred_direction) > 0
-                    else 0.0
-                )
-            else:
-                direction_accuracy = 0.0
+            # Save model state dict
+            if self.model is not None:
+                torch.save(self.model.state_dict(), model_dir / "model_state_dict.pt")
 
-            # Price accuracy within tolerance
-            tolerance_1pct = (
-                np.mean(np.abs(predictions - actuals) / np.abs(actuals) < 0.01) * 100
-                if len(actuals) > 0
-                else 0.0
-            )
-            tolerance_5pct = (
-                np.mean(np.abs(predictions - actuals) / np.abs(actuals) < 0.05) * 100
-                if len(actuals) > 0
-                else 0.0
-            )
+            # Save model config
+            import json
 
-            # Statistical metrics
-            correlation = (
-                np.corrcoef(predictions, actuals)[0, 1] if len(predictions) > 1 else 0.0
-            )
+            with open(model_dir / "model_config.json", "w") as f:
+                json.dump(self.model_config, f, indent=2)
 
-            return {
-                "direction_accuracy_pct": float(direction_accuracy),
-                "directional_accuracy": float(direction_accuracy),  # Alternative naming
-                "within_1pct_tolerance": float(tolerance_1pct),
-                "within_5pct_tolerance": float(tolerance_5pct),
-                "correlation": float(correlation),
-                "mean_prediction": float(np.mean(predictions)),
-                "mean_actual": float(np.mean(actuals)),
-                "prediction_std": float(np.std(predictions)),
-                "actual_std": float(np.std(actuals)),
-            }
-        except Exception as e:
-            self.logger.error(f"Failed to calculate accuracy metrics: {str(e)}")
-            return {
-                "direction_accuracy_pct": 0.0,
-                "directional_accuracy": 0.0,
-                "within_1pct_tolerance": 0.0,
-                "within_5pct_tolerance": 0.0,
-                "correlation": 0.0,
-                "mean_prediction": 0.0,
-                "mean_actual": 0.0,
-                "prediction_std": 0.0,
-                "actual_std": 0.0,
-            }
-
-    def evaluate(self, data: pd.DataFrame, **kwargs) -> Dict[str, float]:
-        """Evaluate the trained model following the working experimental pattern."""
-        try:
-            if self.model is None or self.trainer is None:
-                raise ValueError("Model must be trained before evaluation")
-
-            self.logger.info("Evaluating model performance")
-
-            # Get device for the model
-            device = next(self.model.parameters()).device
-            self.model.eval()
-
-            # Prepare test data
-            X_test, y_test = self._prepare_data(data)
-
-            # Create dataset
-            test_dataset = Dataset.from_dict(
-                {"past_values": X_test.tolist(), "future_values": y_test.tolist()}
-            )
-
-            predictions = []
-            actuals = []
-
-            # Create DataLoader for test set
-            from torch.utils.data import DataLoader
-
-            test_loader = DataLoader(
-                test_dataset,
-                batch_size=self.batch_size,
-                collate_fn=self.collate_fn,
-                shuffle=False,
-            )
-
-            with torch.no_grad():
-                for batch in test_loader:
-                    past_values = batch["past_values"].to(device)
-                    future_values = batch["future_values"].to(device)
-
-                    # Generate predictions
-                    outputs = self.model(past_values=past_values)
-                    pred = outputs.prediction_outputs
-
-                    # Handle different output shapes for PatchTSMixer
-                    if pred.dim() == 3:
-                        pred = pred.mean(dim=1)
-
-                    if pred.dim() == 2 and pred.shape[1] > 1:
-                        pred = pred[:, 0:1]
-
-                    predictions.extend(pred.cpu().numpy())
-                    actuals.extend(future_values.cpu().numpy())
-
-            predictions = np.array(predictions)
-            actuals = np.array(actuals)
-
-            # Flatten both arrays to ensure they're 1D
-            predictions = predictions.flatten()
-            actuals = actuals.flatten()
-
-            self.logger.info(
-                f"Final shapes - predictions: {predictions.shape}, actuals: {actuals.shape}"
-            )
-
-            # Ensure shapes match
-            if predictions.shape != actuals.shape:
-                self.logger.warning(
-                    f"Shape mismatch: predictions {predictions.shape}, actuals {actuals.shape}"
-                )
-                min_len = min(len(predictions), len(actuals))
-                predictions = predictions[:min_len]
-                actuals = actuals[:min_len]
-
-            # Inverse transform to get original scale
-            predictions_orig = self.target_scaler.inverse_transform(
-                predictions.reshape(-1, 1)
-            ).flatten()
-            actuals_orig = self.target_scaler.inverse_transform(
-                actuals.reshape(-1, 1)
-            ).flatten()
-
-            # Calculate metrics following experimental pattern
-            mse = mean_squared_error(actuals_orig, predictions_orig)
-            rmse = np.sqrt(mse)
-            mae = mean_absolute_error(actuals_orig, predictions_orig)
-
-            # Calculate MAPE (avoiding division by zero)
-            mask = actuals_orig != 0
-            mape = (
-                np.mean(
-                    np.abs(
-                        (actuals_orig[mask] - predictions_orig[mask])
-                        / actuals_orig[mask]
-                    )
-                )
-                * 100
-                if np.any(mask)
-                else 0.0
-            )
-
-            # Calculate directional accuracy - the key missing metric!
-            if len(predictions_orig) > 1 and len(actuals_orig) > 1:
-                pred_direction = np.diff(predictions_orig) > 0
-                actual_direction = np.diff(actuals_orig) > 0
-                directional_accuracy = (
-                    np.mean(pred_direction == actual_direction) * 100
-                    if len(pred_direction) > 0
-                    else 0.0
-                )
-            else:
-                directional_accuracy = 0.0
-
-            # Calculate price accuracy within tolerance
-            tolerance_1pct = (
-                np.mean(
-                    np.abs(predictions_orig - actuals_orig) / np.abs(actuals_orig)
-                    < 0.01
-                )
-                * 100
-                if len(actuals_orig) > 0
-                else 0.0
-            )
-            tolerance_5pct = (
-                np.mean(
-                    np.abs(predictions_orig - actuals_orig) / np.abs(actuals_orig)
-                    < 0.05
-                )
-                * 100
-                if len(actuals_orig) > 0
-                else 0.0
-            )
-
-            # Statistical correlation
-            correlation = (
-                np.corrcoef(predictions_orig, actuals_orig)[0, 1]
-                if len(predictions_orig) > 1
-                else 0.0
-            )
-
-            metrics = {
-                "eval_loss": float(mse),
-                "mse": float(mse),
-                "rmse": float(rmse),
-                "mae": float(mae),
-                "mape": float(mape),
-                "directional_accuracy": float(directional_accuracy),
-                "accuracy": float(
-                    directional_accuracy
-                ),  # Use directional accuracy as main accuracy
-                "within_1pct_tolerance": float(tolerance_1pct),
-                "within_5pct_tolerance": float(tolerance_5pct),
-                "correlation": float(correlation),
-                "mean_prediction": float(np.mean(predictions_orig)),
-                "mean_actual": float(np.mean(actuals_orig)),
-                "prediction_std": float(np.std(predictions_orig)),
-                "actual_std": float(np.std(actuals_orig)),
-                "success": True,  # Add success field for summary
-            }
-
-            self.logger.info(f"Evaluation metrics: {metrics}")
-            return metrics
+            self.logger.info("PatchTSMixer model components saved")
 
         except Exception as e:
-            self.logger.error(f"Evaluation failed: {e}")
-            return {
-                "eval_loss": 0.0,
-                "mse": 0.0,
-                "rmse": 0.0,
-                "mae": 0.0,
-                "mape": 0.0,
-                "directional_accuracy": 0.0,
-                "accuracy": 0.0,
-                "within_1pct_tolerance": 0.0,
-                "within_5pct_tolerance": 0.0,
-                "correlation": 0.0,
-                "mean_prediction": 0.0,
-                "mean_actual": 0.0,
-                "prediction_std": 0.0,
-                "actual_std": 0.0,
-                "success": False,  # Add failure flag
-            }
+            self.logger.error(f"Error saving PatchTSMixer components: {e}")
+            raise
 
-    def save_model(self, path: Path) -> None:
-        """Save model to disk."""
-        if self.model is None:
-            raise ValueError("No model to save")
+    def _load_model_specific(self, model_dir: Path) -> None:
+        """Load PatchTSMixer specific components"""
+        try:
+            # Load model config
+            import json
 
-        path.mkdir(parents=True, exist_ok=True)
-        self.trainer.save_model(str(path))
-        self.logger.info(f"Model saved to {path}")
+            with open(model_dir / "model_config.json", "r") as f:
+                self.model_config = json.load(f)
 
-    def load_model(self, path: Path) -> None:
-        """Load model from disk."""
-        # Implementation for loading model
-        self.logger.info(f"Model loaded from {path}")
+            # Create and load model
+            self.model = self._create_model()
+
+            # Load state dict if available
+            state_dict_path = model_dir / "model_state_dict.pt"
+            if state_dict_path.exists():
+                state_dict = torch.load(state_dict_path, map_location=self.device)
+                self.model.load_state_dict(state_dict)
+
+            self.model.to(self.device)
+            self.logger.info("PatchTSMixer model components loaded")
+
+        except Exception as e:
+            self.logger.error(f"Error loading PatchTSMixer components: {e}")
+            raise
