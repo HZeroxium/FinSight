@@ -248,20 +248,29 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
             train_sequences, train_targets = train_dataset
             val_sequences, val_targets = val_dataset
 
+            # Update hyperparameters with kwargs if provided
+            batch_size = kwargs.get("batch_size", self.batch_size)
+            num_epochs = kwargs.get("num_epochs", self.num_epochs)
+            learning_rate = kwargs.get("learning_rate", self.learning_rate)
+
+            # Update model's learning rate if provided
+            if "learning_rate" in kwargs:
+                self.model.learning_rate = learning_rate
+
             # Create data loaders
             train_ds = torch.utils.data.TensorDataset(train_sequences, train_targets)
             val_ds = torch.utils.data.TensorDataset(val_sequences, val_targets)
 
             train_loader = torch.utils.data.DataLoader(
-                train_ds, batch_size=self.batch_size, shuffle=True
+                train_ds, batch_size=batch_size, shuffle=True
             )
             val_loader = torch.utils.data.DataLoader(
-                val_ds, batch_size=self.batch_size, shuffle=False
+                val_ds, batch_size=batch_size, shuffle=False
             )
 
             # Create trainer
             trainer = pl.Trainer(
-                max_epochs=self.num_epochs,
+                max_epochs=num_epochs,
                 accelerator="auto",
                 devices=1 if torch.cuda.is_available() else None,
                 enable_progress_bar=False,
@@ -272,8 +281,9 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
             # Train
             self.logger.info("Starting PyTorch Lightning training...")
             self.logger.info("Hyperparameters:")
-            for key, value in kwargs.items():
-                self.logger.info(f"  {key}: {value}")
+            self.logger.info(f"  learning_rate: {learning_rate}")
+            self.logger.info(f"  num_train_epochs: {num_epochs}")
+            self.logger.info(f"  per_device_train_batch_size: {batch_size}")
 
             trainer.fit(self.model, train_loader, val_loader)
 

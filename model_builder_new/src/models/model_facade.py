@@ -114,10 +114,24 @@ class ModelFacade:
             # Create and train model
             model = ModelFactory.create_model(model_type, config)
 
+            # Extract training-specific parameters to pass as kwargs
+            training_hyperparams = {
+                "num_epochs": config["num_epochs"],
+                "batch_size": config["batch_size"],
+                "learning_rate": config["learning_rate"],
+                "d_model": config["d_model"],
+                "n_heads": config["n_heads"],
+                "n_layers": config["n_layers"],
+                "dropout": config["dropout"],
+                "patch_length": config["patch_length"],
+                "patch_stride": config["patch_stride"],
+            }
+
             training_result = model.train(
                 train_data=train_data,
                 val_data=val_data,
                 feature_engineering=feature_engineering,
+                **training_hyperparams,
             )
 
             # Store model for future use
