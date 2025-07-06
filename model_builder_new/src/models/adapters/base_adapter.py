@@ -362,26 +362,35 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
 
                     for step in range(n_steps):
                         pred = self._model_predict(current_sequence)
-                        predictions_scaled.append(pred.cpu().item())
 
-                        # Update sequence for next prediction
-                        # Ensure consistent device and shape handling
-                        pred_expanded = pred.view(1, 1, 1).to(target_device)
-
-                        # Ensure new_step matches the feature dimension of current_sequence
-                        if current_sequence.shape[2] > 1:
-                            # For multivariate data, replicate prediction across all features
-                            # This is a simplified approach - in practice you might want
-                            # different logic for different features
-                            new_step = pred_expanded.expand(
-                                1, 1, current_sequence.shape[2]
+                        # Ensure pred is properly shaped and on CPU
+                        if isinstance(pred, torch.Tensor):
+                            pred_value = (
+                                pred.cpu().item()
+                                if pred.numel() == 1
+                                else pred.cpu().numpy().flatten()[0]
                             )
                         else:
-                            new_step = pred_expanded
+                            pred_value = pred[0] if hasattr(pred, "__len__") else pred
 
-                        # Ensure both tensors are on the same device
-                        current_sequence = current_sequence.to(target_device)
-                        new_step = new_step.to(target_device)
+                        predictions_scaled.append(pred_value)
+
+                        # Update sequence for next prediction
+                        pred_tensor = torch.tensor(
+                            [[pred_value]], device=target_device
+                        ).view(1, 1, 1)
+
+                        # For multivariate data, replicate prediction across features
+                        if current_sequence.shape[2] > 1:
+                            # Only update the target feature (typically the last one for close price)
+                            new_step = current_sequence[:, -1:, :].clone()
+                            # Update the target column (assume it's the close price at index 3 if it exists)
+                            target_feature_idx = min(
+                                3, current_sequence.shape[2] - 1
+                            )  # close price index
+                            new_step[:, :, target_feature_idx] = pred_tensor.squeeze(-1)
+                        else:
+                            new_step = pred_tensor
 
                         current_sequence = torch.cat(
                             [
@@ -391,8 +400,30 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
                             dim=1,
                         )
 
-            # Inverse transform predictions
-            predictions = self._inverse_transform_target(np.array(predictions_scaled))
+            # Convert to numpy array and ensure it's 1D
+            predictions_scaled = np.array(predictions_scaled).flatten()
+
+            # Inverse transform predictions - this is the critical fix
+            if self.target_scaler is not None:
+                try:
+                    # Ensure predictions_scaled is properly shaped for inverse transform
+                    if predictions_scaled.ndim == 1:
+                        predictions_scaled_reshaped = predictions_scaled.reshape(-1, 1)
+                    else:
+                        predictions_scaled_reshaped = predictions_scaled
+
+                    predictions = self.target_scaler.inverse_transform(
+                        predictions_scaled_reshaped
+                    ).flatten()
+                    self.logger.debug(
+                        f"Inverse transformed predictions from {predictions_scaled} to {predictions}"
+                    )
+                except Exception as e:
+                    self.logger.error(f"Error in inverse transform: {e}")
+                    predictions = predictions_scaled  # Fallback to scaled values
+            else:
+                self.logger.warning("No target scaler available for inverse transform")
+                predictions = predictions_scaled
 
             # Calculate metadata
             current_price = recent_data[self.target_column].iloc[-1]
