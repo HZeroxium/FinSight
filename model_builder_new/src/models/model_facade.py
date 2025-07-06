@@ -70,16 +70,45 @@ class ModelFacade:
             if val_data is None or val_data.empty:
                 raise ValueError("Validation data cannot be None or empty")
 
+            # Determine actual feature columns after feature engineering
+            actual_feature_columns = config.feature_columns
+            actual_input_dim = (
+                len(config.feature_columns) if config.feature_columns else 5
+            )
+
+            # If feature engineering is applied, get the actual feature names and dimensions
+            if feature_engineering is not None:
+                try:
+                    actual_feature_columns = feature_engineering.get_feature_names()
+                    actual_input_dim = len(actual_feature_columns)
+                    self.logger.info(
+                        f"Feature engineering produced {actual_input_dim} features"
+                    )
+                except Exception as fe_error:
+                    self.logger.warning(
+                        f"Could not get feature names from feature engineering: {fe_error}"
+                    )
+
             # Create model configuration for adapter
             adapter_config = {
                 "context_length": config.context_length,
                 "prediction_length": config.prediction_length,
                 "target_column": config.target_column,
-                "feature_columns": config.feature_columns,
+                "feature_columns": actual_feature_columns,
+                "input_dim": actual_input_dim,  # Explicitly set input_dim
                 "num_epochs": config.num_epochs,
                 "batch_size": config.batch_size,
                 "learning_rate": config.learning_rate,
             }
+
+            # Add model-specific parameters if any
+            if (
+                hasattr(config, "model_specific_params")
+                and config.model_specific_params
+            ):
+                adapter_config.update(config.model_specific_params)
+
+            self.logger.debug(f"Adapter config: {adapter_config}")
 
             # Create model using factory
             model = ModelFactory.create_model(model_type, adapter_config)

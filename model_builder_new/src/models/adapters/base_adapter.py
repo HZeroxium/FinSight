@@ -46,13 +46,13 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
         self.context_length = context_length
         self.prediction_length = prediction_length
         self.target_column = target_column
-        self.feature_columns = feature_columns or [
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-        ]
+
+        # Ensure feature_columns is never None
+        if feature_columns is None:
+            self.feature_columns = ["open", "high", "low", "close", "volume"]
+        else:
+            self.feature_columns = feature_columns
+
         self.config = config
 
         # Device management
@@ -71,6 +71,16 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
         self.feature_engineering = None
 
         self.logger = LoggerFactory.get_logger(f"{self.__class__.__name__}")
+
+        # Log initialization details
+        self.logger.debug(f"Initialized {self.__class__.__name__} with:")
+        self.logger.debug(f"  context_length: {self.context_length}")
+        self.logger.debug(f"  prediction_length: {self.prediction_length}")
+        self.logger.debug(f"  target_column: {self.target_column}")
+        self.logger.debug(
+            f"  feature_columns: {self.feature_columns} (count: {len(self.feature_columns)})"
+        )
+        self.logger.debug(f"  device: {self.device}")
 
     # ================================
     # Abstract methods for subclasses
@@ -288,7 +298,14 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
 
             # Create model if not exists
             if self.model is None:
+                self.logger.info("Creating model...")
                 self.model = self._create_model()
+
+            # Validate model creation
+            if self.model is None:
+                error_msg = f"Model creation failed for {self.__class__.__name__}"
+                self.logger.error(error_msg)
+                return {"success": False, "error": error_msg}
 
             # Move model to device
             self.model.to(self.device)
@@ -298,8 +315,13 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
                 (train_sequences, train_targets), (val_sequences, val_targets), **kwargs
             )
 
-            self.is_trained = True
-            training_result["success"] = True
+            # Ensure success flag is set if not already present
+            if "success" not in training_result:
+                training_result["success"] = True
+
+            # Only mark as trained if training was successful
+            if training_result.get("success", False):
+                self.is_trained = True
 
             return training_result
 

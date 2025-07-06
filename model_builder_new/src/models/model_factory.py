@@ -30,6 +30,9 @@ class ModelFactory:
 
         Returns:
             Model instance
+
+        Raises:
+            ValueError: If model type is unsupported or model creation fails
         """
         logger = LoggerFactory.get_logger("ModelFactory")
 
@@ -42,8 +45,18 @@ class ModelFactory:
 
         model_class = cls._model_registry[model_type]
         logger.info(f"Creating model of type: {model_type}")
+        logger.debug(f"Model config: {config}")
 
-        return model_class(config)
+        try:
+            model = model_class(config)
+            if model is None:
+                raise ValueError(f"Model class {model_class.__name__} returned None")
+            logger.info(f"Successfully created model: {model_class.__name__}")
+            return model
+        except Exception as e:
+            logger.error(f"Failed to create model {model_type}: {e}")
+            logger.error(f"Config that caused error: {config}")
+            raise ValueError(f"Failed to create model {model_type}: {e}")
 
     @classmethod
     def get_supported_models(cls) -> list[ModelType]:

@@ -11,10 +11,18 @@ from datetime import date, timedelta
 
 def get_symbol_timeframe_pairs():
     return [
-        ("BTCUSDT", "1d"),
-        ("ETHUSDT", "1d"),
-        ("BTCUSDT", "4h"),
-        ("ETHUSDT", "4h"),
+        # ("BTCUSDT", "1d"),
+        # ("BTCUSDT", "12h"),
+        # ("BTCUSDT", "6h"),
+        # ("BTCUSDT", "4h"),
+        # ("BTCUSDT", "2h"),
+        # ("BTCUSDT", "1h"),
+        # ("ETHUSDT", "1d"),
+        # ("ETHUSDT", "12h"),
+        # ("ETHUSDT", "6h"),
+        # ("ETHUSDT", "4h"),
+        # ("ETHUSDT", "2h"),
+        # ("ETHUSDT", "1h"),
         # ("BNBUSDT", "1d"),
         # ("XRPUSDT", "1d"),
         # ("ADAUSDT", "1d"),
@@ -23,6 +31,17 @@ def get_symbol_timeframe_pairs():
         # ("DOTUSDT", "1d"),
         # ("MATICUSDT", "1d"),
         # ("LTCUSDT", "1d"),
+        # Define with "1h" symbols for more frequent updates
+        ("BTCUSDT", "1h"),
+        ("ETHUSDT", "1h"),
+        ("BNBUSDT", "1h"),
+        ("XRPUSDT", "1h"),
+        ("ADAUSDT", "1h"),
+        ("SOLUSDT", "1h"),
+        ("DOGEUSDT", "1h"),
+        ("DOTUSDT", "1h"),
+        ("MATICUSDT", "1h"),
+        ("LTCUSDT", "1h"),
     ]
 
 
@@ -68,20 +87,20 @@ async def main():
             f"Starting collection for {symbol}/{timeframe} from {start_date} to {end_date}"
         )
         try:
-            result = await market_data_collector_service.ensure_data_completeness(
-                exchange="binance",
-                symbol=symbol,
-                timeframe=timeframe,
-                start_date=start_date,
-                end_date=end_date,
-            )
-            # result = await market_data_collector_service.collect_and_store_ohlcv(
+            # result = await market_data_collector_service.ensure_data_completeness(
             #     exchange="binance",
             #     symbol=symbol,
             #     timeframe=timeframe,
             #     start_date=start_date,
             #     end_date=end_date,
             # )
+            result = await market_data_collector_service.collect_and_store_ohlcv(
+                exchange="binance",
+                symbol=symbol,
+                timeframe=timeframe,
+                start_date=start_date,
+                end_date=end_date,
+            )
             if result:
                 logger.info(f"Collection successful for {symbol}/{timeframe}: {result}")
             else:

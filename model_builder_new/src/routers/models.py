@@ -16,17 +16,70 @@ logger = LoggerFactory.get_logger("ModelsRouter")
 @router.get("/info", response_model=ModelInfoResponse)
 async def get_model_info() -> ModelInfoResponse:
     """
-    Get comprehensive information about models
+    Get comprehensive information about available and trained models
 
-    Returns information about available model types, trained models,
-    supported timeframes, and available symbols.
+    Returns information about:
+    - Available model types that can be trained
+    - Currently trained models with their metadata
+    - Supported timeframes and symbols
     """
     try:
-        logger.info("Retrieving model information")
-        return model_service.get_model_info()
+        logger.info("Received request for model information")
+
+        model_info = model_service.get_model_info()
+
+        logger.info(
+            f"Returning model info with {len(model_info.trained_models)} trained models"
+        )
+        return model_info
 
     except Exception as e:
         logger.error(f"Error getting model info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/available", response_model=Dict[str, Any])
+async def get_available_models() -> Dict[str, Any]:
+    """
+    Get list of available model types that can be trained
+    """
+    try:
+        from ..models.model_factory import ModelFactory
+
+        available_models = [
+            model_type.value for model_type in ModelFactory.get_supported_models()
+        ]
+
+        return {
+            "success": True,
+            "message": f"Found {len(available_models)} available model types",
+            "data": {
+                "available_models": available_models,
+                "count": len(available_models),
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting available models: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/trained", response_model=Dict[str, Any])
+async def get_trained_models() -> Dict[str, Any]:
+    """
+    Get information about all trained models
+    """
+    try:
+        trained_models = model_service._scan_trained_models()
+
+        return {
+            "success": True,
+            "message": f"Found {len(trained_models)} trained models",
+            "data": {"trained_models": trained_models, "count": len(trained_models)},
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting trained models: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 

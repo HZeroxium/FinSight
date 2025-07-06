@@ -176,6 +176,10 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
             "feature_columns", ["open", "high", "low", "close", "volume"]
         )
 
+        # Ensure feature_columns is not None
+        if feature_columns is None:
+            feature_columns = ["open", "high", "low", "close", "volume"]
+
         # Filter out parameters that are already passed explicitly
         filtered_config = {
             k: v
@@ -197,8 +201,9 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
             **filtered_config,
         )
 
-        # Model hyperparameters
-        self.input_dim = config.get("input_dim", len(feature_columns))
+        # Model hyperparameters - handle input_dim calculation safely
+        default_input_dim = len(feature_columns) if feature_columns else 5
+        self.input_dim = config.get("input_dim", default_input_dim)
         self.output_dim = config.get("output_dim", 1)
         self.d_model = config.get("d_model", 128)
         self.n_heads = config.get("n_heads", 8)
@@ -217,6 +222,9 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
             if self.feature_engineering is not None:
                 feature_names = self.feature_engineering.get_feature_names()
                 self.input_dim = len(feature_names)
+                self.logger.info(
+                    f"Updated input_dim to {self.input_dim} based on feature engineering"
+                )
 
             model = TimeSeriesTransformer(
                 input_dim=self.input_dim,
@@ -230,12 +238,15 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
                 learning_rate=self.learning_rate,
             )
 
-            self.logger.info(f"Created TimeSeriesTransformer model")
+            self.logger.info(
+                f"Created TimeSeriesTransformer model with input_dim={self.input_dim}"
+            )
             return model
 
         except Exception as e:
             self.logger.error(f"Error creating TimeSeriesTransformer model: {e}")
-            raise
+            # Don't raise here, return None to be handled by caller
+            return None
 
     def _train_model(
         self,
@@ -262,16 +273,29 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
 
             # Ensure model exists before training
             if self.model is None:
+                self.logger.info("Model is None, creating new model...")
                 self.model = self._create_model()
 
             if self.model is None:
-                raise ValueError(
+                error_msg = (
                     "Failed to create model - model is still None after creation"
                 )
+                self.logger.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "model_type": "PyTorchLightningTransformer",
+                }
 
             # Validate model has required methods
             if not hasattr(self.model, "forward"):
-                raise ValueError("Model does not have forward method")
+                error_msg = "Model does not have forward method"
+                self.logger.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "model_type": "PyTorchLightningTransformer",
+                }
 
             # Update model's learning rate if provided
             if "learning_rate" in kwargs:
@@ -309,7 +333,6 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
 
             # After training, ensure model is properly configured for inference
             self.model.eval()
-            # Explicitly move model to the intended device for consistency
             self.model.to(self.device)
 
             # Get validation metrics
@@ -321,14 +344,14 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
                 "eval_loss": val_loss,
                 "epochs_trained": num_epochs,
                 "model_type": "PyTorchLightningTransformer",
+                "success": True,
             }
 
         except Exception as e:
             self.logger.error(f"Training failed: {e}")
-            # For now, skip this model type
             return {
                 "success": False,
-                "error": f"PyTorch Lightning Transformer training temporarily disabled: {str(e)}",
+                "error": str(e),
                 "model_type": "PyTorchLightningTransformer",
             }
 
