@@ -2,231 +2,371 @@
 
 """
 Model Facade - High-level interface for model operations
-
-This facade provides a simplified interface for common model operations,
-abstracting the complexity of different model types and implementations.
 """
 
 from typing import Dict, Any, Optional, List
 import pandas as pd
+from pathlib import Path
+import json
+from datetime import datetime
 
 from ..interfaces.model_interface import ITimeSeriesModel
 from ..models.model_factory import ModelFactory
-from ..data.feature_engineering import BasicFeatureEngineering
-from ..schemas.enums import ModelType
+from ..schemas.enums import ModelType, TimeFrame
+from ..schemas.model_schemas import ModelConfig, ModelInfo
+from ..utils.model_utils import ModelUtils
 from ..logger.logger_factory import LoggerFactory
 
 
 class ModelFacade:
     """
     Facade for simplifying model operations
-
-    Provides high-level methods for training, prediction, and model management
-    while hiding the complexity of different adapters and implementations.
     """
 
     def __init__(self):
         self.logger = LoggerFactory.get_logger("ModelFacade")
-        self._models: Dict[str, ITimeSeriesModel] = {}
+        self.model_utils = ModelUtils()
+        self._cached_models: Dict[str, ITimeSeriesModel] = {}
 
-    def create_and_train_model(
+    def train_model(
         self,
+        symbol: str,
+        timeframe: TimeFrame,
         model_type: ModelType,
-        data: pd.DataFrame,
-        target_column: str = "close",
-        context_length: int = 64,
-        prediction_length: int = 1,
-        train_ratio: float = 0.8,
-        val_ratio: float = 0.1,
-        **training_kwargs,
+        train_data: pd.DataFrame,
+        val_data: pd.DataFrame,
+        feature_engineering: Any,
+        config: ModelConfig,
     ) -> Dict[str, Any]:
         """
-        Create and train a model with minimal configuration
+        Train a model and save it
 
         Args:
-            model_type: Type of model to create
-            data: Training data
-            target_column: Target column to predict
-            context_length: Input sequence length
-            prediction_length: Prediction horizon
-            train_ratio: Training data ratio
-            val_ratio: Validation data ratio
-            **training_kwargs: Additional training parameters
+            symbol: Trading symbol
+            timeframe: Data timeframe
+            model_type: Model type to train
+            train_data: Training data
+            val_data: Validation data
+            feature_engineering: Feature engineering instance
+            config: Model configuration
 
         Returns:
             Training results
         """
         try:
-            self.logger.info(f"Creating and training {model_type} model")
-
-            # Create feature engineering
-            feature_engineering = BasicFeatureEngineering(
-                add_technical_indicators=training_kwargs.get(
-                    "use_technical_indicators", True
-                ),
-                add_datetime_features=training_kwargs.get(
-                    "add_datetime_features", False
-                ),
-                normalize_features=training_kwargs.get("normalize_features", True),
+            self.logger.info(
+                f"Training {model_type.value} model for {symbol} {timeframe}"
             )
 
-            # Process data
-            processed_data = feature_engineering.fit_transform(data)
-
-            # Split data
-            n = len(processed_data)
-            train_size = int(n * train_ratio)
-            val_size = int(n * val_ratio)
-
-            train_data = processed_data[:train_size]
-            val_data = processed_data[train_size : train_size + val_size]
-            test_data = processed_data[train_size + val_size :]
-
-            # Create model config with all hyperparameters
-            config = {
-                "context_length": context_length,
-                "prediction_length": prediction_length,
-                "num_input_channels": len(feature_engineering.get_feature_names()),
-                "target_column": target_column,
-                "feature_columns": feature_engineering.get_feature_names(),
-                # Training hyperparameters
-                "num_epochs": training_kwargs.get("num_epochs", 10),
-                "batch_size": training_kwargs.get("batch_size", 32),
-                "learning_rate": training_kwargs.get("learning_rate", 1e-3),
-                # Model architecture parameters
-                "d_model": training_kwargs.get("d_model", 128),
-                "n_heads": training_kwargs.get("n_heads", 8),
-                "n_layers": training_kwargs.get("n_layers", 4),
-                "dropout": training_kwargs.get("dropout", 0.1),
-                # PatchTST/PatchTSMixer specific
-                "patch_length": training_kwargs.get("patch_length", 8),
-                "patch_stride": training_kwargs.get("patch_stride", 1),
-                # Feature engineering flags (for reference)
-                "use_technical_indicators": training_kwargs.get(
-                    "use_technical_indicators", True
-                ),
-                "add_datetime_features": training_kwargs.get(
-                    "add_datetime_features", False
-                ),
-                "normalize_features": training_kwargs.get("normalize_features", True),
+            # Create model configuration for adapter
+            adapter_config = {
+                "context_length": config.context_length,
+                "prediction_length": config.prediction_length,
+                "target_column": config.target_column,
+                "feature_columns": config.feature_columns,
+                "num_epochs": config.num_epochs,
+                "batch_size": config.batch_size,
+                "learning_rate": config.learning_rate,
             }
 
-            # Create and train model
-            model = ModelFactory.create_model(model_type, config)
+            # Create model using factory
+            model = ModelFactory.create_model(model_type, adapter_config)
 
-            # Extract training-specific parameters to pass as kwargs
-            training_hyperparams = {
-                "num_epochs": config["num_epochs"],
-                "batch_size": config["batch_size"],
-                "learning_rate": config["learning_rate"],
-                "d_model": config["d_model"],
-                "n_heads": config["n_heads"],
-                "n_layers": config["n_layers"],
-                "dropout": config["dropout"],
-                "patch_length": config["patch_length"],
-                "patch_stride": config["patch_stride"],
-            }
-
+            # Train model
             training_result = model.train(
                 train_data=train_data,
                 val_data=val_data,
                 feature_engineering=feature_engineering,
-                **training_hyperparams,
+                **adapter_config,
             )
 
-            # Store model for future use
-            model_key = f"{model_type.value}_{target_column}_{context_length}_{prediction_length}"
-            self._models[model_key] = model
+            if training_result.get("success", False):
+                # Save model
+                model_path = self.model_utils.ensure_model_directory(
+                    symbol, timeframe, model_type
+                )
+                model.save_model(model_path)
 
-            # Evaluate on test data if available
-            if len(test_data) > 0:
-                eval_metrics = model.evaluate(test_data)
-                training_result["test_metrics"] = eval_metrics
+                # Save metadata
+                self._save_model_metadata(
+                    symbol, timeframe, model_type, config, training_result
+                )
+
+                # Cache model
+                cache_key = self.model_utils.generate_model_identifier(
+                    symbol, timeframe, model_type
+                )
+                self._cached_models[cache_key] = model
+
+                training_result.update(
+                    {
+                        "model_path": str(model_path),
+                        "model_identifier": cache_key,
+                    }
+                )
 
             return training_result
 
         except Exception as e:
-            self.logger.error(f"Failed to create and train model: {e}")
+            self.logger.error(f"Failed to train model: {e}")
             return {"success": False, "error": str(e)}
 
-    def quick_forecast(
-        self, model_key: str, data: pd.DataFrame, n_steps: int = 1
+    def predict(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+        recent_data: pd.DataFrame,
+        n_steps: int = 1,
     ) -> Dict[str, Any]:
         """
-        Make forecasting predictions using a cached model
+        Make predictions using a trained model
 
         Args:
-            model_key: Key of the cached model
-            data: Input data for forecasting
+            symbol: Trading symbol
+            timeframe: Data timeframe
+            model_type: Model type
+            recent_data: Recent data for prediction
             n_steps: Number of prediction steps
 
         Returns:
-            Forecasting results
+            Prediction results
         """
-        if model_key not in self._models:
-            return {
-                "success": False,
-                "error": f"Model '{model_key}' not found in cache",
+        try:
+            self.logger.info(
+                f"Making {n_steps}-step prediction for {symbol} {timeframe} using {model_type.value}"
+            )
+
+            # Load model
+            model = self._load_model(symbol, timeframe, model_type)
+
+            # Make forecast
+            prediction_result = model.forecast(recent_data, n_steps=n_steps)
+
+            # Add model info
+            prediction_result["model_info"] = {
+                "symbol": symbol,
+                "timeframe": timeframe.value,
+                "model_type": model_type.value,
+                "n_steps": n_steps,
             }
 
-        try:
-            model = self._models[model_key]
-            return model.forecast(data, n_steps)
+            return prediction_result
+
         except Exception as e:
-            self.logger.error(f"Forecasting failed: {e}")
+            self.logger.error(f"Failed to make prediction: {e}")
             return {"success": False, "error": str(e)}
 
     def forecast(
-        self, model_type: ModelType, data: pd.DataFrame, n_steps: int = 1
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+        recent_data: pd.DataFrame,
+        n_steps: int = 1,
     ) -> Dict[str, Any]:
-        """Make forecasting predictions using a model type"""
+        """
+        Make forecasts using a trained model
 
-        # Look for an existing model of this type
-        for model_key, model in self._models.items():
-            if model_type.value in model_key:
-                return model.forecast(data, n_steps)
+        Args:
+            symbol: Trading symbol
+            timeframe: Data timeframe
+            model_type: Model type
+            recent_data: Recent data for prediction
+            n_steps: Number of forecast steps
 
-        # If no model found, return error
-        return {
-            "success": False,
-            "error": f"No trained model found for {model_type.value}",
-        }
+        Returns:
+            Forecast results
+        """
 
-    def get_model_info(self, model_key: str) -> Optional[Dict[str, Any]]:
-        """Get information about a cached model"""
-        if model_key not in self._models:
-            return None
-
-        return {
-            "model_key": model_key,
-            "is_loaded": True,
-            "model_type": type(self._models[model_key]).__name__,
-        }
-
-    def list_cached_models(self) -> List[str]:
-        """List all cached model keys"""
-        return list(self._models.keys())
-
-    def clear_cache(self) -> None:
-        """Clear all cached models"""
-        self._models.clear()
-        self.logger.info("Model cache cleared")
+        # Alias for predict method
+        return self.predict(
+            symbol=symbol,
+            timeframe=timeframe,
+            model_type=model_type,
+            recent_data=recent_data,
+            n_steps=n_steps,
+        )
 
     def evaluate_model(
         self,
+        symbol: str,
+        timeframe: TimeFrame,
         model_type: ModelType,
         test_data: pd.DataFrame,
-        detailed_metrics: bool = True,
     ) -> Dict[str, Any]:
-        """Evaluate a model on test data"""
+        """
+        Evaluate a trained model
 
-        # Look for an existing model of this type
-        for model_key, model in self._models.items():
-            if model_type.value in model_key:
-                return model.evaluate(test_data)
+        Args:
+            symbol: Trading symbol
+            timeframe: Data timeframe
+            model_type: Model type
+            test_data: Test data
 
-        # If no model found, return error
-        return {
-            "success": False,
-            "error": f"No trained model found for {model_type.value}",
+        Returns:
+            Evaluation results
+        """
+        try:
+            self.logger.info(
+                f"Evaluating {model_type.value} model for {symbol} {timeframe}"
+            )
+
+            # Load model
+            model = self._load_model(symbol, timeframe, model_type)
+
+            # Evaluate
+            evaluation_result = model.evaluate(test_data)
+
+            return evaluation_result
+
+        except Exception as e:
+            self.logger.error(f"Failed to evaluate model: {e}")
+            return {"success": False, "error": str(e)}
+
+    def list_available_models(self) -> List[ModelInfo]:
+        """
+        List all available trained models
+
+        Returns:
+            List of model information
+        """
+        try:
+            models = []
+
+            if not self.model_utils.settings.models_dir.exists():
+                return models
+
+            for model_dir in self.model_utils.settings.models_dir.iterdir():
+                if not model_dir.is_dir():
+                    continue
+
+                metadata_path = (
+                    self.model_utils.settings.models_dir
+                    / model_dir.name
+                    / self.model_utils.settings.metadata_filename
+                )
+                if not metadata_path.exists():
+                    continue
+
+                try:
+                    with open(metadata_path, "r") as f:
+                        metadata = json.load(f)
+
+                    # Get file size
+                    checkpoint_path = (
+                        self.model_utils.settings.models_dir
+                        / model_dir.name
+                        / self.model_utils.settings.checkpoint_filename
+                    )
+                    file_size_mb = None
+                    if checkpoint_path.exists():
+                        file_size_mb = checkpoint_path.stat().st_size / (1024 * 1024)
+
+                    model_info = ModelInfo(
+                        symbol=metadata["symbol"],
+                        timeframe=TimeFrame(metadata["timeframe"]),
+                        model_type=ModelType(metadata["model_type"]),
+                        model_path=str(model_dir),
+                        created_at=datetime.fromisoformat(metadata["created_at"]),
+                        config=ModelConfig(**metadata["config"]),
+                        file_size_mb=file_size_mb,
+                        is_available=checkpoint_path.exists(),
+                    )
+
+                    models.append(model_info)
+
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to parse model metadata from {metadata_path}: {e}"
+                    )
+                    continue
+
+            return models
+
+        except Exception as e:
+            self.logger.error(f"Failed to list available models: {e}")
+            return []
+
+    def model_exists(
+        self, symbol: str, timeframe: TimeFrame, model_type: ModelType
+    ) -> bool:
+        """Check if a model exists"""
+        checkpoint_path = self.model_utils.get_checkpoint_path(
+            symbol, timeframe, model_type
+        )
+        return checkpoint_path.exists()
+
+    def _load_model(
+        self, symbol: str, timeframe: TimeFrame, model_type: ModelType
+    ) -> ITimeSeriesModel:
+        """Load a model from cache or disk"""
+        cache_key = self.model_utils.generate_model_identifier(
+            symbol, timeframe, model_type
+        )
+
+        # Check cache first
+        if cache_key in self._cached_models:
+            return self._cached_models[cache_key]
+
+        # Load from disk
+        model_path = self.model_utils.generate_model_path(symbol, timeframe, model_type)
+
+        if not model_path.exists():
+            raise FileNotFoundError(f"Model not found: {model_path}")
+
+        # Load config to create model
+        config_path = self.model_utils.get_config_path(symbol, timeframe, model_type)
+        with open(config_path, "r") as f:
+            saved_config = json.load(f)
+
+        # Create model and load state
+        model = ModelFactory.create_model(model_type, saved_config)
+        model.load_model(model_path)
+
+        # Cache model
+        self._cached_models[cache_key] = model
+
+        return model
+
+    def _save_model_metadata(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+        config: ModelConfig,
+        training_result: Dict[str, Any],
+    ) -> None:
+        """Save model metadata"""
+        metadata_path = self.model_utils.get_metadata_path(
+            symbol, timeframe, model_type
+        )
+
+        metadata = {
+            "symbol": symbol,
+            "timeframe": timeframe.value,
+            "model_type": model_type.value,
+            "created_at": datetime.now().isoformat(),
+            "config": config.model_dump(),
+            "training_result": training_result,
         }
+
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2, default=str)
+
+        # Also save config separately for model loading
+        config_path = self.model_utils.get_config_path(symbol, timeframe, model_type)
+        adapter_config = {
+            "context_length": config.context_length,
+            "prediction_length": config.prediction_length,
+            "target_column": config.target_column,
+            "feature_columns": config.feature_columns,
+        }
+
+        with open(config_path, "w") as f:
+            json.dump(adapter_config, f, indent=2)
+
+    def clear_cache(self):
+        """Clear model cache"""
+        self._cached_models.clear()
+        self.logger.info("Model cache cleared")

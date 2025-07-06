@@ -1,18 +1,28 @@
 # schemas/__init__.py
 
 from .enums import ModelType, TaskType, TimeFrame
-from .training_schemas import TrainingRequest, TrainingResponse
-from .prediction_schemas import PredictionRequest, PredictionResponse
+from .model_schemas import (
+    ModelConfig,
+    TrainingRequest,
+    TrainingResponse,
+    PredictionRequest,
+    PredictionResponse,
+    ModelInfo,
+    ModelListResponse,
+)
 from .base_schemas import BaseResponse, ErrorResponse
 
 __all__ = [
     "ModelType",
     "TaskType",
     "TimeFrame",
+    "ModelConfig",
     "TrainingRequest",
     "TrainingResponse",
     "PredictionRequest",
     "PredictionResponse",
+    "ModelInfo",
+    "ModelListResponse",
     "BaseResponse",
     "ErrorResponse",
 ]

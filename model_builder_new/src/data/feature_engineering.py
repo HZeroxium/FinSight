@@ -48,9 +48,16 @@ class BasicFeatureEngineering(IFeatureEngineering):
         """Fit feature engineering on training data"""
 
         self.logger.info("Fitting feature engineering")
+        self.logger.info(
+            f"Input data shape: {data.shape}, Columns: {data.columns.tolist()}"
+        )
 
         # Create features
         transformed_data = self._create_features(data)
+
+        self.logger.info(
+            f"Transformed data shape: {transformed_data.shape}, Columns: {transformed_data.columns.tolist()}"
+        )
 
         # Store feature names
         self.fitted_feature_names = [
@@ -164,6 +171,8 @@ class BasicFeatureEngineering(IFeatureEngineering):
         if self.add_datetime_features and "timestamp" in df.columns:
             df = self._add_datetime_features(df)
 
+        
+        
         # Select only specified features (if provided) plus any new technical indicators
         if self.feature_columns:
             available_features = [

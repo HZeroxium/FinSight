@@ -1,13 +1,6 @@
 # models/model_example_usage.py
 
 """
-Simplified and working example usage of the        # 2. Test models
-        models_to_test = [
-            ModelType.PATCHTST,
-            ModelType.PATCHTSMIXER,
-            ModelType.PYTORCH_TRANSFORMER,
-        ]ght Model Builder system
-
 This module demonstrates the core functionality:
 - Training PatchTST and PatchTSMixer models
 - Making predictions
@@ -26,35 +19,7 @@ from .model_facade import ModelFacade
 from ..data.data_loader import CSVDataLoader
 from ..schemas.enums import ModelType, TimeFrame
 from ..logger.logger_factory import LoggerFactory
-
-# Import utilities with fallbacks
-try:
-    from ..utils.visualization_utils import VisualizationUtils
-except ImportError:
-
-    class VisualizationUtils:
-        @staticmethod
-        def plot_training_metrics(*args, **kwargs):
-            print("VisualizationUtils not available - skipping visualization")
-            return None
-
-        @staticmethod
-        def plot_prediction_analysis(*args, **kwargs):
-            print("VisualizationUtils not available - skipping visualization")
-            return None
-
-
-try:
-    from ..utils.backtest_strategy_utils import BacktestEngine, HyperparameterTuner
-except ImportError:
-
-    class BacktestEngine:
-        def run_backtest(self, *args, **kwargs):
-            return {"error": "BacktestEngine not available"}
-
-    class HyperparameterTuner:
-        def grid_search(self, *args, **kwargs):
-            return {"error": "HyperparameterTuner not available"}
+from ..utils.visualization_utils import VisualizationUtils
 
 
 class SimpleModelTester:
@@ -72,7 +37,6 @@ class SimpleModelTester:
 
         self.facade = ModelFacade()
         self.viz_utils = VisualizationUtils()
-        self.backtest_engine = BacktestEngine()
 
         self.results = {}
 
@@ -164,7 +128,7 @@ class SimpleModelTester:
 
         # 1. Train model
         self.logger.info(f"Training {model_type.value}...")
-        training_result = self.facade.create_and_train_model(
+        training_result = self.facade.train_model(
             model_type=model_type, data=data, **config
         )
         results["training"] = training_result
@@ -173,7 +137,7 @@ class SimpleModelTester:
         if training_result.get("success", False):
             self.logger.info(f"Making forecasts with {model_type.value}...")
             try:
-                forecast_result = self.facade.forecast(
+                forecast_result = self.facade.predict(
                     model_type=model_type,
                     data=data.tail(100),  # Use last 100 rows for forecasting
                     n_steps=5,  # Request 5 forecasts for testing

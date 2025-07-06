@@ -3,10 +3,11 @@
 import time
 import uuid
 from typing import Dict, Any, Optional
-
+from datetime import datetime
 
 from ..models.model_facade import ModelFacade
-from ..schemas.training_schemas import TrainingRequest, TrainingResponse
+from ..services.data_service import DataService
+from ..schemas.model_schemas import TrainingRequest, TrainingResponse
 from ..logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
 
@@ -18,6 +19,7 @@ class TrainingService:
         self.logger = LoggerFactory.get_logger("TrainingService")
         self.settings = get_settings()
         self.model_facade = ModelFacade()
+        self.data_service = DataService()
         self.active_trainings: Dict[str, Dict[str, Any]] = {}
 
     def start_training(self, request: TrainingRequest) -> TrainingResponse:
@@ -35,7 +37,7 @@ class TrainingService:
 
         try:
             self.logger.info(
-                f"Starting training {training_id} for {request.symbol} {request.timeframe}"
+                f"Starting training {training_id} for {request.symbol} {request.timeframe} {request.model_type}"
             )
 
             # Track training
@@ -46,39 +48,42 @@ class TrainingService:
                 "progress": 0.0,
             }
 
-            # Check if dataset exists
-            data_file = (
-                self.settings.data_dir / f"{request.symbol}_{request.timeframe}.csv"
+            # Check data availability
+            data_availability = self.data_service.check_data_availability(
+                request.symbol, request.timeframe
             )
-            if not data_file.exists():
+
+            if not data_availability.get("exists", False):
                 return TrainingResponse(
                     success=False,
                     message=f"Dataset not found for {request.symbol} {request.timeframe}",
-                    error=f"No dataset file found at {data_file}",
+                    error=f"No dataset available for the specified symbol and timeframe",
                 )
 
             # Update progress
-            self.active_trainings[training_id]["status"] = "training"
+            self.active_trainings[training_id]["status"] = "loading_data"
             self.active_trainings[training_id]["progress"] = 0.2
 
-            # Use ModelFacade for training
+            # Load and prepare data
+            data_result = self.data_service.load_and_prepare_data(
+                symbol=request.symbol,
+                timeframe=request.timeframe,
+                config=request.config,
+            )
+
+            # Update progress
+            self.active_trainings[training_id]["status"] = "training"
+            self.active_trainings[training_id]["progress"] = 0.4
+
+            # Train model
             train_result = self.model_facade.train_model(
                 symbol=request.symbol,
-                timeframe=request.timeframe.value,
-                model_type=request.model_type.value,
-                config={
-                    "context_length": request.context_length,
-                    "prediction_length": request.prediction_length,
-                    "target_column": request.target_column,
-                    "num_epochs": request.num_epochs,
-                    "batch_size": request.batch_size,
-                    "learning_rate": request.learning_rate,
-                    "use_technical_indicators": request.use_technical_indicators,
-                    "normalize_features": request.normalize_features,
-                    "train_ratio": request.train_ratio,
-                    "val_ratio": request.val_ratio,
-                    "feature_columns": request.feature_columns,
-                },
+                timeframe=request.timeframe,
+                model_type=request.model_type,
+                train_data=data_result["train_data"],
+                val_data=data_result["val_data"],
+                feature_engineering=data_result["feature_engineering"],
+                config=request.config,
             )
 
             # Update progress
@@ -87,7 +92,7 @@ class TrainingService:
 
             training_time = time.time() - start_time
 
-            if train_result["success"]:
+            if train_result.get("success", False):
                 self.logger.info(
                     f"Training {training_id} completed in {training_time:.2f}s"
                 )
@@ -96,16 +101,10 @@ class TrainingService:
                     success=True,
                     message="Model training completed successfully",
                     training_id=training_id,
-                    model_path=train_result.get("model_path", ""),
+                    model_path=train_result.get("model_path"),
                     training_metrics=train_result.get("training_metrics", {}),
                     validation_metrics=train_result.get("validation_metrics", {}),
-                    training_time=training_time,
-                    model_configuration={
-                        "model_type": request.model_type,
-                        "context_length": request.context_length,
-                        "prediction_length": request.prediction_length,
-                        "target_column": request.target_column,
-                    },
+                    training_duration=training_time,
                 )
             else:
                 # Training failed
@@ -118,6 +117,7 @@ class TrainingService:
                     success=False,
                     message="Training failed",
                     error=train_result.get("error", "Training failed"),
+                    training_duration=training_time,
                 )
 
         except Exception as e:
@@ -127,8 +127,12 @@ class TrainingService:
                 self.active_trainings[training_id]["status"] = "failed"
                 self.active_trainings[training_id]["error"] = str(e)
 
+            training_time = time.time() - start_time
             return TrainingResponse(
-                success=False, message="Training failed", error=str(e)
+                success=False,
+                message="Training failed",
+                error=str(e),
+                training_duration=training_time,
             )
 
     def get_training_status(self, training_id: str) -> Optional[Dict[str, Any]]:

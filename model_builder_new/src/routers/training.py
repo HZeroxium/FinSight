@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from typing import Dict, Any
 
 from ..services.training_service import TrainingService
-from ..schemas.training_schemas import TrainingRequest, TrainingResponse, TrainingStatus
+from ..schemas.model_schemas import TrainingRequest, TrainingResponse
 from ..schemas.base_schemas import BaseResponse
 from ..logger.logger_factory import LoggerFactory
 

@@ -1,13 +1,12 @@
 # services/prediction_service.py
 
 import time
-import json
-from typing import Dict, Any, List
-
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
 from ..models.model_facade import ModelFacade
-from ..schemas.prediction_schemas import PredictionRequest, PredictionResponse
+from ..services.data_service import DataService
+from ..schemas.model_schemas import PredictionRequest, PredictionResponse
 from ..schemas.enums import ModelType, TimeFrame
 from ..logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
@@ -20,6 +19,7 @@ class PredictionService:
         self.logger = LoggerFactory.get_logger("PredictionService")
         self.settings = get_settings()
         self.model_facade = ModelFacade()
+        self.data_service = DataService()
 
     def predict(self, request: PredictionRequest) -> PredictionResponse:
         """
@@ -35,24 +35,55 @@ class PredictionService:
 
         try:
             self.logger.info(
-                f"Making prediction for {request.symbol} {request.timeframe}"
+                f"Making prediction for {request.symbol} {request.timeframe} ({request.n_steps} steps)"
             )
 
-            # Use ModelFacade for prediction
+            # Auto-select model type if not specified
+            if request.model_type is None:
+                request.model_type = self._select_best_model(
+                    request.symbol, request.timeframe
+                )
+                if request.model_type is None:
+                    return PredictionResponse(
+                        success=False,
+                        message="No trained model found",
+                        error=f"No trained model available for {request.symbol} {request.timeframe}",
+                    )
+
+            # Check if model exists
+            if not self.model_facade.model_exists(
+                request.symbol, request.timeframe, request.model_type
+            ):
+                return PredictionResponse(
+                    success=False,
+                    message="Model not found",
+                    error=f"No trained {request.model_type.value} model found for {request.symbol} {request.timeframe}",
+                )
+
+            # Load recent data for prediction
+            recent_data = self.data_service.data_loader.load_data(
+                request.symbol, request.timeframe
+            )
+
+            if recent_data.empty:
+                return PredictionResponse(
+                    success=False,
+                    message="No data available",
+                    error=f"No data found for {request.symbol} {request.timeframe}",
+                )
+
+            # Make prediction using model facade
             prediction_result = self.model_facade.predict(
                 symbol=request.symbol,
-                timeframe=request.timeframe.value,
-                model_type=request.model_type.value if request.model_type else None,
+                timeframe=request.timeframe,
+                model_type=request.model_type,
+                recent_data=recent_data,
                 n_steps=request.n_steps,
-                config={
-                    "context_length": request.context_length,
-                    "use_latest_data": request.use_latest_data,
-                },
             )
 
             execution_time = time.time() - start_time
 
-            if prediction_result["success"]:
+            if prediction_result.get("success", False):
                 self.logger.info(f"Prediction completed in {execution_time:.3f}s")
 
                 # Generate prediction timestamps
@@ -67,10 +98,8 @@ class PredictionService:
                     prediction_timestamps=prediction_timestamps,
                     current_price=prediction_result.get("current_price"),
                     predicted_change_pct=prediction_result.get("predicted_change_pct"),
-                    confidence_score=prediction_result.get("confidence_score", 0.8),
+                    confidence_score=0.8,  # Default confidence
                     model_info=prediction_result.get("model_info", {}),
-                    data_info=prediction_result.get("data_info", {}),
-                    execution_time=execution_time,
                 )
             else:
                 return PredictionResponse(
@@ -85,11 +114,47 @@ class PredictionService:
                 success=False, message="Prediction failed", error=str(e)
             )
 
+    def get_available_models(self) -> List[Dict[str, Any]]:
+        """Get information about all available trained models"""
+        try:
+            models = self.model_facade.list_available_models()
+            return [
+                {
+                    "symbol": model.symbol,
+                    "timeframe": model.timeframe.value,
+                    "model_type": model.model_type.value,
+                    "model_path": model.model_path,
+                    "created_at": model.created_at.isoformat(),
+                    "file_size_mb": model.file_size_mb,
+                    "is_available": model.is_available,
+                }
+                for model in models
+            ]
+        except Exception as e:
+            self.logger.error(f"Failed to get available models: {e}")
+            return []
+
+    def _select_best_model(
+        self, symbol: str, timeframe: TimeFrame
+    ) -> Optional[ModelType]:
+        """Select the best available model for given symbol and timeframe"""
+        # Priority order for model selection
+        model_priority = [
+            ModelType.PATCHTSMIXER,
+            ModelType.PATCHTST,
+            ModelType.PYTORCH_TRANSFORMER,
+        ]
+
+        for model_type in model_priority:
+            if self.model_facade.model_exists(symbol, timeframe, model_type):
+                return model_type
+
+        return None
+
     def _generate_prediction_timestamps(
         self, timeframe: TimeFrame, n_steps: int
     ) -> List[str]:
         """Generate timestamps for predictions"""
-
         try:
             # Use current time as base
             base_time = datetime.now()
@@ -119,53 +184,3 @@ class PredictionService:
         except Exception as e:
             self.logger.error(f"Failed to generate timestamps: {e}")
             return [f"Step_{i+1}" for i in range(n_steps)]
-
-    def get_available_models(self) -> Dict[str, List[Dict[str, Any]]]:
-        """Get information about all available trained models"""
-
-        models_info = {}
-
-        try:
-            if not self.settings.models_dir.exists():
-                return models_info
-
-            for model_dir in self.settings.models_dir.iterdir():
-                if not model_dir.is_dir():
-                    continue
-
-                metadata_file = model_dir / "metadata.json"
-                if not metadata_file.exists():
-                    continue
-
-                try:
-                    with open(metadata_file, "r") as f:
-                        metadata = json.load(f)
-
-                    symbol_timeframe = f"{metadata['symbol']}_{metadata['timeframe']}"
-
-                    if symbol_timeframe not in models_info:
-                        models_info[symbol_timeframe] = []
-
-                    model_files = list(model_dir.glob("model_*.pkl"))
-                    if model_files:
-                        models_info[symbol_timeframe].append(
-                            {
-                                "model_type": metadata["model_type"],
-                                "training_id": metadata["training_id"],
-                                "created_at": metadata["created_at"],
-                                "config": metadata.get("config", {}),
-                                "model_path": str(model_files[0]),
-                                "status": "available",
-                            }
-                        )
-
-                except Exception as e:
-                    self.logger.warning(
-                        f"Failed to read metadata from {metadata_file}: {e}"
-                    )
-                    continue
-
-        except Exception as e:
-            self.logger.error(f"Failed to scan models: {e}")
-
-        return models_info
