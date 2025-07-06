@@ -287,7 +287,7 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
                 # Save model state dict instead of the full model
                 torch.save(self.model.state_dict(), model_dir / "model_state_dict.pt")
 
-            # Save model config
+            # Save model config - use consistent naming
             import json
 
             with open(model_dir / "model_config.json", "w") as f:
@@ -328,11 +328,23 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
     def _load_model_specific(self, model_dir: Path) -> None:
         """Load PatchTSMixer specific components"""
         try:
-            # Load model config
-            import json
+            # Load model config - try different file names
+            config_files = ["model_config.json", "config.json"]
+            model_config = None
 
-            with open(model_dir / "model_config.json", "r") as f:
-                self.model_config = json.load(f)
+            for config_file in config_files:
+                config_path = model_dir / config_file
+                if config_path.exists():
+                    import json
+
+                    with open(config_path, "r") as f:
+                        model_config = json.load(f)
+                    break
+
+            if model_config is None:
+                raise FileNotFoundError(f"No model config found in {model_dir}")
+
+            self.model_config = model_config
 
             # Create and load model
             self.model = self._create_model()
@@ -342,6 +354,26 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
             if state_dict_path.exists():
                 state_dict = torch.load(state_dict_path, map_location=self.device)
                 self.model.load_state_dict(state_dict)
+            else:
+                # Try alternative state dict names
+                alt_paths = [model_dir / "pytorch_model.bin", model_dir / "model.pt"]
+
+                state_dict_loaded = False
+                for alt_path in alt_paths:
+                    if alt_path.exists():
+                        state_dict = torch.load(alt_path, map_location=self.device)
+                        # Handle different state dict formats
+                        if "model_state_dict" in state_dict:
+                            self.model.load_state_dict(state_dict["model_state_dict"])
+                        else:
+                            self.model.load_state_dict(state_dict)
+                        state_dict_loaded = True
+                        break
+
+                if not state_dict_loaded:
+                    self.logger.warning(
+                        "No model state dict found, using initialized weights"
+                    )
 
             self.model.to(self.device)
             self.model.eval()

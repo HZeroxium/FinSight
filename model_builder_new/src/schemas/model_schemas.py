@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import datetime
 
-from .enums import ModelType, TimeFrame
+from .enums import ModelType, TimeFrame, CryptoSymbol
 from .base_schemas import BaseResponse
 
 
@@ -57,9 +57,13 @@ class TrainingRequest(BaseModel):
 
     model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True)
 
-    symbol: str = Field(..., min_length=1, description="Trading symbol (e.g., BTCUSDT)")
-    timeframe: TimeFrame = Field(..., description="Data timeframe")
-    model_type: ModelType = Field(..., description="Type of model to train")
+    symbol: str = Field(
+        CryptoSymbol.BTCUSDT, min_length=1, description="Trading symbol (e.g., BTCUSDT)"
+    )
+    timeframe: TimeFrame = Field(TimeFrame.DAY_1, description="Data timeframe")
+    model_type: ModelType = Field(
+        ModelType.PATCHTST, description="Type of model to train"
+    )
     config: ModelConfig = Field(
         default_factory=ModelConfig, description="Model configuration"
     )
@@ -88,10 +92,13 @@ class PredictionRequest(BaseModel):
 
     model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True)
 
-    symbol: str = Field(..., min_length=1, description="Trading symbol")
-    timeframe: TimeFrame = Field(..., description="Data timeframe")
+    symbol: CryptoSymbol = Field(
+        CryptoSymbol.BTCUSDT, min_length=1, description="Trading symbol"
+    )
+    timeframe: TimeFrame = Field(TimeFrame.DAY_1, description="Data timeframe")
     model_type: Optional[ModelType] = Field(
-        None, description="Model type (if None, will auto-select best available)"
+        None,
+        description="Model type (if None, will auto-select best available)",
     )
     n_steps: int = Field(1, gt=0, le=100, description="Number of prediction steps")
 

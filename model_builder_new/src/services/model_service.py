@@ -56,7 +56,6 @@ class ModelService:
 
     def _scan_trained_models(self) -> Dict[str, Dict[str, Any]]:
         """Scan and catalog all trained models"""
-
         trained_models = {}
 
         try:
@@ -75,23 +74,45 @@ class ModelService:
                     with open(metadata_file, "r") as f:
                         metadata = json.load(f)
 
-                    # Check if model file exists
-                    model_files = list(model_dir.glob("model_*.pkl"))
+                    # Check if model files exist (check for different possible model file patterns)
+                    model_files = []
+                    for pattern in ["model_state_dict.pt", "model.pt", "*.pt"]:
+                        model_files.extend(list(model_dir.glob(pattern)))
+
                     if not model_files:
+                        self.logger.debug(f"No model files found in {model_dir}")
                         continue
 
-                    model_key = f"{metadata['symbol']}_{metadata['timeframe']}_{metadata['model_type']}"
+                    # Use consistent key generation
+                    from ..utils.model_utils import ModelUtils
+                    from ..schemas.enums import TimeFrame, ModelType
 
-                    trained_models[model_key] = {
-                        "symbol": metadata["symbol"],
-                        "timeframe": metadata["timeframe"],
-                        "model_type": metadata["model_type"],
-                        "training_id": metadata["training_id"],
-                        "created_at": metadata["created_at"],
-                        "config": metadata["config"],
-                        "model_path": str(model_files[0]),
-                        "status": "available",
-                    }
+                    try:
+                        symbol = metadata["symbol"]
+                        timeframe = TimeFrame(metadata["timeframe"])
+                        model_type = ModelType(metadata["model_type"])
+
+                        utils = ModelUtils()
+                        model_key = utils.generate_model_identifier(
+                            symbol, timeframe, model_type
+                        )
+
+                        trained_models[model_key] = {
+                            "symbol": symbol,
+                            "timeframe": metadata["timeframe"],
+                            "model_type": metadata["model_type"],
+                            "created_at": metadata.get("created_at"),
+                            "config": metadata.get("config", {}),
+                            "model_path": str(model_files[0]),
+                            "model_dir": str(model_dir),
+                            "status": "available",
+                        }
+
+                        self.logger.debug(f"Found model: {model_key}")
+
+                    except (ValueError, KeyError) as e:
+                        self.logger.warning(f"Invalid metadata in {metadata_file}: {e}")
+                        continue
 
                 except Exception as e:
                     self.logger.warning(
@@ -102,6 +123,7 @@ class ModelService:
         except Exception as e:
             self.logger.error(f"Failed to scan trained models: {e}")
 
+        self.logger.info(f"Scanned {len(trained_models)} trained models")
         return trained_models
 
     def _get_available_symbols(self) -> List[str]:
@@ -129,23 +151,23 @@ class ModelService:
         self, symbol: str, timeframe: TimeFrame, model_type: Optional[ModelType] = None
     ) -> bool:
         """Check if a trained model exists for given parameters"""
-
         try:
+            # Ensure symbol is string
+            if hasattr(symbol, "value"):
+                symbol = symbol.value
+
+            from ..utils.model_utils import ModelUtils
+
+            utils = ModelUtils()
+
             if model_type:
-                model_pattern = f"{symbol}_{timeframe}_{model_type}"
-                model_dirs = list(self.settings.models_dir.glob(model_pattern))
+                return utils.model_exists(symbol, timeframe, model_type)
             else:
-                model_pattern = f"{symbol}_{timeframe}_*"
-                model_dirs = list(self.settings.models_dir.glob(model_pattern))
-
-            for model_dir in model_dirs:
-                if model_dir.is_dir():
-                    # Check if model file exists
-                    model_files = list(model_dir.glob("model_*.pkl"))
-                    if model_files and (model_dir / "metadata.json").exists():
+                # Check for any model type
+                for mt in ModelType:
+                    if utils.model_exists(symbol, timeframe, mt):
                         return True
-
-            return False
+                return False
 
         except Exception as e:
             self.logger.error(f"Failed to check model existence: {e}")
@@ -155,9 +177,16 @@ class ModelService:
         self, symbol: str, timeframe: TimeFrame, model_type: ModelType
     ) -> Optional[Dict[str, Any]]:
         """Get detailed information about a specific model"""
-
         try:
-            model_dir = self.settings.models_dir / f"{symbol}_{timeframe}_{model_type}"
+            # Ensure symbol is string
+            if hasattr(symbol, "value"):
+                symbol = symbol.value
+
+            from ..utils.model_utils import ModelUtils
+
+            utils = ModelUtils()
+
+            model_dir = utils.generate_model_path(symbol, timeframe, model_type)
             metadata_file = model_dir / "metadata.json"
 
             if not metadata_file.exists():
@@ -166,8 +195,13 @@ class ModelService:
             with open(metadata_file, "r") as f:
                 metadata = json.load(f)
 
-            # Check if model file exists
-            model_files = list(model_dir.glob("model_*.pkl"))
+            # Check if model files exist
+            model_files = list(model_dir.glob("model_state_dict.pt"))
+            if not model_files:
+                model_files = list(model_dir.glob("model.pt"))
+            if not model_files:
+                model_files = list(model_dir.glob("*.pt"))
+
             if not model_files:
                 return None
 
@@ -186,21 +220,28 @@ class ModelService:
         self, symbol: str, timeframe: TimeFrame, model_type: ModelType
     ) -> bool:
         """Delete a trained model"""
-
         try:
-            model_dir = self.settings.models_dir / f"{symbol}_{timeframe}_{model_type}"
+            # Ensure symbol is string
+            if hasattr(symbol, "value"):
+                symbol = symbol.value
+
+            from ..utils.model_utils import ModelUtils
+
+            utils = ModelUtils()
+
+            model_dir = utils.generate_model_path(symbol, timeframe, model_type)
 
             if not model_dir.exists():
                 return False
 
             # Remove all files in the model directory
-            for file_path in model_dir.iterdir():
-                file_path.unlink()
+            import shutil
 
-            # Remove the directory
-            model_dir.rmdir()
+            shutil.rmtree(model_dir)
 
-            self.logger.info(f"Deleted model: {symbol}_{timeframe}_{model_type}")
+            self.logger.info(
+                f"Deleted model: {utils.generate_model_identifier(symbol, timeframe, model_type)}"
+            )
             return True
 
         except Exception as e:

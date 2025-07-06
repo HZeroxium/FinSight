@@ -506,7 +506,7 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
             path = Path(path)
             path.mkdir(parents=True, exist_ok=True)
 
-            # Save model configuration
+            # Save model configuration - use standardized name
             config = {
                 "context_length": self.context_length,
                 "prediction_length": self.prediction_length,
@@ -578,15 +578,25 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
         try:
             path = Path(path)
 
-            # Load configuration
-            with open(path / "config.json", "r") as f:
-                config = json.load(f)
+            # Load configuration - try different config file names
+            config_files = ["config.json", "model_config.json", "adapter_config.json"]
+            config = None
+
+            for config_file in config_files:
+                config_path = path / config_file
+                if config_path.exists():
+                    with open(config_path, "r") as f:
+                        config = json.load(f)
+                    break
+
+            if config is None:
+                raise FileNotFoundError(f"No config file found in {path}")
 
             self.context_length = config["context_length"]
             self.prediction_length = config["prediction_length"]
             self.target_column = config["target_column"]
             self.feature_columns = config["feature_columns"]
-            self.is_trained = config["is_trained"]
+            self.is_trained = config.get("is_trained", True)
             self.config.update(
                 {
                     k: v
@@ -598,6 +608,7 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
                         "target_column",
                         "feature_columns",
                         "is_trained",
+                        "model_class",
                     ]
                 }
             )

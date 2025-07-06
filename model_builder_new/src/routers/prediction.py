@@ -5,7 +5,6 @@ from typing import Dict, Any
 
 from ..services.prediction_service import PredictionService
 from ..schemas.model_schemas import PredictionRequest, PredictionResponse
-from ..schemas.base_schemas import BaseResponse
 from ..logger.logger_factory import LoggerFactory
 
 router = APIRouter(prefix="/prediction", tags=["prediction"])

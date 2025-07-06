@@ -15,7 +15,7 @@ from ..models.model_factory import ModelFactory
 from ..schemas.enums import ModelType, TimeFrame
 from ..schemas.model_schemas import ModelConfig, ModelInfo
 from ..utils.model_utils import ModelUtils
-from ..logger.logger_factory import LoggerFactory
+from ..logger.logger_factory import LoggerFactory, LogLevel
 
 
 class ModelFacade:
@@ -24,7 +24,12 @@ class ModelFacade:
     """
 
     def __init__(self):
-        self.logger = LoggerFactory.get_logger("ModelFacade")
+        self.logger = LoggerFactory.get_logger(
+            "ModelFacade",
+            level=LogLevel.DEBUG,
+            console_level=LogLevel.DEBUG,
+            log_file="logs/model_facade.log",
+        )
         self.model_utils = ModelUtils()
         self._cached_models: Dict[str, ITimeSeriesModel] = {}
 
@@ -320,40 +325,70 @@ class ModelFacade:
         self, symbol: str, timeframe: TimeFrame, model_type: ModelType
     ) -> bool:
         """Check if a model exists"""
-        checkpoint_path = self.model_utils.get_checkpoint_path(
-            symbol, timeframe, model_type
+        # Ensure symbol is string
+        if hasattr(symbol, "value"):
+            symbol = symbol.value
+
+        exists = self.model_utils.model_exists(symbol, timeframe, model_type)
+
+        self.logger.debug(
+            f"Checking model existence: {symbol} {timeframe} {model_type} -> {exists}"
         )
-        return checkpoint_path.exists()
+
+        return exists
 
     def _load_model(
         self, symbol: str, timeframe: TimeFrame, model_type: ModelType
     ) -> ITimeSeriesModel:
         """Load a model from cache or disk"""
+        # Ensure symbol is string
+        if hasattr(symbol, "value"):
+            symbol = symbol.value
+
         cache_key = self.model_utils.generate_model_identifier(
             symbol, timeframe, model_type
         )
 
         # Check cache first
         if cache_key in self._cached_models:
+            self.logger.debug(f"Loading model from cache: {cache_key}")
             return self._cached_models[cache_key]
 
         # Load from disk
-        model_path = self.model_utils.generate_model_path(symbol, timeframe, model_type)
+        model_dir = self.model_utils.generate_model_path(symbol, timeframe, model_type)
 
-        if not model_path.exists():
-            raise FileNotFoundError(f"Model not found: {model_path}")
+        if not model_dir.exists():
+            self.logger.error(f"Model directory not found: {model_dir}")
+            raise FileNotFoundError(f"Model not found: {model_dir}")
+
+        # Check for config file
+        config_path = model_dir / "config.json"
+        if not config_path.exists():
+            # Try alternative config file names
+            alt_configs = ["model_config.json", "adapter_config.json"]
+            config_found = False
+            for alt_config in alt_configs:
+                alt_path = model_dir / alt_config
+                if alt_path.exists():
+                    config_path = alt_path
+                    config_found = True
+                    break
+
+            if not config_found:
+                self.logger.error(f"No config file found in: {model_dir}")
+                raise FileNotFoundError(f"Model config not found in: {model_dir}")
 
         # Load config to create model
-        config_path = self.model_utils.get_config_path(symbol, timeframe, model_type)
         with open(config_path, "r") as f:
             saved_config = json.load(f)
 
         # Create model and load state
         model = ModelFactory.create_model(model_type, saved_config)
-        model.load_model(model_path)
+        model.load_model(model_dir)
 
         # Cache model
         self._cached_models[cache_key] = model
+        self.logger.info(f"Loaded and cached model: {cache_key}")
 
         return model
 
@@ -366,6 +401,10 @@ class ModelFacade:
         training_result: Dict[str, Any],
     ) -> None:
         """Save model metadata"""
+        # Ensure symbol is string
+        if hasattr(symbol, "value"):
+            symbol = symbol.value
+
         metadata_path = self.model_utils.get_metadata_path(
             symbol, timeframe, model_type
         )

@@ -34,49 +34,62 @@ class PredictionService:
         start_time = time.time()
 
         try:
+            # Extract string values from enums
+            symbol = (
+                request.symbol.value
+                if hasattr(request.symbol, "value")
+                else str(request.symbol)
+            )
+            timeframe = request.timeframe
+            model_type = request.model_type
+
             self.logger.info(
-                f"Making prediction for {request.symbol} {request.timeframe} ({request.n_steps} steps)"
+                f"Making prediction for {symbol} {timeframe} ({request.n_steps} steps)"
             )
 
             # Auto-select model type if not specified
-            if request.model_type is None:
-                request.model_type = self._select_best_model(
-                    request.symbol, request.timeframe
-                )
-                if request.model_type is None:
+            if model_type is None:
+                model_type = self._select_best_model(symbol, timeframe)
+                if model_type is None:
                     return PredictionResponse(
                         success=False,
                         message="No trained model found",
-                        error=f"No trained model available for {request.symbol} {request.timeframe}",
+                        error=f"No trained model available for {symbol} {timeframe}",
                     )
 
             # Check if model exists
-            if not self.model_facade.model_exists(
-                request.symbol, request.timeframe, request.model_type
-            ):
+            if not self.model_facade.model_exists(symbol, timeframe, model_type):
+                self.logger.error(
+                    f"Model check failed - looking for: {symbol} {timeframe} {model_type}"
+                )
+
+                # Debug: List what models actually exist
+                available_models = self.model_facade.list_available_models()
+                self.logger.error(
+                    f"Available models: {[(m.symbol, m.timeframe, m.model_type) for m in available_models]}"
+                )
+
                 return PredictionResponse(
                     success=False,
                     message="Model not found",
-                    error=f"No trained {request.model_type.value} model found for {request.symbol} {request.timeframe}",
+                    error=f"No trained {model_type.value} model found for {symbol} {timeframe}",
                 )
 
             # Load recent data for prediction
-            recent_data = self.data_service.data_loader.load_data(
-                request.symbol, request.timeframe
-            )
+            recent_data = self.data_service.data_loader.load_data(symbol, timeframe)
 
             if recent_data.empty:
                 return PredictionResponse(
                     success=False,
                     message="No data available",
-                    error=f"No data found for {request.symbol} {request.timeframe}",
+                    error=f"No data found for {symbol} {timeframe}",
                 )
 
             # Make prediction using model facade
             prediction_result = self.model_facade.predict(
-                symbol=request.symbol,
-                timeframe=request.timeframe,
-                model_type=request.model_type,
+                symbol=symbol,
+                timeframe=timeframe,
+                model_type=model_type,
                 recent_data=recent_data,
                 n_steps=request.n_steps,
             )
@@ -88,7 +101,7 @@ class PredictionService:
 
                 # Generate prediction timestamps
                 prediction_timestamps = self._generate_prediction_timestamps(
-                    request.timeframe, request.n_steps
+                    timeframe, request.n_steps
                 )
 
                 return PredictionResponse(
@@ -118,6 +131,11 @@ class PredictionService:
         """Get information about all available trained models"""
         try:
             models = self.model_facade.list_available_models()
+            self.logger.info(f"Found {len(models)} available models for prediction")
+            for model in models:
+                self.logger.info(
+                    f"Model: {model.symbol} {model.timeframe} {model.model_type} at {model.model_path}"
+                )
             return [
                 {
                     "symbol": model.symbol,
@@ -138,6 +156,10 @@ class PredictionService:
         self, symbol: str, timeframe: TimeFrame
     ) -> Optional[ModelType]:
         """Select the best available model for given symbol and timeframe"""
+        # Ensure symbol is string
+        if hasattr(symbol, "value"):
+            symbol = symbol.value
+
         # Priority order for model selection
         model_priority = [
             ModelType.PATCHTSMIXER,
@@ -147,8 +169,19 @@ class PredictionService:
 
         for model_type in model_priority:
             if self.model_facade.model_exists(symbol, timeframe, model_type):
+                self.logger.info(f"Selected model: {symbol} {timeframe} {model_type}")
                 return model_type
 
+        # Debug: List what models actually exist
+        available_models = self.model_facade.list_available_models()
+        if available_models:
+            self.logger.warning(f"Available models but none match criteria:")
+            for model in available_models:
+                self.logger.warning(
+                    f"  - {model.symbol} {model.timeframe} {model.model_type}"
+                )
+
+        self.logger.warning(f"No available model found for {symbol} {timeframe}")
         return None
 
     def _generate_prediction_timestamps(

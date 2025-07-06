@@ -18,6 +18,13 @@ class TaskType(str, Enum):
     CLASSIFICATION = "classification"
 
 
+class CryptoSymbol(str, Enum):
+    """Supported cryptocurrency symbols"""
+
+    BTCUSDT = "BTCUSDT"
+    ETHUSDT = "ETHUSDT"
+
+
 class TimeFrame(str, Enum):
     """Supported timeframes for data"""
 

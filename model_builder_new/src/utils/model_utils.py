@@ -7,7 +7,6 @@ This module provides utilities for model path generation, model metadata handlin
 and consistent model saving/loading operations across the system.
 """
 import json
-import pickle
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -31,6 +30,10 @@ class ModelUtils:
         model_type: ModelType,
     ) -> str:
         """Generate standardized model identifier using configuration pattern"""
+        # Ensure symbol is a string (handle enum case)
+        if hasattr(symbol, "value"):
+            symbol = symbol.value
+
         # Clean model type for filesystem compatibility
         clean_model_type = model_type.value.replace("/", "_").replace("-", "_")
 
@@ -56,8 +59,22 @@ class ModelUtils:
         timeframe: TimeFrame,
         model_type: ModelType,
     ) -> Path:
-        """Get model checkpoint file path"""
+        """Get model checkpoint file path - check for multiple possible file names"""
         model_dir = self.generate_model_path(symbol, timeframe, model_type)
+
+        # Check for different possible model file names in order of preference
+        possible_files = [
+            "model_state_dict.pt",  # Used by HuggingFace adapters
+            "model.pt",  # Default checkpoint filename
+            "pytorch_model.bin",  # Alternative HuggingFace format
+        ]
+
+        for filename in possible_files:
+            checkpoint_path = model_dir / filename
+            if checkpoint_path.exists():
+                return checkpoint_path
+
+        # Return default path even if it doesn't exist (for creation)
         return model_dir / self.settings.checkpoint_filename
 
     def get_metadata_path(
@@ -110,8 +127,13 @@ class ModelUtils:
         Returns:
             Path to saved metadata file
         """
-        model_dir = ModelUtils.generate_model_path(symbol, timeframe, model_type)
+        utils = ModelUtils()  # Create instance to access instance methods
+        model_dir = utils.generate_model_path(symbol, timeframe, model_type)
         model_dir.mkdir(parents=True, exist_ok=True)
+
+        # Ensure symbol is string
+        if hasattr(symbol, "value"):
+            symbol = symbol.value
 
         # Add standardized metadata
         metadata.update(
@@ -120,7 +142,7 @@ class ModelUtils:
                 "timeframe": timeframe.value,
                 "model_type": model_type.value,
                 "saved_at": datetime.now().isoformat(),
-                "model_identifier": ModelUtils.generate_model_identifier(
+                "model_identifier": utils.generate_model_identifier(
                     symbol, timeframe, model_type
                 ),
             }
@@ -149,7 +171,8 @@ class ModelUtils:
         Returns:
             Metadata dictionary or None if not found
         """
-        model_dir = ModelUtils.generate_model_path(symbol, timeframe, model_type)
+        utils = ModelUtils()  # Create instance to access instance methods
+        model_dir = utils.generate_model_path(symbol, timeframe, model_type)
         metadata_path = model_dir / "metadata.json"
 
         if not metadata_path.exists():
@@ -178,8 +201,9 @@ class ModelUtils:
         Returns:
             True if model exists, False otherwise
         """
-        model_path = ModelUtils.generate_checkpoint_path(symbol, timeframe, model_type)
-        return model_path.exists()
+        utils = ModelUtils()  # Create instance to access instance methods
+        checkpoint_path = utils.get_checkpoint_path(symbol, timeframe, model_type)
+        return checkpoint_path.exists()
 
     @staticmethod
     def list_available_models(base_dir: Optional[Path] = None) -> List[Dict[str, Any]]:

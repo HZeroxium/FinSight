@@ -8,6 +8,7 @@ import uvicorn
 
 from .core.config import get_settings
 from .routers import training_router, prediction_router
+from .routers.models import router as models_router
 from .schemas.base_schemas import HealthResponse
 from .logger.logger_factory import LoggerFactory
 
@@ -53,6 +54,7 @@ app.add_middleware(
 # Include routers
 app.include_router(training_router)
 app.include_router(prediction_router)
+app.include_router(models_router)
 
 
 @app.get("/", response_model=dict)
@@ -66,6 +68,7 @@ async def root():
         "endpoints": {
             "training": "/training",
             "prediction": "/prediction",
+            "models": "/models",
             "health": "/health",
         },
     }
