@@ -317,9 +317,10 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
                 max_epochs=num_epochs,
                 accelerator="auto",
                 devices=1 if torch.cuda.is_available() else None,
-                enable_progress_bar=False,
-                logger=False,
+                enable_progress_bar=True,
+                logger=True,
                 enable_checkpointing=False,
+                log_every_n_steps=100,
             )
 
             # Train
