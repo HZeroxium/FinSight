@@ -99,6 +99,86 @@ class StorageConfig(BaseSettings):
         return v
 
 
+class CrossRepositoryConfig(BaseSettings):
+    """Configuration for cross-repository operations"""
+
+    source_repository: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "type": "mongodb",
+            "mongodb": {
+                "connection_string": "mongodb://localhost:27017/",
+                "database_name": "finsight_market_data",
+                "collection_prefix": "ohlcv",
+            },
+        }
+    )
+
+    target_repository: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "type": "csv",
+            "csv": {"base_directory": "data/converted_timeframes"},
+        }
+    )
+
+    source_timeframe: str = "1h"
+    target_timeframes: List[str] = Field(
+        default_factory=lambda: ["2h", "4h", "12h", "1d"]
+    )
+
+    enable_parallel_conversion: bool = True
+    max_concurrent_conversions: int = 3
+    conversion_batch_size: int = 1000
+
+    @field_validator("source_timeframe")
+    def validate_source_timeframe(cls, v):
+        valid_timeframes = [
+            "1m",
+            "3m",
+            "5m",
+            "15m",
+            "30m",
+            "1h",
+            "2h",
+            "4h",
+            "6h",
+            "8h",
+            "12h",
+            "1d",
+            "3d",
+            "1w",
+            "1M",
+        ]
+        if v not in valid_timeframes:
+            raise ValueError(
+                f"Invalid source timeframe: {v}. Must be one of {valid_timeframes}"
+            )
+        return v
+
+    @field_validator("target_timeframes")
+    def validate_target_timeframes(cls, v):
+        valid_timeframes = [
+            "1m",
+            "3m",
+            "5m",
+            "15m",
+            "30m",
+            "1h",
+            "2h",
+            "4h",
+            "6h",
+            "8h",
+            "12h",
+            "1d",
+            "3d",
+            "1w",
+            "1M",
+        ]
+        invalid_timeframes = set(v) - set(valid_timeframes)
+        if invalid_timeframes:
+            raise ValueError(f"Invalid target timeframes: {invalid_timeframes}")
+        return v
+
+
 class RateLimitConfig(BaseSettings):
     """Configuration for rate limiting"""
 
@@ -212,6 +292,29 @@ class AIPreedictionSettings(BaseSettings):
         }
     )
 
+    # Cross-repository configuration
+    cross_repository: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "source_repository": {
+                "type": "mongodb",
+                "mongodb": {
+                    "connection_string": "mongodb://localhost:27017/",
+                    "database_name": "finsight_market_data",
+                    "collection_prefix": "ohlcv",
+                },
+            },
+            "target_repository": {
+                "type": "csv",
+                "csv": {"base_directory": "data/converted_timeframes"},
+            },
+            "source_timeframe": "1h",
+            "target_timeframes": ["2h", "4h", "12h", "1d"],
+            "enable_parallel_conversion": True,
+            "max_concurrent_conversions": 3,
+            "conversion_batch_size": 1000,
+        }
+    )
+
     # Rate limits configuration
     rate_limits: Dict[str, Dict[str, int]] = Field(
         default_factory=lambda: {
@@ -310,6 +413,10 @@ class ConfigManager:
     def get_storage_config(self) -> StorageConfig:
         """Get storage configuration"""
         return StorageConfig(**self.settings.storage)
+
+    def get_cross_repository_config(self) -> CrossRepositoryConfig:
+        """Get cross-repository configuration"""
+        return CrossRepositoryConfig(**self.settings.cross_repository)
 
     def get_rate_limits(self, exchange_name: str) -> Dict[str, int]:
         """Get rate limits for specific exchange"""

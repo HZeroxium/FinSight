@@ -19,6 +19,7 @@ from ..interfaces.errors import CollectionError, ValidationError
 from ..common.logger import LoggerFactory, LoggerType, LogLevel
 from ..utils.datetime_utils import DateTimeUtils
 from ..schemas.ohlcv_schemas import OHLCVSchema
+from ..schemas.enums import TimeFrame, Exchange
 from ..converters.ohlcv_converter import OHLCVConverter
 
 
@@ -81,25 +82,8 @@ class BinanceMarketDataCollector(MarketDataCollector):
 
     def get_available_timeframes(self) -> List[str]:
         """Get all supported timeframes for OHLCV data"""
-        # Binance supported intervals
-        timeframes = [
-            "1m",
-            "3m",
-            "5m",
-            "15m",
-            "30m",
-            "1h",
-            "2h",
-            "4h",
-            "6h",
-            "8h",
-            "12h",
-            "1d",
-            "3d",
-            "1w",
-            "1M",
-        ]
-
+        # Return all supported timeframes from our enum
+        timeframes = [tf.value for tf in TimeFrame]
         self.logger.debug(f"Available timeframes: {timeframes}")
         return timeframes
 

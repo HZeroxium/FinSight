@@ -6,42 +6,27 @@ from .services.market_data_service import MarketDataService
 from .common.logger import LoggerFactory
 from .services.market_data_collector_service import MarketDataCollectorService
 from .factories import create_repository
+from .schemas.enums import CryptoSymbol, TimeFrame, Exchange
 from datetime import date, timedelta
 
 
 def get_symbol_timeframe_pairs():
+    """Get list of (symbol, timeframe) pairs for data collection"""
     return [
-        # ("BTCUSDT", "1d"),
-        # ("BTCUSDT", "12h"),
-        # ("BTCUSDT", "6h"),
-        # ("BTCUSDT", "4h"),
-        # ("BTCUSDT", "2h"),
-        # ("BTCUSDT", "1h"),
-        # ("ETHUSDT", "1d"),
-        # ("ETHUSDT", "12h"),
-        # ("ETHUSDT", "6h"),
-        # ("ETHUSDT", "4h"),
-        # ("ETHUSDT", "2h"),
-        # ("ETHUSDT", "1h"),
-        # ("BNBUSDT", "1d"),
-        # ("XRPUSDT", "1d"),
-        # ("ADAUSDT", "1d"),
-        # ("SOLUSDT", "1d"),
-        # ("DOGEUSDT", "1d"),
-        # ("DOTUSDT", "1d"),
-        # ("MATICUSDT", "1d"),
-        # ("LTCUSDT", "1d"),
-        # Define with "1h" symbols for more frequent updates
-        ("BTCUSDT", "1h"),
-        ("ETHUSDT", "1h"),
-        ("BNBUSDT", "1h"),
-        ("XRPUSDT", "1h"),
-        ("ADAUSDT", "1h"),
-        ("SOLUSDT", "1h"),
-        ("DOGEUSDT", "1h"),
-        ("DOTUSDT", "1h"),
-        ("MATICUSDT", "1h"),
-        ("LTCUSDT", "1h"),
+        # Using enums for type safety and consistency
+        (CryptoSymbol.BTCUSDT.value, TimeFrame.HOUR_1.value),
+        (CryptoSymbol.ETHUSDT.value, TimeFrame.HOUR_1.value),
+        (CryptoSymbol.BNBUSDT.value, TimeFrame.HOUR_1.value),
+        (CryptoSymbol.XRPUSDT.value, TimeFrame.HOUR_1.value),
+        (CryptoSymbol.ADAUSDT.value, TimeFrame.HOUR_1.value),
+        (CryptoSymbol.SOLUSDT.value, TimeFrame.HOUR_1.value),
+        (CryptoSymbol.DOGEUSDT.value, TimeFrame.HOUR_1.value),
+        (CryptoSymbol.DOTUSDT.value, TimeFrame.HOUR_1.value),
+        (CryptoSymbol.MATICUSDT.value, TimeFrame.HOUR_1.value),
+        (CryptoSymbol.LTCUSDT.value, TimeFrame.HOUR_1.value),
+        # Additional symbols from the extended enum
+        (CryptoSymbol.LINKUSDT.value, TimeFrame.HOUR_1.value),
+        (CryptoSymbol.AVAXUSDT.value, TimeFrame.HOUR_1.value),
     ]
 
 
@@ -95,7 +80,7 @@ async def main():
             #     end_date=end_date,
             # )
             result = await market_data_collector_service.collect_and_store_ohlcv(
-                exchange="binance",
+                exchange=Exchange.BINANCE.value,
                 symbol=symbol,
                 timeframe=timeframe,
                 start_date=start_date,
