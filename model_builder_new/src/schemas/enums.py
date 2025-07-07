@@ -9,6 +9,7 @@ class ModelType(str, Enum):
     PATCHTST = "ibm/patchtst-forecasting"
     PATCHTSMIXER = "ibm/patchtsmixer-forecasting"
     PYTORCH_TRANSFORMER = "pytorch-lightning/time-series-transformer"
+    ENHANCED_TRANSFORMER = "enhanced-transformer"  # New enhanced transformer
 
 
 class TaskType(str, Enum):

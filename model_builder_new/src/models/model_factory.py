@@ -6,6 +6,9 @@ from ..schemas.enums import ModelType
 from .adapters.patchtst_adapter import PatchTSTAdapter
 from .adapters.patchtsmixer_adapter import PatchTSMixerAdapter
 from .adapters.transformer_adapter import TransformerAdapter
+from .adapters.enhanced_transformer_adapter import (
+    EnhancedTransformerAdapter,
+)  # New import
 from ..logger.logger_factory import LoggerFactory
 
 
@@ -16,7 +19,7 @@ class ModelFactory:
         ModelType.PATCHTST: PatchTSTAdapter,
         ModelType.PATCHTSMIXER: PatchTSMixerAdapter,
         ModelType.PYTORCH_TRANSFORMER: TransformerAdapter,
-        # Additional models can be added here
+        ModelType.ENHANCED_TRANSFORMER: EnhancedTransformerAdapter,  # New enhanced transformer
     }
 
     @classmethod

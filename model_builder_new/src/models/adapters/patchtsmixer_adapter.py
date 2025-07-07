@@ -5,24 +5,19 @@ PatchTSMixer adapter implementing the base adapter pattern
 Clean implementation focused on forecasting vs backtesting separation
 """
 
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Tuple
 import torch
-import torch.nn as nn
-import numpy as np
-import pandas as pd
+
 from pathlib import Path
 from transformers import (
     PatchTSMixerConfig,
     PatchTSMixerForPrediction,
     TrainingArguments,
     Trainer,
-    EarlyStoppingCallback,
 )
-from datasets import Dataset
 import os
 
 from .base_adapter import BaseTimeSeriesAdapter
-from ...logger.logger_factory import LoggerFactory
 
 # Disable wandb
 os.environ["WANDB_DISABLED"] = "true"
