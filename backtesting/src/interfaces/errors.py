@@ -17,3 +17,9 @@ class RepositoryError(Exception):
     """Raised when repository operations fail"""
 
     pass
+
+
+class BacktestingServiceError(Exception):
+    """Raised when backtesting service operations fail"""
+
+    pass
