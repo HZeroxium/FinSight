@@ -11,15 +11,7 @@ from typing import Dict, Any, Optional, Type
 from ..interfaces.market_data_repository import MarketDataRepository
 from ..interfaces.errors import RepositoryError
 from ..common.logger import LoggerFactory
-
-
-class RepositoryType(Enum):
-    """Available repository types"""
-
-    CSV = "csv"
-    MONGODB = "mongodb"
-    INFLUXDB = "influxdb"
-    TIMESCALEDB = "timescaledb"
+from ..schemas.enums import RepositoryType
 
 
 class MarketDataRepositoryFactory:
