@@ -9,6 +9,7 @@ Handles CRUD operations for different types of market data using proper schemas.
 
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVBatchSchema, OHLCVQuerySchema
 
 
@@ -347,5 +348,126 @@ class MarketDataRepository(ABC):
 
         Raises:
             RepositoryError: If optimization fails
+        """
+        pass
+
+    # Administrative Operations
+    @abstractmethod
+    async def count_all_records(self) -> int:
+        """
+        Count total number of OHLCV records in repository.
+
+        Returns:
+            Total count of records
+
+        Raises:
+            RepositoryError: If count operation fails
+        """
+        pass
+
+    @abstractmethod
+    async def get_available_symbols(self) -> List[str]:
+        """
+        Get all available symbols across all exchanges.
+
+        Returns:
+            List of unique symbols
+
+        Raises:
+            RepositoryError: If query fails
+        """
+        pass
+
+    @abstractmethod
+    async def get_available_exchanges(self) -> List[str]:
+        """
+        Get all available exchanges in repository.
+
+        Returns:
+            List of exchange names
+
+        Raises:
+            RepositoryError: If query fails
+        """
+        pass
+
+    @abstractmethod
+    async def get_available_timeframes(self) -> List[str]:
+        """
+        Get all available timeframes across all data.
+
+        Returns:
+            List of timeframes
+
+        Raises:
+            RepositoryError: If query fails
+        """
+        pass
+
+    @abstractmethod
+    async def count_records(
+        self,
+        exchange: str,
+        symbol: str,
+        timeframe: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> int:
+        """
+        Count records for specific criteria.
+
+        Args:
+            exchange: Exchange name
+            symbol: Trading symbol
+            timeframe: Data timeframe
+            start_date: Optional start date filter
+            end_date: Optional end date filter
+
+        Returns:
+            Count of matching records
+
+        Raises:
+            RepositoryError: If count operation fails
+        """
+        pass
+
+    @abstractmethod
+    async def count_records_since(self, cutoff_date: datetime) -> int:
+        """
+        Count records since a specific date.
+
+        Args:
+            cutoff_date: Date to count records from
+
+        Returns:
+            Count of records since date
+
+        Raises:
+            RepositoryError: If count operation fails
+        """
+        pass
+
+    @abstractmethod
+    async def delete_records_before_date(
+        self,
+        exchange: str,
+        symbol: str,
+        timeframe: str,
+        cutoff_date: datetime,
+    ) -> int:
+        """
+        Delete records before a specific date.
+
+        Args:
+            exchange: Exchange name
+            symbol: Trading symbol
+            timeframe: Data timeframe
+            cutoff_date: Date before which to delete records
+
+        Returns:
+            Number of records deleted
+
+        Raises:
+            RepositoryError: If delete operation fails
         """
         pass

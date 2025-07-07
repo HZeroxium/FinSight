@@ -5,7 +5,6 @@ Factory pattern implementation for creating different types of market data repos
 Enables easy switching between storage backends (CSV, MongoDB, InfluxDB, etc.).
 """
 
-from enum import Enum
 from typing import Dict, Any, Optional, Type
 
 from ..interfaces.market_data_repository import MarketDataRepository
@@ -279,3 +278,40 @@ def create_repository_from_config(config: Dict[str, Any]) -> MarketDataRepositor
         MarketDataRepository instance
     """
     return repository_factory.create_from_config(config)
+
+
+def get_market_data_service():
+    """
+    Dependency injection function for FastAPI.
+
+    Creates and returns a MarketDataService instance with the default repository.
+    This function is used as a FastAPI dependency to provide the service to endpoints.
+
+    Returns:
+        MarketDataService instance configured with default repository
+    """
+    from ..services.market_data_service import MarketDataService
+    from ..core.config import ConfigManager
+
+    # Get default configuration
+    config_manager = ConfigManager()
+    storage_config = config_manager.get_storage_config()
+
+    # Create repository with default configuration
+    repository = repository_factory.create_from_config(
+        {
+            # "type": "csv",  # Default to CSV for simplicity
+            # "csv": {
+            #     "base_directory": storage_config.base_directory,
+            # },
+            "type": "mongodb",  # Default to MongoDB
+            "mongodb": {
+                "connection_string": "mongodb://localhost:27017/",
+                "database_name": "finsight_market_data",
+                # "collection_name": "ohlcv_data",
+            },
+        }
+    )
+
+    # Create and return service
+    return MarketDataService(repository=repository)

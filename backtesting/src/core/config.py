@@ -344,6 +344,12 @@ class AIPreedictionSettings(BaseSettings):
     cache_ttl_seconds: int = 300
     cache_max_size: int = 1000
 
+    # Admin API configuration
+    admin_api_key: str = Field(
+        default="admin-default-key-change-in-production",
+        description="API key for admin endpoints",
+    )
+
     @field_validator("log_level")
     def validate_log_level(cls, v):
         levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
@@ -472,3 +478,7 @@ class ConfigManager:
             "log_file_path": self.settings.log_file_path,
             "enable_structured_logging": self.settings.enable_structured_logging,
         }
+
+
+# Type alias for backward compatibility
+Settings = AIPreedictionSettings
