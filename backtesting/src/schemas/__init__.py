@@ -11,6 +11,18 @@ from .ohlcv_schemas import (
     OHLCVResponseSchema,
     OHLCVStatsSchema,
 )
+from .backtesting_schemas import (
+    BacktestRequest,
+    BacktestResult,
+    StrategyConfig,
+    TradeResult,
+    PerformanceMetrics,
+    EquityCurvePoint,
+    BacktestSummary,
+    StrategyType,
+    OrderType,
+    PositionSide,
+)
 from .enums import (
     RepositoryType,
     Exchange,
@@ -18,6 +30,18 @@ from .enums import (
     TimeFrame,
     MarketDataType,
     TimeFrameMultiplier,
+)
+from .admin_schemas import (
+    DataEnsureRequest,
+    DataEnsureResponse,
+    TimeframeConvertRequest,
+    TimeframeConvertResponse,
+    AdminStatsResponse,
+    SystemHealthResponse,
+    CleanupRequest,
+    CleanupResponse,
+    APIKeyValidationRequest,
+    APIKeyValidationResponse,
 )
 
 __all__ = [
@@ -27,6 +51,28 @@ __all__ = [
     "OHLCVQuerySchema",
     "OHLCVResponseSchema",
     "OHLCVStatsSchema",
+    # Backtesting schemas
+    "BacktestRequest",
+    "BacktestResult",
+    "StrategyConfig",
+    "TradeResult",
+    "PerformanceMetrics",
+    "EquityCurvePoint",
+    "BacktestSummary",
+    "StrategyType",
+    "OrderType",
+    "PositionSide",
+    # Admin schemas
+    "DataEnsureRequest",
+    "DataEnsureResponse",
+    "TimeframeConvertRequest",
+    "TimeframeConvertResponse",
+    "AdminStatsResponse",
+    "SystemHealthResponse",
+    "CleanupRequest",
+    "CleanupResponse",
+    "APIKeyValidationRequest",
+    "APIKeyValidationResponse",
     # Enums
     "RepositoryType",
     "Exchange",
