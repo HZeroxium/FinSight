@@ -288,7 +288,7 @@ class MarketDataCollectorService:
 
         try:
             # Get latest timestamp in database
-            latest_timestamp = self.data_service.get_latest_ohlcv_timestamp(
+            latest_timestamp = await self.data_service.get_latest_ohlcv_timestamp(
                 exchange, symbol, timeframe
             )
 
@@ -317,7 +317,7 @@ class MarketDataCollectorService:
                 result["success"] = True
 
                 # Get updated latest timestamp
-                updated_timestamp = self.data_service.get_latest_ohlcv_timestamp(
+                updated_timestamp = await self.data_service.get_latest_ohlcv_timestamp(
                     exchange, symbol, timeframe
                 )
                 result["last_timestamp_after"] = updated_timestamp

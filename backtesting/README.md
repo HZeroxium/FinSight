@@ -42,10 +42,10 @@ cp .env.example .env
 
 ```bash
 # Start the FastAPI server
-python start_server.py
+python -m src.main
 
-# Or use uvicorn directly
-uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload
+# Or using uvicorn directly
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 The server will start on `http://localhost:8000`
@@ -261,112 +261,247 @@ curl -X POST "http://localhost:8000/api/v1/backtesting/run" \
 curl "http://localhost:8000/api/v1/market-data/ohlcv?exchange=binance&symbol=BTCUSDT&timeframe=1h&start_date=2024-01-01T00:00:00Z&end_date=2024-01-02T00:00:00Z"
 ```
 
-## 🏗️ Development
+## 📊 Data Collection & Management
 
-### Project Structure
-
-```plaintext
-backtesting/
-├── src/
-│   ├── adapters/          # External system adapters
-│   ├── common/           # Shared utilities (logging, etc.)
-│   ├── converters/       # Data format converters
-│   ├── core/            # Configuration and settings
-│   ├── factories/       # Dependency injection factories
-│   ├── interfaces/      # Abstract interfaces (ports)
-│   ├── models/          # Data models
-│   ├── routers/         # FastAPI route definitions
-│   ├── schemas/         # Pydantic schemas
-│   ├── services/        # Business logic layer
-│   ├── strategies/      # Trading strategy implementations
-│   ├── utils/           # Utility functions
-│   └── app.py          # FastAPI application
-├── data/               # Data storage directory
-├── logs/               # Log files
-├── start_server.py     # Server startup script
-├── admin_demo.py       # Admin functionality demo
-└── requirements.txt    # Python dependencies
-```
-
-### Adding New Strategies
-
-1. Create strategy class in `src/strategies/`
-2. Implement the `Strategy` interface
-3. Register in `StrategyFactory`
-4. Add tests
-
-### Adding New Storage Backends
-
-1. Implement `MarketDataRepository` interface
-2. Add to `MarketDataRepositoryFactory`
-3. Update configuration schemas
-
-### Running Tests
+### Starting the API Server
 
 ```bash
-# Run unit tests
-pytest src/tests/
+# Start the FastAPI server
+python -m src.main
 
-# Run integration tests
-pytest src/tests/integration/
-
-# Run with coverage
-pytest --cov=src src/tests/
+# Or using uvicorn directly
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-## 🐛 Troubleshooting
+### New Symbol Data Collection
 
-### Common Issues
-
-1. **Server won't start**
-
-   - Check Python version (3.8+ required)
-   - Install dependencies: `pip install -r requirements.txt`
-   - Check port availability: `netstat -an | grep 8000`
-
-2. **Authentication errors**
-
-   - Verify API key in `.env` file
-   - Use Bearer token format: `Bearer your-api-key`
-
-3. **Data collection fails**
-
-   - Check Binance API credentials
-   - Verify internet connection
-   - Check rate limits
-
-4. **Storage errors**
-   - Ensure data directory exists and is writable
-   - Check MongoDB/InfluxDB connection
-   - Verify disk space
-
-### Debug Mode
-
-Enable debug mode for detailed logging:
+Use the intelligent data collection script for new symbols:
 
 ```bash
-export AI_PREDICTION_DEBUG=true
-export AI_PREDICTION_LOG_LEVEL=DEBUG
-python start_server.py
+# Collect data for a specific symbol and timeframe
+python -m src.collect_new_symbol_data --symbol BTCUSDT --timeframe 1h
+
+# Collect data for a specific symbol (all default timeframes)
+python -m src.collect_new_symbol_data --symbol BTCUSDT
+
+# Collect data for all default symbols and timeframes
+python -m src.collect_new_symbol_data
+
+# Force full historical collection (ignores existing data)
+python -m src.collect_new_symbol_data --symbol BTCUSDT --force-full
+
+# Custom date range
+python -m src.collect_new_symbol_data --symbol BTCUSDT --start-date 2024-01-01 --end-date 2024-12-31
+
+# Advanced options
+python -m src.collect_new_symbol_data \
+  --repository mongodb \
+  --max-concurrent 5 \
+  --max-lookback-days 365
 ```
 
-## 📝 License
+#### Collection Strategy
 
-This project is part of the FinSight platform. See the main repository for license information.
+The script automatically selects the optimal collection strategy:
 
-## 🤝 Contributing
+1. **New Symbol/Timeframe**: Collects full historical data using `collect_and_store_ohlcv`
+2. **Existing Data**: Updates to latest using `update_to_latest` + ensures completeness with `ensure_data_completeness`
+3. **Gap Detection**: Automatically identifies and fills data gaps
 
-1. Follow the existing code patterns
-2. Add tests for new functionality
-3. Update documentation
-4. Use proper type hints and docstrings
-5. Follow SOLID principles and design patterns
+### Automated Data Collection (Cron Jobs)
 
-## 📞 Support
+#### Starting the Cron Job Service
 
-For issues and questions:
+```bash
+# Start the background job service (runs continuously)
+python -m src.market_data_job start
 
-- Check the API documentation at `/docs`
-- Review the troubleshooting section
-- Check logs in the `logs/` directory
-- Use the admin demo script to test functionality
+# Start with custom configuration
+python -m src.market_data_job start --config-file custom_config.json
+
+# Start with custom log file
+python -m src.market_data_job start --log-file logs/market_data_custom.log
+```
+
+#### Managing Cron Jobs
+
+```bash
+# Check service status
+python -m src.market_data_job status
+
+# Stop the service
+python -m src.market_data_job stop
+
+# Run a manual collection job (without starting the scheduler)
+python -m src.market_data_job run
+
+# Run manual job with specific symbols
+python -m src.market_data_job run --symbols BTCUSDT ETHUSDT --timeframes 1h 4h
+
+# Update cron schedule
+python -m src.market_data_job config --cron "0 */2 * * *"  # Every 2 hours
+```
+
+#### Cron Job Configuration
+
+The cron job uses `scan_and_update_all_symbols` function to:
+
+- Update existing data to latest timestamps
+- Ensure data completeness for all symbol/timeframe pairs
+- Handle rate limiting and error recovery
+- Log detailed results for monitoring
+
+Default configuration:
+
+- **Schedule**: Every hour (`0 */1 * * *`)
+- **Strategy**: Update existing data + ensure completeness
+- **Priority Symbols**: BTCUSDT, ETHUSDT, BNBUSDT
+- **Priority Timeframes**: 1h, 4h, 1d
+- **Max Lookback**: 30 days
+
+#### Configuration File Example
+
+```json
+{
+  "cron_schedule": "0 */1 * * *",
+  "timezone": "UTC",
+  "exchange": "binance",
+  "max_lookback_days": 30,
+  "update_existing": true,
+  "repository_type": "mongodb",
+  "priority_symbols": ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
+  "priority_timeframes": ["1h", "4h", "1d"],
+  "max_retries": 3,
+  "enable_notifications": false
+}
+```
+
+#### Process Management
+
+The cron job service includes production-ready features:
+
+- **PID File Management**: Prevents multiple instances
+- **Graceful Shutdown**: Handles SIGINT/SIGTERM signals
+- **Comprehensive Logging**: All operations logged to file
+- **Error Recovery**: Automatic retries with exponential backoff
+- **Health Monitoring**: Status reporting and metrics
+
+#### Monitoring Logs
+
+```bash
+# Monitor live logs
+tail -f logs/market_data_job.log
+
+# Check recent logs
+tail -100 logs/market_data_job.log
+
+# Search for errors
+grep -i error logs/market_data_job.log
+
+# Check job statistics
+grep -i "job.*completed" logs/market_data_job.log
+```
+
+### Data Collection Best Practices
+
+1. **Initial Setup**: Use `collect_new_symbol_data.py` for initial historical data collection
+2. **Ongoing Updates**: Use the cron job service for automated updates
+3. **Gap Management**: The system automatically detects and fills gaps
+4. **Rate Limiting**: Built-in Binance API rate limiting compliance
+5. **Error Handling**: Comprehensive error recovery and logging
+6. **Monitoring**: Regular log monitoring for collection health
+
+## Usage Examples
+
+### Ensure Data Availabilityy
+
+Before running backtests, ensure you have the required market data:
+
+```python
+# Check if data exists for specific symbol/timeframe
+from src.services.market_data_service import MarketDataService
+from src.factories import create_repository
+
+# Initialize service
+repository = create_repository("mongodb", {
+    "connection_string": "mongodb://localhost:27017/",
+    "database_name": "finsight_market_data"
+})
+service = MarketDataService(repository)
+
+# Check data availability
+symbols = await service.get_available_symbols("binance")
+timeframes = await service.get_available_timeframes("binance", "BTCUSDT")
+
+print(f"Available symbols: {symbols}")
+print(f"Available timeframes for BTCUSDT: {timeframes}")
+```
+
+### Collect Initial Data
+
+```python
+# Collect comprehensive historical data
+from src.collect_new_symbol_data import NewSymbolDataCollector
+
+collector = NewSymbolDataCollector(
+    repository_type="mongodb",
+    max_lookback_days=365
+)
+
+# Collect data for specific symbol
+result = await collector.collect_symbol_data(
+    symbol="BTCUSDT",
+    timeframe="1h",
+    force_full_collection=True
+)
+
+print(f"Collection result: {result}")
+```
+
+### Run Automated Collection
+
+```bash
+# Set up automated hourly collection
+python -m src.market_data_job start
+
+# Monitor the logs
+tail -f logs/market_data_job.log
+```
+
+## 🚀 Quick Start
+
+1. **Install Dependencies**:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Setup Environment**:
+
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+3. **Start Services**:
+
+   ```bash
+   # Start API server
+   python -m src.main
+
+   # Start cron job service (in another terminal)
+   python -m src.market_data_job start
+   ```
+
+4. **Collect Initial Data**:
+
+   ```bash
+   # Collect data for key symbols
+   python -m src.collect_new_symbol_data --symbol BTCUSDT
+   python -m src.collect_new_symbol_data --symbol ETHUSDT
+   ```
+
+5. **Access API**:
+   - API Documentation: <http://localhost:8000/docs>
+   - Health Check: <http://localhost:8000/health>
+   - Admin Panel: <http://localhost:8000/admin/status>
