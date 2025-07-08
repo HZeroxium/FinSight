@@ -16,11 +16,7 @@ import asyncio
 from typing import List, Dict, Any, Optional
 import traceback
 
-from .utils.dependencies import (
-    get_dependency_manager,
-    DependencyManager,
-    configure_dependencies,
-)
+
 from .utils.datetime_utils import DateTimeUtils
 from .utils.timeframe_utils import TimeFrameUtils
 from .schemas.ohlcv_schemas import OHLCVSchema, OHLCVQuerySchema
@@ -82,7 +78,7 @@ class CrossRepositoryTimeFramePipeline:
         self,
         symbols: List[str],
         exchange: str = Exchange.BINANCE.value,
-        start_date: str = "2024-01-01T00:00:00Z",
+        start_date: str = "2013-01-01T00:00:00Z",
         end_date: Optional[str] = None,
         overwrite_existing: bool = False,
     ) -> Dict[str, Any]:
@@ -126,8 +122,12 @@ class CrossRepositoryTimeFramePipeline:
             "successful_conversions": 0,
             "errors": [],
             "symbol_results": {},
-            "source_repository_info": self._get_repository_info(self.source_repository),
-            "target_repository_info": self._get_repository_info(self.target_repository),
+            "source_repository_info": await self._get_repository_info(
+                self.source_repository
+            ),
+            "target_repository_info": await self._get_repository_info(
+                self.target_repository
+            ),
             "timeframe_statistics": {
                 "source": self.timeframe_utils.get_timeframe_statistics(
                     self.source_timeframe
@@ -393,10 +393,12 @@ class CrossRepositoryTimeFramePipeline:
             validate=True,
         )
 
-    def _get_repository_info(self, repository: MarketDataRepository) -> Dict[str, Any]:
+    async def _get_repository_info(
+        self, repository: MarketDataRepository
+    ) -> Dict[str, Any]:
         """Get repository information for logging"""
         try:
-            storage_info = repository.get_storage_info()
+            storage_info = await repository.get_storage_info()
             return {
                 "storage_type": storage_info.get("storage_type", "unknown"),
                 "location": storage_info.get("location", "unknown"),
@@ -404,20 +406,19 @@ class CrossRepositoryTimeFramePipeline:
         except Exception:
             return {"storage_type": "unknown", "location": "unknown"}
 
-    def get_pipeline_statistics(self) -> Dict[str, Any]:
+    async def get_pipeline_statistics(self) -> Dict[str, Any]:
         """Get statistics about the pipeline configuration"""
+
+        source_repo_info = await self._get_repository_info(self.source_repository)
+        target_repo_info = await self._get_repository_info(self.target_repository)
 
         stats = {
             "source_timeframe": self.source_timeframe,
             "target_timeframes": self.target_timeframes,
             "supported_conversions": {},
             "conversion_ratios": {},
-            "source_repository_type": self._get_repository_info(self.source_repository)[
-                "storage_type"
-            ],
-            "target_repository_type": self._get_repository_info(self.target_repository)[
-                "storage_type"
-            ],
+            "source_repository_type": source_repo_info["storage_type"],
+            "target_repository_type": target_repo_info["storage_type"],
             "timeframe_info": self.timeframe_converter.get_timeframe_info(),
         }
 
@@ -501,12 +502,6 @@ async def run_mongodb_to_csv_example():
     config = CrossRepositoryConfig(
         source_repo_type=RepositoryType.MONGODB,
         target_repo_type=RepositoryType.CSV,
-        source_repo_config={
-            "connection_string": "mongodb://localhost:27017/",
-            "database_name": "finsight_market_data",
-            # "collection_prefix": "ohlcv",
-        },
-        target_repo_config={"base_directory": "data"},
     )
 
     # Create pipeline
@@ -514,8 +509,9 @@ async def run_mongodb_to_csv_example():
         config=config,
         source_timeframe=TimeFrame.HOUR_1.value,
         target_timeframes=[
-            TimeFrame.HOUR_2.value,
+            # TimeFrame.HOUR_2.value,
             TimeFrame.HOUR_4.value,
+            TimeFrame.HOUR_6.value,
             TimeFrame.HOUR_12.value,
             TimeFrame.DAY_1.value,
         ],
@@ -532,8 +528,8 @@ async def run_mongodb_to_csv_example():
     results = await pipeline.run_cross_repository_pipeline(
         symbols=symbols,
         exchange=Exchange.BINANCE.value,
-        start_date="2024-01-01T00:00:00Z",
-        end_date="2024-12-31T23:59:59Z",
+        start_date="2013-01-01T00:00:00Z",
+        # end_date="2024-12-31T23:59:59Z",
         overwrite_existing=False,
     )
 
@@ -623,16 +619,16 @@ async def main():
             print(f"⚠️  MongoDB to CSV conversion skipped: {e}")
 
         # Run CSV to MongoDB example
-        print("\n2. CSV → MongoDB Conversion")
-        print("-" * 40)
-        try:
-            csv_to_mongodb_results = await run_csv_to_mongodb_example()
-            print(
-                f"✅ CSV to MongoDB: {csv_to_mongodb_results.get('success_rate', 0):.1f}% success rate"
-            )
-        except Exception as e:
-            logger.warning(f"CSV to MongoDB conversion failed: {e}")
-            print(f"⚠️  CSV to MongoDB conversion skipped: {e}")
+        # print("\n2. CSV → MongoDB Conversion")
+        # print("-" * 40)
+        # try:
+        #     csv_to_mongodb_results = await run_csv_to_mongodb_example()
+        #     print(
+        #         f"✅ CSV to MongoDB: {csv_to_mongodb_results.get('success_rate', 0):.1f}% success rate"
+        #     )
+        # except Exception as e:
+        #     logger.warning(f"CSV to MongoDB conversion failed: {e}")
+        #     print(f"⚠️  CSV to MongoDB conversion skipped: {e}")
 
         print("\n✨ Cross-repository demonstration completed!")
         logger.info("Cross-repository demonstration completed successfully")

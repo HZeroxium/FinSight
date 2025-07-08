@@ -73,7 +73,7 @@ async def get_ohlcv_data(
                 detail=f"Invalid date format: {str(e)}",
             )
 
-        response = market_data_service.get_ohlcv_data(
+        response = await market_data_service.get_ohlcv_data(
             exchange=exchange,
             symbol=symbol,
             timeframe=timeframe,
@@ -109,7 +109,7 @@ async def get_ohlcv_stats(
     try:
         logger.info(f"OHLCV stats requested: {symbol} on {exchange} ({timeframe})")
 
-        stats = market_data_service.get_ohlcv_stats(exchange, symbol, timeframe)
+        stats = await market_data_service.get_ohlcv_stats(exchange, symbol, timeframe)
 
         if not stats:
             raise HTTPException(
@@ -145,7 +145,7 @@ async def get_latest_timestamp(
     try:
         logger.info(f"Latest timestamp requested: {symbol} on {exchange} ({timeframe})")
 
-        latest_timestamp = market_data_service.get_latest_ohlcv_timestamp(
+        latest_timestamp = await market_data_service.get_latest_ohlcv_timestamp(
             exchange, symbol, timeframe
         )
 
@@ -195,7 +195,7 @@ async def get_data_gaps(
                 detail=f"Invalid date format: {str(e)}",
             )
 
-        gaps = market_data_service.get_data_gaps(
+        gaps = await market_data_service.get_data_gaps(
             exchange, symbol, timeframe, start_date, end_date
         )
 
@@ -240,7 +240,7 @@ async def get_available_exchanges(
     try:
         logger.info("Available exchanges requested")
 
-        exchanges = market_data_service.get_available_exchanges("")
+        exchanges = await market_data_service.get_available_exchanges()
 
         return {
             "exchanges": exchanges,
@@ -268,7 +268,7 @@ async def get_available_symbols(
     try:
         logger.info(f"Available symbols requested for {exchange}")
 
-        symbols = market_data_service.get_available_symbols(exchange)
+        symbols = await market_data_service.get_available_symbols(exchange)
 
         return {
             "exchange": exchange,
@@ -299,7 +299,9 @@ async def get_available_timeframes(
     try:
         logger.info(f"Available timeframes requested for {symbol} on {exchange}")
 
-        timeframes = market_data_service.get_available_timeframes(exchange, symbol)
+        timeframes = await market_data_service.get_available_timeframes(
+            exchange, symbol
+        )
 
         return {
             "exchange": exchange,
@@ -329,7 +331,7 @@ async def get_storage_info(
     try:
         logger.info("Storage info requested")
 
-        storage_info = market_data_service.get_storage_info()
+        storage_info = await market_data_service.get_storage_info()
 
         return {
             "storage_info": storage_info,

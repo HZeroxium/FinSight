@@ -66,7 +66,6 @@ async def demo_mongodb_to_csv_conversion():
         source_repo_config={
             "connection_string": "mongodb://localhost:27017/",
             "database_name": "finsight_market_data",
-            "collection_prefix": "ohlcv",
         },
         target_repo_config={"base_directory": "data/demo_converted/mongodb_to_csv"},
     )
@@ -150,7 +149,6 @@ async def demo_csv_to_mongodb_conversion():
         target_repo_config={
             "connection_string": "mongodb://localhost:27017/",
             "database_name": "finsight_demo_converted",
-            "collection_prefix": "ohlcv_converted",
         },
     )
 
@@ -250,7 +248,6 @@ async def demo_bidirectional_conversion():
         source_repo_config={
             "connection_string": "mongodb://localhost:27017/",
             "database_name": "finsight_market_data",
-            "collection_prefix": "ohlcv",
         },
         target_repo_config={"base_directory": "data/demo_bidirectional/step1_csv"},
     )
@@ -291,7 +288,6 @@ async def demo_bidirectional_conversion():
         target_repo_config={
             "connection_string": "mongodb://localhost:27017/",
             "database_name": "finsight_demo_roundtrip",
-            "collection_prefix": "ohlcv_roundtrip",
         },
     )
 
@@ -346,7 +342,7 @@ async def demo_pipeline_statistics():
     )
 
     # Get and display statistics
-    stats = pipeline.get_pipeline_statistics()
+    stats = await pipeline.get_pipeline_statistics()
 
     print(f"Source timeframe: {stats['source_timeframe']}")
     print(f"Target timeframes: {stats['target_timeframes']}")
@@ -451,7 +447,8 @@ async def main():
     print()
 
     try:
-        await demo_comprehensive_cross_repository()
+        # await demo_comprehensive_cross_repository()
+        await demo_mongodb_to_csv_conversion()
 
     except KeyboardInterrupt:
         print("\n⏹️  Demo interrupted by user")

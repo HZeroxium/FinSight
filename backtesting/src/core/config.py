@@ -108,7 +108,6 @@ class CrossRepositoryConfig(BaseSettings):
             "mongodb": {
                 "connection_string": "mongodb://localhost:27017/",
                 "database_name": "finsight_market_data",
-                "collection_prefix": "ohlcv",
             },
         }
     )
@@ -300,7 +299,6 @@ class AIPreedictionSettings(BaseSettings):
                 "mongodb": {
                     "connection_string": "mongodb://localhost:27017/",
                     "database_name": "finsight_market_data",
-                    "collection_prefix": "ohlcv",
                 },
             },
             "target_repository": {

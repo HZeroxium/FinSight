@@ -44,7 +44,7 @@ class MarketDataService:
 
         self.logger.info("Market Data Service initialized")
 
-    def save_ohlcv_data(
+    async def save_ohlcv_data(
         self,
         exchange: str,
         symbol: str,
@@ -84,7 +84,7 @@ class MarketDataService:
             sorted_data = sorted(data, key=lambda x: x.timestamp)
 
             # Save to repository (repository handles model conversion internally)
-            success = self.repository.save_ohlcv(
+            success = await self.repository.save_ohlcv(
                 exchange, symbol, timeframe, sorted_data
             )
 
@@ -103,7 +103,9 @@ class MarketDataService:
             self.logger.error(f"Error saving OHLCV data: {str(e)}")
             raise
 
-    def save_ohlcv_batch(self, batch: OHLCVBatchSchema, validate: bool = True) -> bool:
+    async def save_ohlcv_batch(
+        self, batch: OHLCVBatchSchema, validate: bool = True
+    ) -> bool:
         """
         Save OHLCV data using batch schema.
 
@@ -125,7 +127,7 @@ class MarketDataService:
             # Sort records by timestamp
             batch.records = sorted(batch.records, key=lambda x: x.timestamp)
 
-            success = self.repository.batch_save_ohlcv([batch])
+            success = await self.repository.batch_save_ohlcv([batch])
 
             if success:
                 self.logger.info(
@@ -138,7 +140,7 @@ class MarketDataService:
             self.logger.error(f"Error saving OHLCV batch: {str(e)}")
             raise
 
-    def get_ohlcv_data(
+    async def get_ohlcv_data(
         self,
         exchange: str,
         symbol: str,
@@ -180,7 +182,7 @@ class MarketDataService:
             )
 
             # Retrieve data from repository (repository returns schemas)
-            data = self.repository.get_ohlcv(query)
+            data = await self.repository.get_ohlcv(query)
 
             # Apply limit if specified (repository might not have applied it)
             if limit and len(data) > limit:
@@ -209,7 +211,7 @@ class MarketDataService:
             self.logger.error(f"Error retrieving OHLCV data: {str(e)}")
             raise
 
-    def get_latest_ohlcv_timestamp(
+    async def get_latest_ohlcv_timestamp(
         self, exchange: str, symbol: str, timeframe: str
     ) -> Optional[str]:
         """
@@ -224,7 +226,7 @@ class MarketDataService:
             Latest timestamp in ISO 8601 format, None if no data exists
         """
         try:
-            data_range = self.repository.get_data_range(
+            data_range = await self.repository.get_data_range(
                 exchange, symbol, "ohlcv", timeframe
             )
 
@@ -237,7 +239,7 @@ class MarketDataService:
             self.logger.error(f"Error getting latest timestamp: {str(e)}")
             return None
 
-    def get_data_gaps(
+    async def get_data_gaps(
         self,
         exchange: str,
         symbol: str,
@@ -260,7 +262,7 @@ class MarketDataService:
         """
         try:
             # Get existing data
-            response = self.get_ohlcv_data(
+            response = await self.get_ohlcv_data(
                 exchange, symbol, timeframe, start_date, end_date
             )
             data = response.data
@@ -332,7 +334,27 @@ class MarketDataService:
             self.logger.error(f"Error detecting data gaps: {str(e)}")
             return []
 
-    def delete_ohlcv_data(
+            # Handle gap at the end
+            if gap_start is not None:
+                gaps.append(
+                    (
+                        DateTimeUtils.to_iso_string(gap_start),
+                        DateTimeUtils.to_iso_string(end_dt),
+                    )
+                )
+
+            if gaps:
+                self.logger.info(
+                    f"Found {len(gaps)} data gaps for {exchange}/{symbol}/{timeframe}"
+                )
+
+            return gaps
+
+        except Exception as e:
+            self.logger.error(f"Error detecting data gaps: {str(e)}")
+            return []
+
+    async def delete_ohlcv_data(
         self,
         exchange: str,
         symbol: str,
@@ -358,7 +380,7 @@ class MarketDataService:
             if start_date and end_date:
                 DateTimeUtils.validate_date_range(start_date, end_date)
 
-            success = self.repository.delete_ohlcv(
+            success = await self.repository.delete_ohlcv(
                 exchange, symbol, timeframe, start_date, end_date
             )
 
@@ -378,10 +400,10 @@ class MarketDataService:
             self.logger.error(f"Error deleting OHLCV data: {str(e)}")
             raise
 
-    def get_available_symbols(self, exchange: str) -> List[str]:
+    async def get_available_symbols(self, exchange: str) -> List[str]:
         """Get all available symbols for an exchange."""
         try:
-            symbols = self.repository.get_available_symbols(exchange)
+            symbols = await self.repository.get_available_symbols(exchange)
             self.logger.info(f"Found {len(symbols)} symbols for {exchange}")
             return symbols
 
@@ -389,10 +411,12 @@ class MarketDataService:
             self.logger.error(f"Error getting available symbols: {str(e)}")
             return []
 
-    def get_available_timeframes(self, exchange: str, symbol: str) -> List[str]:
+    async def get_available_timeframes(self, exchange: str, symbol: str) -> List[str]:
         """Get all available timeframes for a symbol."""
         try:
-            timeframes = self.repository.get_available_timeframes(exchange, symbol)
+            timeframes = await self.repository.get_available_timeframes(
+                exchange, symbol
+            )
             self.logger.info(
                 f"Found {len(timeframes)} timeframes for {exchange}/{symbol}"
             )
@@ -402,7 +426,7 @@ class MarketDataService:
             self.logger.error(f"Error getting available timeframes: {str(e)}")
             return []
 
-    def check_data_exists(
+    async def check_data_exists(
         self,
         exchange: str,
         symbol: str,
@@ -412,7 +436,7 @@ class MarketDataService:
     ) -> bool:
         """Check if complete data exists for the specified range."""
         try:
-            return self.repository.check_data_exists(
+            return await self.repository.check_data_exists(
                 exchange, symbol, "ohlcv", start_date, end_date, timeframe
             )
 
@@ -420,16 +444,16 @@ class MarketDataService:
             self.logger.error(f"Error checking data existence: {str(e)}")
             return False
 
-    def get_storage_info(self) -> Dict[str, Any]:
+    async def get_storage_info(self) -> Dict[str, Any]:
         """Get information about the storage backend."""
         try:
-            return self.repository.get_storage_info()
+            return await self.repository.get_storage_info()
 
         except Exception as e:
             self.logger.error(f"Error getting storage info: {str(e)}")
             return {}
 
-    def batch_save_ohlcv(self, batches: List[OHLCVBatchSchema]) -> bool:
+    async def batch_save_ohlcv(self, batches: List[OHLCVBatchSchema]) -> bool:
         """
         Save multiple OHLCV batch schemas.
 
@@ -445,7 +469,7 @@ class MarketDataService:
                 self._validate_ohlcv_schemas(batch.records)
 
             # Use repository batch operation
-            success = self.repository.batch_save_ohlcv(batches)
+            success = await self.repository.batch_save_ohlcv(batches)
 
             if success:
                 total_records = sum(len(batch.records) for batch in batches)
@@ -459,7 +483,7 @@ class MarketDataService:
             self.logger.error(f"Error in batch save: {str(e)}")
             raise
 
-    def get_ohlcv_stats(
+    async def get_ohlcv_stats(
         self, exchange: str, symbol: str, timeframe: str
     ) -> Optional[OHLCVStatsSchema]:
         """
@@ -474,7 +498,7 @@ class MarketDataService:
             OHLCV statistics schema instance or None if no data
         """
         try:
-            data_range = self.repository.get_data_range(
+            data_range = await self.repository.get_data_range(
                 exchange, symbol, "ohlcv", timeframe
             )
 
@@ -482,7 +506,7 @@ class MarketDataService:
                 return None
 
             # Get all data to calculate statistics
-            response = self.get_ohlcv_data(
+            response = await self.get_ohlcv_data(
                 exchange,
                 symbol,
                 timeframe,
@@ -523,6 +547,17 @@ class MarketDataService:
         except Exception as e:
             self.logger.error(f"Error getting OHLCV stats: {str(e)}")
             return None
+
+    async def get_available_exchanges(self) -> List[str]:
+        """Get all available exchanges in the repository."""
+        try:
+            exchanges = await self.repository.get_available_exchanges()
+            self.logger.info(f"Found {len(exchanges)} exchanges")
+            return exchanges
+
+        except Exception as e:
+            self.logger.error(f"Error getting available exchanges: {str(e)}")
+            return []
 
     def _validate_ohlcv_schemas(self, schemas: List[OHLCVSchema]) -> None:
         """

@@ -105,7 +105,7 @@ class MarketDataCollectorService:
 
             if data:
                 # Store collected data using schemas
-                success = self.data_service.save_ohlcv_data(
+                success = await self.data_service.save_ohlcv_data(
                     exchange, symbol, timeframe, data, validate=True
                 )
 

@@ -15,18 +15,18 @@ def get_symbol_timeframe_pairs():
     return [
         # Using enums for type safety and consistency
         (CryptoSymbol.BTCUSDT.value, TimeFrame.HOUR_1.value),
-        (CryptoSymbol.ETHUSDT.value, TimeFrame.HOUR_1.value),
-        (CryptoSymbol.BNBUSDT.value, TimeFrame.HOUR_1.value),
-        (CryptoSymbol.XRPUSDT.value, TimeFrame.HOUR_1.value),
-        (CryptoSymbol.ADAUSDT.value, TimeFrame.HOUR_1.value),
-        (CryptoSymbol.SOLUSDT.value, TimeFrame.HOUR_1.value),
-        (CryptoSymbol.DOGEUSDT.value, TimeFrame.HOUR_1.value),
-        (CryptoSymbol.DOTUSDT.value, TimeFrame.HOUR_1.value),
-        (CryptoSymbol.MATICUSDT.value, TimeFrame.HOUR_1.value),
-        (CryptoSymbol.LTCUSDT.value, TimeFrame.HOUR_1.value),
+        # (CryptoSymbol.ETHUSDT.value, TimeFrame.HOUR_1.value),
+        # (CryptoSymbol.BNBUSDT.value, TimeFrame.HOUR_1.value),
+        # (CryptoSymbol.XRPUSDT.value, TimeFrame.HOUR_1.value),
+        # (CryptoSymbol.ADAUSDT.value, TimeFrame.HOUR_1.value),
+        # (CryptoSymbol.SOLUSDT.value, TimeFrame.HOUR_1.value),
+        # (CryptoSymbol.DOGEUSDT.value, TimeFrame.HOUR_1.value),
+        # (CryptoSymbol.DOTUSDT.value, TimeFrame.HOUR_1.value),
+        # (CryptoSymbol.MATICUSDT.value, TimeFrame.HOUR_1.value),
+        # (CryptoSymbol.LTCUSDT.value, TimeFrame.HOUR_1.value),
         # Additional symbols from the extended enum
-        (CryptoSymbol.LINKUSDT.value, TimeFrame.HOUR_1.value),
-        (CryptoSymbol.AVAXUSDT.value, TimeFrame.HOUR_1.value),
+        # (CryptoSymbol.LINKUSDT.value, TimeFrame.HOUR_1.value),
+        # (CryptoSymbol.AVAXUSDT.value, TimeFrame.HOUR_1.value),
     ]
 
 
@@ -36,7 +36,7 @@ async def main():
 
     # Create repository using factory - easy to switch between different types
     # Option 1: CSV Repository
-    # market_data_repository = create_repository("csv", {"base_directory": "data"})
+    market_data_repository = create_repository("csv", {"base_directory": "data"})
 
     # Option 2: MongoDB Repository (uncomment to use)
     market_data_repository = create_repository(
@@ -64,7 +64,7 @@ async def main():
     end_date = date.today().isoformat()
 
     # Start date is very early to ensure we collect all historical data
-    start_date = (date.today() - timedelta(days=365 * 20)).isoformat()  # 10 years ago
+    start_date = (date.today() - timedelta(days=5 * 1)).isoformat()  # 10 years ago
 
     pairs = get_symbol_timeframe_pairs()
     for symbol, timeframe in pairs:
