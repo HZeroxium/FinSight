@@ -1,3 +1,5 @@
+# misc/crawl4ai_collector.py
+
 """
 Comprehensive Crawl4AI Example for Crypto News Crawling
 

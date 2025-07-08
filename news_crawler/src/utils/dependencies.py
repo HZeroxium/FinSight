@@ -76,17 +76,11 @@ class Container(containers.DeclarativeContainer):
 container = Container()
 
 # Configure default values from settings
-container.config.mongo_url.from_value(
-    getattr(settings, "mongo_url", "mongodb://localhost:27017")
-)
-container.config.database_name.from_value(
-    getattr(settings, "database_name", "finsight_news")
-)
-container.config.use_cache.from_value(getattr(settings, "use_cache", True))
-container.config.rabbitmq_url.from_value(
-    getattr(settings, "rabbitmq_url", "amqp://localhost")
-)
-container.config.tavily_api_key.from_value(getattr(settings, "tavily_api_key", ""))
+container.config.mongo_url.from_value(settings.mongodb_url)
+container.config.database_name.from_value(settings.mongodb_database)
+container.config.use_cache.from_value(settings.enable_caching)
+container.config.rabbitmq_url.from_value(settings.rabbitmq_url)
+container.config.tavily_api_key.from_value(settings.tavily_api_key or "")
 
 
 async def initialize_services() -> None:

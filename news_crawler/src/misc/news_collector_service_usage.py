@@ -1,4 +1,4 @@
-# news_collector_service_usage.py
+# misc/news_collector_service_usage.py
 
 """
 News Collector Service Usage Examples
@@ -10,16 +10,16 @@ and storing crypto news from various sources.
 import asyncio
 from datetime import datetime, timezone, timedelta
 
-from .services.news_collector_service import (
+from ..services.news_collector_service import (
     NewsCollectorService,
     CollectionRequest,
     BatchCollectionRequest,
 )
-from .services.news_service import NewsService
-from .repositories.mongo_news_repository import MongoNewsRepository
-from .schemas.news_schemas import NewsSource
-from .core.news_collector_factory import CollectorType
-from .common.logger import LoggerFactory, LoggerType, LogLevel
+from ..services.news_service import NewsService
+from ..repositories.mongo_news_repository import MongoNewsRepository
+from ..schemas.news_schemas import NewsSource
+from ..core.news_collector_factory import CollectorType
+from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 # Initialize logging

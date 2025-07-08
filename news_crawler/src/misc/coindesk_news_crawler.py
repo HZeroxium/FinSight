@@ -1,4 +1,4 @@
-# coindesk_news_crawler.py
+# misc/coindesk_news_crawler.py
 
 """
 CoinDesk Historical News Crawler
@@ -14,11 +14,11 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from .adapters.api_coindesk_news_collector import APICoinDeskNewsCollector
-from .schemas.news_schemas import NewsCollectorConfig, NewsSource
-from .services.news_service import NewsService
-from .repositories.mongo_news_repository import MongoNewsRepository
-from .common.logger import LoggerFactory, LoggerType, LogLevel
+from ..adapters.api_coindesk_news_collector import APICoinDeskNewsCollector
+from ..schemas.news_schemas import NewsCollectorConfig, NewsSource
+from ..services.news_service import NewsService
+from ..repositories.mongo_news_repository import MongoNewsRepository
+from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class CoinDeskCrawler:

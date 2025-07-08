@@ -5,7 +5,7 @@ Configuration management for the news crawler service.
 """
 
 import os
-from typing import Optional
+from typing import Optional, List
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     app_name: str = "news-crawler-service"
     debug: bool = False
     environment: str = "development"
+    host: str = "0.0.0.0"
+    port: int = 8000
 
     # Tavily API configuration
     tavily_api_key: Optional[str] = Field(default=None)
@@ -53,6 +55,17 @@ class Settings(BaseSettings):
 
     # Rate limiting
     rate_limit_requests_per_minute: int = 100
+
+    # Cron job configuration
+    cron_job_enabled: bool = True
+    cron_job_schedule: str = "0 */1 * * *"  # Every hour
+    cron_job_max_items_per_source: int = 100
+    cron_job_sources: List[str] = Field(
+        default_factory=lambda: ["coindesk", "cointelegraph"]
+    )
+    cron_job_config_file: str = "news_crawler_config.json"
+    cron_job_pid_file: str = "news_crawler_job.pid"
+    cron_job_log_file: str = "logs/news_crawler_job.log"
 
     # Logging configuration
     log_level: str = "INFO"

@@ -1,4 +1,4 @@
-# cointelegraph_news_crawler.py
+# misc/cointelegraph_news_crawler.py
 
 """
 CoinTelegraph Historical News Crawler
@@ -14,11 +14,11 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .adapters.api_cointelegraph_news_collector import APICoinTelegraphNewsCollector
-from .schemas.news_schemas import NewsCollectorConfig, NewsSource
-from .services.news_service import NewsService
-from .repositories.mongo_news_repository import MongoNewsRepository
-from .common.logger import LoggerFactory, LoggerType, LogLevel
+from ..adapters.api_cointelegraph_news_collector import APICoinTelegraphNewsCollector
+from ..schemas.news_schemas import NewsCollectorConfig, NewsSource
+from ..services.news_service import NewsService
+from ..repositories.mongo_news_repository import MongoNewsRepository
+from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class CoinTelegraphCrawler:
