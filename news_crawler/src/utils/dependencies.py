@@ -84,20 +84,34 @@ container.config.tavily_api_key.from_value(settings.tavily_api_key or "")
 
 
 async def initialize_services() -> None:
-    """Initialize all async services"""
+    """Initialize all async services with improved error handling"""
     logger = container.logger()
     logger.info("Initializing services...")
 
     try:
-        # Initialize repository
+        # Initialize repository first
         repository = container.mongo_repository()
         await repository.initialize()
         logger.info("MongoDB repository initialized successfully")
 
-        # Initialize message broker
-        message_broker = container.message_broker()
-        await message_broker.connect()
-        logger.info("Message broker initialized successfully")
+        # Initialize message broker with timeout and error handling
+        try:
+            message_broker = container.message_broker()
+
+            # Add timeout to prevent hanging
+            import asyncio
+
+            await asyncio.wait_for(message_broker.connect(), timeout=10.0)
+            logger.info("Message broker initialized successfully")
+
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Message broker connection timed out - service will continue without full messaging"
+            )
+        except Exception as broker_error:
+            logger.warning(
+                f"Message broker initialization failed: {broker_error} - service will continue in degraded mode"
+            )
 
         logger.info("All services initialized successfully")
 

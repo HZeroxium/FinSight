@@ -4,6 +4,7 @@
 Sentiment consumer service for processing sentiment analysis results from RabbitMQ.
 """
 
+import asyncio
 from typing import Dict, Any
 
 from ..schemas.message_schemas import SentimentResultMessageSchema
@@ -32,12 +33,27 @@ class SentimentConsumerService:
         self._running = False
 
     async def start_consuming(self) -> None:
-        """Start consuming sentiment analysis results from RabbitMQ."""
+        """Start consuming sentiment analysis results from RabbitMQ with improved error handling."""
         try:
             logger.info("Starting sentiment consumer service")
 
-            # Connect to message broker
-            await self.message_broker.connect()
+            # Connect to message broker with timeout
+            connection_timeout = 10  # seconds
+            try:
+                await asyncio.wait_for(
+                    self.message_broker.connect(), timeout=connection_timeout
+                )
+                logger.info("Sentiment consumer connected to RabbitMQ")
+            except asyncio.TimeoutError:
+                logger.error(
+                    f"Sentiment consumer: RabbitMQ connection timeout after {connection_timeout}s"
+                )
+                raise Exception("RabbitMQ connection timeout")
+            except Exception as conn_error:
+                logger.error(
+                    f"Sentiment consumer: Failed to connect to RabbitMQ: {conn_error}"
+                )
+                raise
 
             # Declare necessary exchanges and queues
             await self._setup_message_infrastructure()
@@ -54,7 +70,8 @@ class SentimentConsumerService:
 
         except Exception as e:
             logger.error(f"Failed to start sentiment consumer: {str(e)}")
-            raise
+            self._running = False
+            # Don't re-raise to prevent blocking startup
 
     async def stop_consuming(self) -> None:
         """Stop consuming messages."""

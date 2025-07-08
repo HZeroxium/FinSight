@@ -242,23 +242,36 @@ class RabbitMQBroker(MessageBroker):
             raise MessageBrokerError(f"Queue binding failed: {str(e)}")
 
     async def health_check(self) -> bool:
-        """Check RabbitMQ health."""
+        """Check RabbitMQ health with improved error handling."""
         try:
+            # First check if we have a valid connection
             if not self._connection or self._connection.is_closed:
+                logger.debug("No active connection, attempting to connect...")
                 try:
                     await self.connect()
-                except Exception:
+                except Exception as conn_error:
+                    logger.warning(
+                        f"Health check: Failed to connect to RabbitMQ: {conn_error}"
+                    )
                     return False
 
-            # Simple health check - declare a temporary queue
-            temp_queue = await self._channel.declare_queue(
-                exclusive=True, auto_delete=True
-            )
-            await temp_queue.delete()
+            # Check if channel is valid
+            if not self._channel or self._channel.is_closed:
+                logger.warning("Health check: Channel is closed")
+                return False
 
-            logger.debug("RabbitMQ health check passed")
-            return True
+            # Simple connectivity test - just check if connection is alive
+            # Avoid creating/deleting queues during health check to prevent conflicts
+            if (
+                hasattr(self._connection, "is_closed")
+                and not self._connection.is_closed
+            ):
+                logger.debug("RabbitMQ health check passed - connection is alive")
+                return True
+            else:
+                logger.debug("RabbitMQ health check failed - connection is closed")
+                return False
 
         except Exception as e:
-            logger.error(f"RabbitMQ health check failed: {str(e)}")
+            logger.warning(f"RabbitMQ health check failed: {str(e)}")
             return False

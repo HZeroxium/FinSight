@@ -4,6 +4,7 @@
 Search service layer for business logic.
 """
 
+import asyncio
 from typing import Dict, Any
 from datetime import datetime, timezone
 
@@ -486,15 +487,26 @@ class SearchService:
         )
 
     async def health_check(self) -> bool:
-        """Check service health with cache health check."""
+        """Check service health with improved error handling."""
         try:
             # Check search engine health
             search_engine_healthy = await self.search_engine.health_check()
             logger.debug(f"Search engine health: {search_engine_healthy}")
 
-            # Check message broker health
-            broker_healthy = await self.message_broker.health_check()
-            logger.debug(f"Message broker health: {broker_healthy}")
+            # Check message broker health with timeout and error handling
+            broker_healthy = True
+            try:
+                # Add timeout to prevent hanging
+                broker_healthy = await asyncio.wait_for(
+                    self.message_broker.health_check(), timeout=5.0
+                )
+                logger.debug(f"Message broker health: {broker_healthy}")
+            except asyncio.TimeoutError:
+                logger.warning("Message broker health check timed out")
+                broker_healthy = False
+            except Exception as broker_error:
+                logger.warning(f"Message broker health check failed: {broker_error}")
+                broker_healthy = False
 
             # Check cache health
             cache_healthy = True
@@ -526,9 +538,15 @@ class SearchService:
                 logger.warning(f"Cache health check failed: {cache_error}")
                 cache_healthy = False
 
-            is_healthy = search_engine_healthy and broker_healthy and cache_healthy
+            # For startup, we only require search engine to be healthy
+            # Message broker can be degraded without preventing service startup
+            is_healthy = search_engine_healthy and cache_healthy
 
             logger.debug(f"Overall health check completed: {is_healthy}")
+            logger.debug(
+                f"Components - Search: {search_engine_healthy}, Broker: {broker_healthy}, Cache: {cache_healthy}"
+            )
+
             return is_healthy
 
         except Exception as e:

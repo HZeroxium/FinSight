@@ -41,7 +41,7 @@ sentiment_consumer: SentimentConsumerService = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Application lifespan manager with proper service initialization and cleanup.
+    Application lifespan manager with improved error handling and startup sequence.
     """
     global sentiment_consumer
 
@@ -52,36 +52,72 @@ async def lifespan(app: FastAPI):
     startup_errors = []
 
     try:
-        # Initialize all services using dependency injection
+        # Step 1: Initialize core services (MongoDB, basic dependencies)
+        logger.info("📋 Step 1: Initializing core services...")
         await initialize_services()
-        logger.info("✅ Services initialized successfully")
+        logger.info("✅ Core services initialized successfully")
 
-        # Initialize sentiment consumer
-        message_broker = get_message_broker()
-        sentiment_consumer = SentimentConsumerService(message_broker=message_broker)
+        # Step 2: Wait a moment for services to stabilize
+        await asyncio.sleep(0.5)
 
-        # Start consuming in background task
-        asyncio.create_task(sentiment_consumer.start_consuming())
-        logger.info("✅ Sentiment consumer started")
+        # Step 3: Initialize sentiment consumer with improved error handling
+        logger.info("📋 Step 2: Initializing sentiment consumer...")
+        try:
+            message_broker = get_message_broker()
+            sentiment_consumer = SentimentConsumerService(message_broker=message_broker)
 
-        # Health check for search engine
-        search_service = get_search_service()
-        is_healthy = await search_service.health_check()
-        if is_healthy:
-            logger.info("✅ Search engine connectivity verified")
-        else:
-            logger.warning("⚠️ Search engine health check failed")
-            startup_errors.append("Search engine connectivity issues")
+            # Start consuming in background task with error handling
+            consumer_task = asyncio.create_task(sentiment_consumer.start_consuming())
+
+            # Give consumer time to start properly
+            await asyncio.sleep(1.0)
+
+            if sentiment_consumer.is_running():
+                logger.info("✅ Sentiment consumer started successfully")
+            else:
+                logger.warning("⚠️ Sentiment consumer failed to start properly")
+                startup_errors.append("Sentiment consumer startup issues")
+
+        except Exception as consumer_error:
+            logger.error(f"⚠️ Failed to start sentiment consumer: {consumer_error}")
+            startup_errors.append(f"Sentiment consumer error: {str(consumer_error)}")
+            sentiment_consumer = None
+
+        # Step 4: Health check for search service (with timeout and error handling)
+        logger.info("📋 Step 3: Performing health checks...")
+        try:
+            search_service = get_search_service()
+
+            # Add timeout to health check to prevent hanging
+            is_healthy = await asyncio.wait_for(
+                search_service.health_check(), timeout=10.0
+            )
+
+            if is_healthy:
+                logger.info("✅ Search service health check passed")
+            else:
+                logger.warning("⚠️ Search service health check failed")
+                startup_errors.append("Search service health issues")
+
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ Search service health check timed out")
+            startup_errors.append("Search service health check timeout")
+        except Exception as health_error:
+            logger.warning(f"⚠️ Search service health check error: {health_error}")
+            startup_errors.append(f"Search service health error: {str(health_error)}")
 
         # Final startup validation
         if startup_errors:
             logger.warning(f"⚠️ Service started with warnings: {startup_errors}")
+            logger.info("🔧 Service is operational but some components may be degraded")
         else:
-            logger.info("🎉 News Crawler Service is ready!")
+            logger.info("🎉 News Crawler Service is fully operational!")
 
     except Exception as e:
         logger.error(f"❌ Critical startup error: {str(e)}")
-        raise RuntimeError(f"Service startup failed: {str(e)}")
+        # Don't raise the error - let the service start in degraded mode
+        logger.warning("🔧 Starting service in degraded mode due to startup errors")
+        startup_errors.append(f"Critical error: {str(e)}")
 
     yield
 
