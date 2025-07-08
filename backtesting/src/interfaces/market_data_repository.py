@@ -26,7 +26,7 @@ class MarketDataRepository(ABC):
 
     # OHLCV Operations
     @abstractmethod
-    def save_ohlcv(
+    async def save_ohlcv(
         self, exchange: str, symbol: str, timeframe: str, data: List[OHLCVSchema]
     ) -> bool:
         """
@@ -47,7 +47,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    def get_ohlcv(self, query: OHLCVQuerySchema) -> List[OHLCVSchema]:
+    async def get_ohlcv(self, query: OHLCVQuerySchema) -> List[OHLCVSchema]:
         """
         Retrieve OHLCV data from repository.
 
@@ -64,7 +64,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    def delete_ohlcv(
+    async def delete_ohlcv(
         self,
         exchange: str,
         symbol: str,
@@ -92,7 +92,7 @@ class MarketDataRepository(ABC):
 
     # Trade Operations
     @abstractmethod
-    def save_trades(
+    async def save_trades(
         self, exchange: str, symbol: str, data: List[Dict[str, Any]]
     ) -> bool:
         """
@@ -112,7 +112,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    def get_trades(
+    async def get_trades(
         self, exchange: str, symbol: str, start_date: str, end_date: str
     ) -> List[Dict[str, Any]]:
         """
@@ -134,7 +134,9 @@ class MarketDataRepository(ABC):
 
     # Order Book Operations
     @abstractmethod
-    def save_orderbook(self, exchange: str, symbol: str, data: Dict[str, Any]) -> bool:
+    async def save_orderbook(
+        self, exchange: str, symbol: str, data: Dict[str, Any]
+    ) -> bool:
         """
         Save order book snapshot to repository.
 
@@ -152,7 +154,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    def get_orderbook(
+    async def get_orderbook(
         self, exchange: str, symbol: str, timestamp: str
     ) -> Optional[Dict[str, Any]]:
         """
@@ -173,7 +175,9 @@ class MarketDataRepository(ABC):
 
     # Ticker Operations
     @abstractmethod
-    def save_ticker(self, exchange: str, symbol: str, data: Dict[str, Any]) -> bool:
+    async def save_ticker(
+        self, exchange: str, symbol: str, data: Dict[str, Any]
+    ) -> bool:
         """
         Save ticker data to repository.
 
@@ -191,7 +195,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    def get_ticker(
+    async def get_ticker(
         self, exchange: str, symbol: str, timestamp: str
     ) -> Optional[Dict[str, Any]]:
         """
@@ -212,7 +216,7 @@ class MarketDataRepository(ABC):
 
     # Query Operations
     @abstractmethod
-    def get_available_symbols(self, exchange: str) -> List[str]:
+    async def get_available_symbols(self, exchange: str) -> List[str]:
         """
         Get all available symbols for an exchange in repository.
 
@@ -228,7 +232,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    def get_available_timeframes(self, exchange: str, symbol: str) -> List[str]:
+    async def get_available_timeframes(self, exchange: str, symbol: str) -> List[str]:
         """
         Get all available timeframes for a symbol.
 
@@ -245,7 +249,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    def get_data_range(
+    async def get_data_range(
         self,
         exchange: str,
         symbol: str,
@@ -271,7 +275,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    def check_data_exists(
+    async def check_data_exists(
         self,
         exchange: str,
         symbol: str,
@@ -300,7 +304,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    def get_storage_info(self) -> Dict[str, Any]:
+    async def get_storage_info(self) -> Dict[str, Any]:
         """
         Get information about the storage backend.
 
@@ -323,7 +327,7 @@ class MarketDataRepository(ABC):
 
     # Batch Operations
     @abstractmethod
-    def batch_save_ohlcv(self, data: List[OHLCVBatchSchema]) -> bool:
+    async def batch_save_ohlcv(self, data: List[OHLCVBatchSchema]) -> bool:
         """
         Save multiple OHLCV batch schemas in a batch operation.
 
@@ -339,7 +343,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    def optimize_storage(self) -> bool:
+    async def optimize_storage(self) -> bool:
         """
         Optimize storage for better performance (e.g., compact files, rebuild indexes).
 
@@ -366,7 +370,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_available_symbols(self) -> List[str]:
+    async def get_all_available_symbols(self) -> List[str]:
         """
         Get all available symbols across all exchanges.
 
@@ -392,7 +396,7 @@ class MarketDataRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_available_timeframes(self) -> List[str]:
+    async def get_all_available_timeframes(self) -> List[str]:
         """
         Get all available timeframes across all data.
 

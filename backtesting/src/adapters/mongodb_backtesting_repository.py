@@ -7,7 +7,6 @@ Stores backtest results and history in MongoDB collections.
 Provides scalable and queryable storage for production use.
 """
 
-import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from motor.motor_asyncio import (

@@ -3,30 +3,32 @@
 """
 CSV Market Data Repository Implementation
 
-Implements the MarketDataRepository interface using CSV files for data storage.
-Provides file-based persistence for market data with proper organization.
+Implements the MarketDataRepository interface using CSV files for storage.
+Provides efficient file-based storage and querying for market data.
 """
 
-import pandas as pd
+import asyncio
+import csv
+import os
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timezone
 
 from ..interfaces.market_data_repository import MarketDataRepository
-from ..interfaces.errors import RepositoryError, ValidationError
+from ..interfaces.errors import RepositoryError
 from ..common.logger import LoggerFactory
-from ..utils.datetime_utils import DateTimeUtils
 from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVBatchSchema, OHLCVQuerySchema
 from ..models.ohlcv_models import OHLCVModelCSV
 from ..converters.ohlcv_converter import OHLCVConverter
+from ..utils.datetime_utils import DateTimeUtils
 
 
 class CSVMarketDataRepository(MarketDataRepository):
-    """CSV file-based implementation of MarketDataRepository"""
+    """CSV file implementation of MarketDataRepository for file-based storage"""
 
-    def __init__(self, base_directory: str = "data"):
+    def __init__(self, base_directory: str = "data/market_data"):
         """
-        Initialize CSV repository with base directory
+        Initialize CSV repository.
 
         Args:
             base_directory: Base directory for storing CSV files
@@ -35,136 +37,167 @@ class CSVMarketDataRepository(MarketDataRepository):
         self.logger = LoggerFactory.get_logger(name="csv_repository")
         self.converter = OHLCVConverter()
 
-        # Create base directory structure
-        self._initialize_directory_structure()
+        # Create base directory if it doesn't exist
+        self.base_directory.mkdir(parents=True, exist_ok=True)
 
         self.logger.info(f"Initialized CSV repository at {self.base_directory}")
 
-    def save_ohlcv(
+    def _get_file_path(self, exchange: str, symbol: str, timeframe: str) -> Path:
+        """Get file path for specific exchange/symbol/timeframe using hierarchical structure"""
+        # Create hierarchical directory structure: {base_directory}/{exchange}/{symbol}/{timeframe}.csv
+        exchange_dir = self.base_directory / exchange
+        symbol_dir = exchange_dir / symbol
+        filename = f"{timeframe}.csv"
+        return symbol_dir / filename
+
+    def _ensure_file_exists(self, file_path: Path) -> None:
+        """Ensure CSV file exists with proper headers and directory structure"""
+        # Create parent directories if they don't exist
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if not file_path.exists():
+            # Create file with headers
+            headers = [
+                "timestamp",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "symbol",
+                "exchange",
+                "timeframe",
+            ]
+
+            with open(file_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(headers)
+
+    # OHLCV Operations
+    async def save_ohlcv(
         self, exchange: str, symbol: str, timeframe: str, data: List[OHLCVSchema]
     ) -> bool:
         """Save OHLCV data to CSV file"""
-        try:
-            if not data:
-                self.logger.warning(
-                    f"No data to save for {exchange}/{symbol}/{timeframe}"
+
+        def _save_sync():
+            try:
+                file_path = self._get_file_path(exchange, symbol, timeframe)
+                self._ensure_file_exists(file_path)
+
+                # Read existing data to avoid duplicates
+                existing_timestamps = set()
+                if file_path.exists():
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            existing_timestamps.add(row["timestamp"])
+
+                # Filter out existing records
+                new_records = []
+                for schema in data:
+                    timestamp_str = DateTimeUtils.to_iso_string(schema.timestamp)
+                    if timestamp_str not in existing_timestamps:
+                        csv_model = self.converter.schema_to_csv_model(schema)
+                        new_records.append(csv_model)
+
+                if not new_records:
+                    self.logger.info("No new records to save")
+                    return True
+
+                # Append new records
+                with open(file_path, "a", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(
+                        f,
+                        fieldnames=[
+                            "timestamp",
+                            "open",
+                            "high",
+                            "low",
+                            "close",
+                            "volume",
+                            "symbol",
+                            "exchange",
+                            "timeframe",
+                        ],
+                    )
+
+                    for record in new_records:
+                        writer.writerow(
+                            {
+                                "timestamp": DateTimeUtils.to_iso_string(
+                                    record.timestamp
+                                ),
+                                "open": record.open,
+                                "high": record.high,
+                                "low": record.low,
+                                "close": record.close,
+                                "volume": record.volume,
+                                "symbol": record.symbol,
+                                "exchange": record.exchange,
+                                "timeframe": record.timeframe,
+                            }
+                        )
+
+                self.logger.info(
+                    f"Saved {len(new_records)} OHLCV records to {file_path}"
                 )
                 return True
 
-            # Convert schemas to CSV models
-            models = [self.converter.schema_to_csv_model(schema) for schema in data]
+            except Exception as e:
+                raise RepositoryError(f"Failed to save OHLCV data: {str(e)}")
 
-            # Validate models
-            for model in models:
-                self._validate_ohlcv_model(model)
+        return await asyncio.to_thread(_save_sync)
 
-            # Convert models to DataFrame
-            df_data = []
-            for model in models:
-                model_dict = model.model_dump()
-                # Ensure timestamp is properly formatted
-                model_dict["timestamp"] = self._ensure_utc_timezone(model.timestamp)
-                df_data.append(model_dict)
+    async def get_ohlcv(self, query: OHLCVQuerySchema) -> List[OHLCVSchema]:
+        """Get OHLCV data from CSV file"""
 
-            df = pd.DataFrame(df_data)
-
-            # Convert timestamp to datetime and set as index
-            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-            df = df.set_index("timestamp").sort_index()
-
-            # Get file path
-            file_path = self._get_ohlcv_file_path(exchange, symbol, timeframe)
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Check if file exists and merge data
-            if file_path.exists():
-                existing_df = pd.read_csv(
-                    file_path, index_col="timestamp", parse_dates=True
+        def _get_sync():
+            try:
+                file_path = self._get_file_path(
+                    query.exchange, query.symbol, query.timeframe
                 )
-                # Ensure existing data has UTC timezone
-                if existing_df.index.tz is None:
-                    existing_df.index = existing_df.index.tz_localize("UTC")
-                elif existing_df.index.tz != df.index.tz:
-                    existing_df.index = existing_df.index.tz_convert("UTC")
 
-                # Merge and remove duplicates
-                combined_df = pd.concat([existing_df, df])
-                combined_df = combined_df[~combined_df.index.duplicated(keep="last")]
-                combined_df = combined_df.sort_index()
+                if not file_path.exists():
+                    return []
 
-                df = combined_df
+                records = []
+                with open(file_path, "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
 
-            # Save to CSV
-            df.to_csv(file_path, index=True)
+                    for row in reader:
+                        timestamp = DateTimeUtils.parse_iso_string(row["timestamp"])
 
-            self.logger.info(f"Saved {len(df)} OHLCV records to {file_path}")
-            return True
+                        # Apply date filters
+                        if query.start_date and timestamp < query.start_date:
+                            continue
+                        if query.end_date and timestamp > query.end_date:
+                            continue
 
-        except Exception as e:
-            raise RepositoryError(f"Failed to save OHLCV data: {str(e)}")
+                        schema = OHLCVSchema(
+                            timestamp=timestamp,
+                            open=float(row["open"]),
+                            high=float(row["high"]),
+                            low=float(row["low"]),
+                            close=float(row["close"]),
+                            volume=float(row["volume"]),
+                            symbol=row["symbol"],
+                            exchange=row["exchange"],
+                            timeframe=row["timeframe"],
+                        )
+                        records.append(schema)
 
-    def get_ohlcv(self, query: OHLCVQuerySchema) -> List[OHLCVSchema]:
-        """Retrieve OHLCV data from CSV file"""
-        try:
-            # Get file path
-            file_path = self._get_ohlcv_file_path(
-                query.exchange, query.symbol, query.timeframe
-            )
+                # Apply limit
+                if query.limit and len(records) > query.limit:
+                    records = records[: query.limit]
 
-            if not file_path.exists():
-                self.logger.warning(f"No data file found at {file_path}")
-                return []
+                return records
 
-            # Read CSV
-            df = pd.read_csv(file_path, index_col="timestamp", parse_dates=True)
+            except Exception as e:
+                raise RepositoryError(f"Failed to get OHLCV data: {str(e)}")
 
-            # Ensure timezone-aware timestamps
-            if df.index.tz is None:
-                df.index = df.index.tz_localize("UTC")
-            else:
-                df.index = df.index.tz_convert("UTC")
+        return await asyncio.to_thread(_get_sync)
 
-            # Filter by date range - ensure query dates are timezone-aware
-            start_date = self._ensure_utc_timezone(query.start_date)
-            end_date = self._ensure_utc_timezone(query.end_date)
-
-            mask = (df.index >= start_date) & (df.index <= end_date)
-            filtered_df = df.loc[mask]
-
-            # Apply limit if specified
-            if query.limit:
-                filtered_df = filtered_df.head(query.limit)
-
-            # Convert to CSV models, then to schemas
-            models = []
-            for timestamp, row in filtered_df.iterrows():
-                try:
-                    model = OHLCVModelCSV(
-                        timestamp=timestamp.to_pydatetime(),
-                        open=float(row["open"]),
-                        high=float(row["high"]),
-                        low=float(row["low"]),
-                        close=float(row["close"]),
-                        volume=float(row["volume"]),
-                        symbol=str(row["symbol"]),
-                        exchange=str(row["exchange"]),
-                        timeframe=str(row["timeframe"]),
-                    )
-                    models.append(model)
-                except Exception as e:
-                    self.logger.warning(f"Skipping invalid row at {timestamp}: {e}")
-                    continue
-
-            # Convert models to schemas
-            schemas = [self.converter.csv_model_to_schema(model) for model in models]
-
-            self.logger.info(f"Retrieved {len(schemas)} OHLCV records from {file_path}")
-            return schemas
-
-        except Exception as e:
-            raise RepositoryError(f"Failed to retrieve OHLCV data: {str(e)}")
-
-    def delete_ohlcv(
+    async def delete_ohlcv(
         self,
         exchange: str,
         symbol: str,
@@ -173,167 +206,199 @@ class CSVMarketDataRepository(MarketDataRepository):
         end_date: Optional[str] = None,
     ) -> bool:
         """Delete OHLCV data from CSV file"""
-        try:
-            file_path = self._get_ohlcv_file_path(exchange, symbol, timeframe)
 
-            if not file_path.exists():
-                self.logger.warning(f"No data file found at {file_path}")
+        def _delete_sync():
+            try:
+                file_path = self._get_file_path(exchange, symbol, timeframe)
+
+                if not file_path.exists():
+                    return True
+
+                # Read all records
+                remaining_records = []
+                with open(file_path, "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+
+                    for row in reader:
+                        timestamp = DateTimeUtils.parse_iso_string(row["timestamp"])
+
+                        # Check if record should be deleted
+                        should_delete = True
+                        if start_date:
+                            start_dt = DateTimeUtils.parse_iso_string(start_date)
+                            if timestamp < start_dt:
+                                should_delete = False
+                        if end_date:
+                            end_dt = DateTimeUtils.parse_iso_string(end_date)
+                            if timestamp > end_dt:
+                                should_delete = False
+
+                        if not should_delete:
+                            remaining_records.append(row)
+
+                # Rewrite file with remaining records
+                with open(file_path, "w", newline="", encoding="utf-8") as f:
+                    if remaining_records:
+                        fieldnames = remaining_records[0].keys()
+                        writer = csv.DictWriter(f, fieldnames=fieldnames)
+                        writer.writeheader()
+                        writer.writerows(remaining_records)
+                    else:
+                        # Write just headers if no records remain
+                        writer = csv.writer(f)
+                        writer.writerow(
+                            [
+                                "timestamp",
+                                "open",
+                                "high",
+                                "low",
+                                "close",
+                                "volume",
+                                "symbol",
+                                "exchange",
+                                "timeframe",
+                            ]
+                        )
+
                 return True
 
-            # If no date range specified, delete entire file
-            if not start_date and not end_date:
-                file_path.unlink()
-                self.logger.info(f"Deleted entire file {file_path}")
-                return True
+            except Exception as e:
+                raise RepositoryError(f"Failed to delete OHLCV data: {str(e)}")
 
-            # Parse dates and filter data
-            start_dt, end_dt = DateTimeUtils.validate_date_range(start_date, end_date)
+        return await asyncio.to_thread(_delete_sync)
 
-            df = pd.read_csv(file_path, index_col="timestamp", parse_dates=True)
-
-            # Ensure timezone-aware timestamps
-            if df.index.tz is None:
-                df.index = df.index.tz_localize("UTC")
-            else:
-                df.index = df.index.tz_convert("UTC")
-
-            # Remove data in specified range
-            mask = ~((df.index >= start_dt) & (df.index <= end_dt))
-            filtered_df = df.loc[mask]
-
-            if filtered_df.empty:
-                # Delete file if no data remains
-                file_path.unlink()
-                self.logger.info(f"Deleted entire file {file_path} (no data remaining)")
-            else:
-                # Save remaining data
-                filtered_df.to_csv(file_path, index=True)
-                self.logger.info(
-                    f"Deleted data from {start_date} to {end_date} in {file_path}"
-                )
-
-            return True
-
-        except Exception as e:
-            raise RepositoryError(f"Failed to delete OHLCV data: {str(e)}")
-
-    # Placeholder implementations for other data types
-    def save_trades(
+    # Trade Operations (placeholder implementations)
+    async def save_trades(
         self, exchange: str, symbol: str, data: List[Dict[str, Any]]
     ) -> bool:
-        """Save trade data - placeholder implementation"""
-        raise NotImplementedError(
-            "Trade data storage will be implemented in next phase"
-        )
+        """Save trades data - placeholder implementation"""
+        raise NotImplementedError("Trade saving will be implemented in next phase")
 
-    def get_trades(
+    async def get_trades(
         self, exchange: str, symbol: str, start_date: str, end_date: str
     ) -> List[Dict[str, Any]]:
-        """Retrieve trade data - placeholder implementation"""
-        raise NotImplementedError(
-            "Trade data retrieval will be implemented in next phase"
-        )
+        """Get trades data - placeholder implementation"""
+        raise NotImplementedError("Trade retrieval will be implemented in next phase")
 
-    def save_orderbook(self, exchange: str, symbol: str, data: Dict[str, Any]) -> bool:
-        """Save order book data - placeholder implementation"""
-        raise NotImplementedError(
-            "Order book storage will be implemented in next phase"
-        )
+    # Order Book Operations (placeholder implementations)
+    async def save_orderbook(
+        self, exchange: str, symbol: str, data: Dict[str, Any]
+    ) -> bool:
+        """Save orderbook data - placeholder implementation"""
+        raise NotImplementedError("Orderbook saving will be implemented in next phase")
 
-    def get_orderbook(
+    async def get_orderbook(
         self, exchange: str, symbol: str, timestamp: str
     ) -> Optional[Dict[str, Any]]:
-        """Retrieve order book data - placeholder implementation"""
+        """Get orderbook data - placeholder implementation"""
         raise NotImplementedError(
-            "Order book retrieval will be implemented in next phase"
+            "Orderbook retrieval will be implemented in next phase"
         )
 
-    def save_ticker(self, exchange: str, symbol: str, data: Dict[str, Any]) -> bool:
+    # Ticker Operations (placeholder implementations)
+    async def save_ticker(
+        self, exchange: str, symbol: str, data: Dict[str, Any]
+    ) -> bool:
         """Save ticker data - placeholder implementation"""
-        raise NotImplementedError("Ticker storage will be implemented in next phase")
+        raise NotImplementedError("Ticker saving will be implemented in next phase")
 
-    def get_ticker(
+    async def get_ticker(
         self, exchange: str, symbol: str, timestamp: str
     ) -> Optional[Dict[str, Any]]:
-        """Retrieve ticker data - placeholder implementation"""
+        """Get ticker data - placeholder implementation"""
         raise NotImplementedError("Ticker retrieval will be implemented in next phase")
 
-    def get_available_symbols(self, exchange: str) -> List[str]:
-        """Get all available symbols for an exchange"""
-        try:
-            exchange_dir = self.base_directory / exchange / "ohlcv"
+    # Query Operations
+    async def get_available_symbols(self, exchange: str) -> List[str]:
+        """Get all available symbols for an exchange from CSV files"""
 
-            if not exchange_dir.exists():
-                return []
+        def _get_symbols_sync():
+            try:
+                symbols = set()
 
-            symbols = set()
-            for file_path in exchange_dir.rglob("*.csv"):
-                # Extract symbol from file path structure
-                # Expected: exchange/ohlcv/symbol/timeframe.csv
-                if len(file_path.parts) >= 4:
-                    symbol = file_path.parts[-2]
-                    symbols.add(symbol)
+                # Scan the exchange directory for symbol subdirectories
+                exchange_dir = self.base_directory / exchange
+                if exchange_dir.exists() and exchange_dir.is_dir():
+                    for symbol_dir in exchange_dir.iterdir():
+                        if symbol_dir.is_dir():
+                            symbols.add(symbol_dir.name)
 
-            return sorted(list(symbols))
+                return sorted(list(symbols))
 
-        except Exception as e:
-            raise RepositoryError(f"Failed to get available symbols: {str(e)}")
+            except Exception as e:
+                raise RepositoryError(f"Failed to get available symbols: {str(e)}")
 
-    def get_available_timeframes(self, exchange: str, symbol: str) -> List[str]:
-        """Get all available timeframes for a symbol"""
-        try:
-            symbol_dir = self.base_directory / exchange / "ohlcv" / symbol
+        return await asyncio.to_thread(_get_symbols_sync)
 
-            if not symbol_dir.exists():
-                return []
+    async def get_available_timeframes(self, exchange: str, symbol: str) -> List[str]:
+        """Get all available timeframes for a symbol from CSV files"""
 
-            timeframes = []
-            for file_path in symbol_dir.glob("*.csv"):
-                timeframe = file_path.stem
-                timeframes.append(timeframe)
+        def _get_timeframes_sync():
+            try:
+                timeframes = set()
 
-            return sorted(timeframes)
+                # Scan the symbol directory for timeframe CSV files
+                symbol_dir = self.base_directory / exchange / symbol
+                if symbol_dir.exists() and symbol_dir.is_dir():
+                    for file_path in symbol_dir.glob("*.csv"):
+                        # Filename is the timeframe (e.g., "1h.csv")
+                        timeframe = file_path.stem
+                        timeframes.add(timeframe)
 
-        except Exception as e:
-            raise RepositoryError(f"Failed to get available timeframes: {str(e)}")
+                return sorted(list(timeframes))
 
-    def get_data_range(
+            except Exception as e:
+                raise RepositoryError(f"Failed to get available timeframes: {str(e)}")
+
+        return await asyncio.to_thread(_get_timeframes_sync)
+
+    async def get_data_range(
         self,
         exchange: str,
         symbol: str,
         data_type: str,
         timeframe: Optional[str] = None,
     ) -> Optional[Dict[str, str]]:
-        """Get the date range of available data"""
-        try:
-            if data_type == "ohlcv" and timeframe:
-                file_path = self._get_ohlcv_file_path(exchange, symbol, timeframe)
+        """Get data range for symbol from CSV files"""
+
+        def _get_range_sync():
+            try:
+                if data_type != "ohlcv" or not timeframe:
+                    return None
+
+                file_path = self._get_file_path(exchange, symbol, timeframe)
 
                 if not file_path.exists():
                     return None
 
-                df = pd.read_csv(file_path, index_col="timestamp", parse_dates=True)
+                min_timestamp = None
+                max_timestamp = None
 
-                if df.empty:
-                    return None
+                with open(file_path, "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
 
-                # Ensure timezone-aware timestamps
-                if df.index.tz is None:
-                    df.index = df.index.tz_localize("UTC")
-                else:
-                    df.index = df.index.tz_convert("UTC")
+                    for row in reader:
+                        timestamp = DateTimeUtils.parse_iso_string(row["timestamp"])
 
-                return {
-                    "start_date": DateTimeUtils.to_iso_string(df.index.min()),
-                    "end_date": DateTimeUtils.to_iso_string(df.index.max()),
-                }
-            else:
-                raise NotImplementedError(f"Data type {data_type} not implemented yet")
+                        if min_timestamp is None or timestamp < min_timestamp:
+                            min_timestamp = timestamp
+                        if max_timestamp is None or timestamp > max_timestamp:
+                            max_timestamp = timestamp
 
-        except Exception as e:
-            raise RepositoryError(f"Failed to get data range: {str(e)}")
+                if min_timestamp and max_timestamp:
+                    return {
+                        "start_date": DateTimeUtils.to_iso_string(min_timestamp),
+                        "end_date": DateTimeUtils.to_iso_string(max_timestamp),
+                    }
 
-    def check_data_exists(
+                return None
+
+            except Exception as e:
+                raise RepositoryError(f"Failed to get data range: {str(e)}")
+
+        return await asyncio.to_thread(_get_range_sync)
+
+    async def check_data_exists(
         self,
         exchange: str,
         symbol: str,
@@ -342,195 +407,439 @@ class CSVMarketDataRepository(MarketDataRepository):
         end_date: str,
         timeframe: Optional[str] = None,
     ) -> bool:
-        """Check if data exists for the specified criteria"""
-        try:
-            if data_type == "ohlcv" and timeframe:
-                data_range = self.get_data_range(exchange, symbol, data_type, timeframe)
+        """Check if data exists for specified criteria"""
 
-                if not data_range:
+        def _check_exists_sync():
+            try:
+                if data_type != "ohlcv" or not timeframe:
                     return False
 
-                start_dt, end_dt = DateTimeUtils.validate_date_range(
-                    start_date, end_date
-                )
-                range_start = DateTimeUtils.to_utc_datetime(data_range["start_date"])
-                range_end = DateTimeUtils.to_utc_datetime(data_range["end_date"])
+                file_path = self._get_file_path(exchange, symbol, timeframe)
 
-                return range_start <= start_dt and end_dt <= range_end
-            else:
+                if not file_path.exists():
+                    return False
+
+                start_dt = DateTimeUtils.parse_iso_string(start_date)
+                end_dt = DateTimeUtils.parse_iso_string(end_date)
+
+                with open(file_path, "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+
+                    for row in reader:
+                        timestamp = DateTimeUtils.parse_iso_string(row["timestamp"])
+
+                        if start_dt <= timestamp <= end_dt:
+                            return True
+
                 return False
 
-        except Exception as e:
-            raise RepositoryError(f"Failed to check data existence: {str(e)}")
+            except Exception as e:
+                raise RepositoryError(f"Failed to check data exists: {str(e)}")
 
-    def get_storage_info(self) -> Dict[str, Any]:
-        """Get information about the storage backend"""
-        try:
-            total_size = 0
-            total_files = 0
-            exchanges = set()
-            total_symbols = 0
-            oldest_date = None
-            newest_date = None
+        return await asyncio.to_thread(_check_exists_sync)
 
-            # Walk through all files
-            for file_path in self.base_directory.rglob("*.csv"):
-                # Calculate size
-                total_size += file_path.stat().st_size
-                total_files += 1
+    async def get_storage_info(self) -> Dict[str, Any]:
+        """Get storage information for CSV files"""
 
-                # Extract exchange from path
-                if len(file_path.parts) >= 3:
-                    exchange = (
-                        file_path.parts[-4]
-                        if len(file_path.parts) >= 4
-                        else file_path.parts[-3]
-                    )
-                    exchanges.add(exchange)
+        def _get_info_sync():
+            try:
+                total_size = 0
+                file_count = 0
+                exchanges = set()
+                symbols = set()
+                timeframes = set()
 
-                # Get date range from file
-                try:
-                    df = pd.read_csv(file_path, index_col="timestamp", parse_dates=True)
-                    if not df.empty:
-                        # Ensure timezone-aware timestamps
-                        if df.index.tz is None:
-                            df.index = df.index.tz_localize("UTC")
-                        else:
-                            df.index = df.index.tz_convert("UTC")
+                # Scan hierarchical directory structure
+                for exchange_dir in self.base_directory.iterdir():
+                    if exchange_dir.is_dir():
+                        exchange = exchange_dir.name
+                        exchanges.add(exchange)
 
-                        file_oldest = df.index.min()
-                        file_newest = df.index.max()
+                        for symbol_dir in exchange_dir.iterdir():
+                            if symbol_dir.is_dir():
+                                symbol = symbol_dir.name
+                                symbols.add(symbol)
 
-                        if oldest_date is None or file_oldest < oldest_date:
-                            oldest_date = file_oldest
-                        if newest_date is None or file_newest > newest_date:
-                            newest_date = file_newest
-                except:
-                    continue
+                                for csv_file in symbol_dir.glob("*.csv"):
+                                    total_size += csv_file.stat().st_size
+                                    file_count += 1
 
-            # Count unique symbols
-            for exchange in exchanges:
-                symbols = self.get_available_symbols(exchange)
-                total_symbols += len(symbols)
+                                    timeframe = csv_file.stem
+                                    timeframes.add(timeframe)
 
-            return {
-                "storage_type": "file",
-                "location": str(self.base_directory.absolute()),
-                "total_size": total_size,
-                "total_files": total_files,
-                "available_exchanges": sorted(list(exchanges)),
-                "total_symbols": total_symbols,
-                "oldest_data": (
-                    DateTimeUtils.to_iso_string(oldest_date) if oldest_date else None
-                ),
-                "newest_data": (
-                    DateTimeUtils.to_iso_string(newest_date) if newest_date else None
-                ),
-            }
+                return {
+                    "storage_type": "file",
+                    "location": str(self.base_directory.absolute()),
+                    "total_size": total_size,
+                    "file_count": file_count,
+                    "available_exchanges": sorted(list(exchanges)),
+                    "total_symbols": len(symbols),
+                    "total_timeframes": len(timeframes),
+                }
 
-        except Exception as e:
-            raise RepositoryError(f"Failed to get storage info: {str(e)}")
+            except Exception as e:
+                raise RepositoryError(f"Failed to get storage info: {str(e)}")
 
-    def batch_save_ohlcv(self, data: List[OHLCVBatchSchema]) -> bool:
-        """Save multiple OHLCV batch schemas in a batch operation"""
-        try:
-            success_count = 0
-            for batch in data:
-                try:
-                    success = self.save_ohlcv(
-                        exchange=batch.exchange,
-                        symbol=batch.symbol,
-                        timeframe=batch.timeframe,
-                        data=batch.records,
-                    )
-                    if success:
+        return await asyncio.to_thread(_get_info_sync)
+
+    # Batch Operations
+    async def batch_save_ohlcv(self, data: List[OHLCVBatchSchema]) -> bool:
+        """Batch save OHLCV data"""
+
+        def _batch_save_sync():
+            try:
+                success_count = 0
+
+                for batch in data:
+                    try:
+                        # Group by exchange/symbol/timeframe
+                        file_groups = {}
+                        for schema in batch.data:
+                            key = (schema.exchange, schema.symbol, schema.timeframe)
+                            if key not in file_groups:
+                                file_groups[key] = []
+                            file_groups[key].append(schema)
+
+                        # Save each group
+                        for (
+                            exchange,
+                            symbol,
+                            timeframe,
+                        ), schemas in file_groups.items():
+                            file_path = self._get_file_path(exchange, symbol, timeframe)
+                            self._ensure_file_exists(file_path)
+
+                            # Convert and save
+                            csv_models = [
+                                self.converter.schema_to_csv_model(schema)
+                                for schema in schemas
+                            ]
+
+                            with open(
+                                file_path, "a", newline="", encoding="utf-8"
+                            ) as f:
+                                writer = csv.DictWriter(
+                                    f,
+                                    fieldnames=[
+                                        "timestamp",
+                                        "open",
+                                        "high",
+                                        "low",
+                                        "close",
+                                        "volume",
+                                        "symbol",
+                                        "exchange",
+                                        "timeframe",
+                                    ],
+                                )
+
+                                for model in csv_models:
+                                    writer.writerow(
+                                        {
+                                            "timestamp": DateTimeUtils.to_iso_string(
+                                                model.timestamp
+                                            ),
+                                            "open": model.open,
+                                            "high": model.high,
+                                            "low": model.low,
+                                            "close": model.close,
+                                            "volume": model.volume,
+                                            "symbol": model.symbol,
+                                            "exchange": model.exchange,
+                                            "timeframe": model.timeframe,
+                                        }
+                                    )
+
                         success_count += 1
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to save batch {batch.exchange}/{batch.symbol}: {e}"
-                    )
 
-            self.logger.info(
-                f"Batch save completed: {success_count}/{len(data)} batches saved"
-            )
-            return success_count == len(data)
+                    except Exception as e:
+                        self.logger.error(f"Failed to save batch: {str(e)}")
 
-        except Exception as e:
-            raise RepositoryError(f"Batch save failed: {str(e)}")
+                return success_count == len(data)
 
-    def optimize_storage(self) -> bool:
-        """Optimize storage by consolidating and cleaning up files"""
-        try:
-            # For CSV storage, optimization could involve:
-            # 1. Removing duplicate entries
-            # 2. Sorting data by timestamp
-            # 3. Compressing old files
+            except Exception as e:
+                raise RepositoryError(f"Failed to batch save OHLCV data: {str(e)}")
 
-            optimized_count = 0
+        return await asyncio.to_thread(_batch_save_sync)
 
-            for file_path in self.base_directory.rglob("*.csv"):
-                try:
-                    df = pd.read_csv(file_path, index_col="timestamp", parse_dates=True)
+    async def optimize_storage(self) -> bool:
+        """Optimize CSV storage (sort files by timestamp)"""
 
-                    # Remove duplicates and sort
-                    original_count = len(df)
-                    df = df[~df.index.duplicated(keep="last")].sort_index()
+        def _optimize_sync():
+            try:
+                optimized_count = 0
 
-                    if len(df) != original_count:
-                        df.to_csv(file_path, index=True)
-                        optimized_count += 1
-                        self.logger.info(
-                            f"Optimized {file_path}: removed {original_count - len(df)} duplicates"
+                # Scan hierarchical directory structure
+                for exchange_dir in self.base_directory.iterdir():
+                    if exchange_dir.is_dir():
+                        for symbol_dir in exchange_dir.iterdir():
+                            if symbol_dir.is_dir():
+                                for csv_file in symbol_dir.glob("*.csv"):
+                                    try:
+                                        # Read all records
+                                        records = []
+                                        with open(csv_file, "r", encoding="utf-8") as f:
+                                            reader = csv.DictReader(f)
+                                            records = list(reader)
+
+                                        if not records:
+                                            continue
+
+                                        # Sort by timestamp
+                                        records.sort(key=lambda x: x["timestamp"])
+
+                                        # Rewrite file
+                                        with open(
+                                            csv_file, "w", newline="", encoding="utf-8"
+                                        ) as f:
+                                            if records:
+                                                writer = csv.DictWriter(
+                                                    f, fieldnames=records[0].keys()
+                                                )
+                                                writer.writeheader()
+                                                writer.writerows(records)
+
+                                        optimized_count += 1
+
+                                    except Exception as e:
+                                        self.logger.error(
+                                            f"Failed to optimize {csv_file}: {str(e)}"
+                                        )
+
+                self.logger.info(f"Optimized {optimized_count} CSV files")
+                return True
+
+            except Exception as e:
+                raise RepositoryError(f"Failed to optimize storage: {str(e)}")
+
+        return await asyncio.to_thread(_optimize_sync)
+
+    # Administrative Operations
+    async def count_all_records(self) -> int:
+        """Count total number of OHLCV records in repository"""
+
+        def _count_all_sync():
+            try:
+                total_count = 0
+
+                # Scan hierarchical directory structure
+                for exchange_dir in self.base_directory.iterdir():
+                    if exchange_dir.is_dir():
+                        for symbol_dir in exchange_dir.iterdir():
+                            if symbol_dir.is_dir():
+                                for csv_file in symbol_dir.glob("*.csv"):
+                                    with open(csv_file, "r", encoding="utf-8") as f:
+                                        reader = csv.reader(f)
+                                        # Skip header
+                                        next(reader, None)
+                                        # Count remaining rows
+                                        count = sum(1 for _ in reader)
+                                        total_count += count
+
+                return total_count
+
+            except Exception as e:
+                raise RepositoryError(f"Failed to count all records: {str(e)}")
+
+        return await asyncio.to_thread(_count_all_sync)
+
+    async def get_all_available_symbols(self) -> List[str]:
+        """Get all available symbols across all exchanges"""
+
+        def _get_all_symbols_sync():
+            try:
+                symbols = set()
+
+                # Scan hierarchical directory structure
+                for exchange_dir in self.base_directory.iterdir():
+                    if exchange_dir.is_dir():
+                        for symbol_dir in exchange_dir.iterdir():
+                            if symbol_dir.is_dir():
+                                symbol = symbol_dir.name
+                                symbols.add(symbol)
+
+                return sorted(list(symbols))
+
+            except Exception as e:
+                raise RepositoryError(f"Failed to get all available symbols: {str(e)}")
+
+        return await asyncio.to_thread(_get_all_symbols_sync)
+
+    async def get_available_exchanges(self) -> List[str]:
+        """Get all available exchanges in repository"""
+
+        def _get_exchanges_sync():
+            try:
+                exchanges = set()
+
+                # Scan hierarchical directory structure
+                for exchange_dir in self.base_directory.iterdir():
+                    if exchange_dir.is_dir():
+                        exchange = exchange_dir.name
+                        exchanges.add(exchange)
+
+                return sorted(list(exchanges))
+
+            except Exception as e:
+                raise RepositoryError(f"Failed to get available exchanges: {str(e)}")
+
+        return await asyncio.to_thread(_get_exchanges_sync)
+
+    async def get_all_available_timeframes(self) -> List[str]:
+        """Get all available timeframes across all data"""
+
+        def _get_all_timeframes_sync():
+            try:
+                timeframes = set()
+
+                # Scan hierarchical directory structure
+                for exchange_dir in self.base_directory.iterdir():
+                    if exchange_dir.is_dir():
+                        for symbol_dir in exchange_dir.iterdir():
+                            if symbol_dir.is_dir():
+                                for csv_file in symbol_dir.glob("*.csv"):
+                                    timeframe = csv_file.stem
+                                    timeframes.add(timeframe)
+
+                return sorted(list(timeframes))
+
+            except Exception as e:
+                raise RepositoryError(
+                    f"Failed to get all available timeframes: {str(e)}"
+                )
+
+        return await asyncio.to_thread(_get_all_timeframes_sync)
+
+    async def count_records(
+        self,
+        exchange: str,
+        symbol: str,
+        timeframe: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> int:
+        """Count records for specific criteria"""
+
+        def _count_records_sync():
+            try:
+                file_path = self._get_file_path(exchange, symbol, timeframe)
+
+                if not file_path.exists():
+                    return 0
+
+                count = 0
+                with open(file_path, "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+
+                    for row in reader:
+                        timestamp = DateTimeUtils.parse_iso_string(row["timestamp"])
+
+                        # Apply date filters
+                        if start_date and timestamp < start_date:
+                            continue
+                        if end_date and timestamp > end_date:
+                            continue
+
+                        count += 1
+
+                return count
+
+            except Exception as e:
+                raise RepositoryError(f"Failed to count records: {str(e)}")
+
+        return await asyncio.to_thread(_count_records_sync)
+
+    async def count_records_since(self, cutoff_date: datetime) -> int:
+        """Count records since a specific date"""
+
+        def _count_since_sync():
+            try:
+                total_count = 0
+
+                # Scan hierarchical directory structure
+                for exchange_dir in self.base_directory.iterdir():
+                    if exchange_dir.is_dir():
+                        for symbol_dir in exchange_dir.iterdir():
+                            if symbol_dir.is_dir():
+                                for csv_file in symbol_dir.glob("*.csv"):
+                                    with open(csv_file, "r", encoding="utf-8") as f:
+                                        reader = csv.DictReader(f)
+
+                                        for row in reader:
+                                            timestamp = DateTimeUtils.parse_iso_string(
+                                                row["timestamp"]
+                                            )
+                                            if timestamp >= cutoff_date:
+                                                total_count += 1
+
+                return total_count
+
+            except Exception as e:
+                raise RepositoryError(f"Failed to count records since date: {str(e)}")
+
+        return await asyncio.to_thread(_count_since_sync)
+
+    async def delete_records_before_date(
+        self,
+        exchange: str,
+        symbol: str,
+        timeframe: str,
+        cutoff_date: datetime,
+    ) -> int:
+        """Delete records before a specific date"""
+
+        def _delete_before_sync():
+            try:
+                file_path = self._get_file_path(exchange, symbol, timeframe)
+
+                if not file_path.exists():
+                    return 0
+
+                deleted_count = 0
+                remaining_records = []
+
+                with open(file_path, "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+
+                    for row in reader:
+                        timestamp = DateTimeUtils.parse_iso_string(row["timestamp"])
+
+                        if timestamp < cutoff_date:
+                            deleted_count += 1
+                        else:
+                            remaining_records.append(row)
+
+                # Rewrite file with remaining records
+                with open(file_path, "w", newline="", encoding="utf-8") as f:
+                    if remaining_records:
+                        fieldnames = remaining_records[0].keys()
+                        writer = csv.DictWriter(f, fieldnames=fieldnames)
+                        writer.writeheader()
+                        writer.writerows(remaining_records)
+                    else:
+                        # Write just headers if no records remain
+                        writer = csv.writer(f)
+                        writer.writerow(
+                            [
+                                "timestamp",
+                                "open",
+                                "high",
+                                "low",
+                                "close",
+                                "volume",
+                                "symbol",
+                                "exchange",
+                                "timeframe",
+                            ]
                         )
 
-                except Exception as e:
-                    self.logger.warning(f"Failed to optimize {file_path}: {e}")
+                return deleted_count
 
-            self.logger.info(
-                f"Optimization completed: {optimized_count} files optimized"
-            )
-            return True
+            except Exception as e:
+                raise RepositoryError(f"Failed to delete records before date: {str(e)}")
 
-        except Exception as e:
-            raise RepositoryError(f"Storage optimization failed: {str(e)}")
+        return await asyncio.to_thread(_delete_before_sync)
 
-    def _initialize_directory_structure(self) -> None:
-        """Initialize the directory structure for CSV storage"""
-        self.base_directory.mkdir(parents=True, exist_ok=True)
-
-        # Create subdirectories for different data types
-        data_types = ["ohlcv", "trades", "orderbook", "tickers"]
-        for data_type in data_types:
-            (self.base_directory / data_type).mkdir(exist_ok=True)
-
-    def _get_ohlcv_file_path(self, exchange: str, symbol: str, timeframe: str) -> Path:
-        """Get the file path for OHLCV data"""
-        return self.base_directory / exchange / "ohlcv" / symbol / f"{timeframe}.csv"
-
-    def _validate_ohlcv_model(self, model: OHLCVModelCSV) -> None:
-        """Validate OHLCV model data"""
-        try:
-            # The model validation is already handled by Pydantic
-            # This method is kept for potential additional business logic validation
-            pass
-        except Exception as e:
-            raise ValidationError(f"Model validation failed: {str(e)}")
-
-    def _ensure_utc_timezone(self, dt: datetime) -> datetime:
-        """
-        Ensure datetime has UTC timezone.
-
-        Args:
-            dt: Datetime instance
-
-        Returns:
-            UTC timezone-aware datetime
-        """
-        if isinstance(dt, datetime):
-            if dt.tzinfo is None:
-                return dt.replace(tzinfo=timezone.utc)
-            elif dt.tzinfo != timezone.utc:
-                return dt.astimezone(timezone.utc)
-            return dt
-        else:
-            raise ValueError(f"Expected datetime object, got {type(dt)}")
+    def close(self) -> None:
+        """Close CSV repository (no-op for file-based storage)"""
+        self.logger.info("Closed CSV repository")
