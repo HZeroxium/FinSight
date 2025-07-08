@@ -21,7 +21,7 @@ import time
 
 from .routers import admin_router
 from .routers import market_data_router, backtesting_router
-from .core.config import Settings
+from .core.config import settings
 from .common.logger import LoggerFactory
 from .interfaces.errors import (
     ValidationError,
@@ -32,7 +32,6 @@ from .interfaces.errors import (
 
 
 # Initialize configuration and logging
-settings = Settings()
 logger = LoggerFactory.get_logger(name="fastapi_app")
 
 

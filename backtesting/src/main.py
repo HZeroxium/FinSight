@@ -9,7 +9,7 @@ Data collection and cron jobs are handled by separate scripts.
 
 import uvicorn
 from .app import app
-from .core.config import Settings
+from .core.config import settings
 from .common.logger import LoggerFactory
 
 
@@ -17,7 +17,7 @@ def main():
     """Main entry point for the FastAPI application"""
 
     # Load settings
-    settings = Settings()
+    # No need to initialize settings, use the global instance
 
     # Initialize logger
     logger = LoggerFactory.get_logger(name="main")

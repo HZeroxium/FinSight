@@ -291,24 +291,15 @@ def get_market_data_service():
         MarketDataService instance configured with default repository
     """
     from ..services.market_data_service import MarketDataService
-    from ..core.config import ConfigManager
+    from ..core.config import settings
 
-    # Get default configuration
-    config_manager = ConfigManager()
-    storage_config = config_manager.get_storage_config()
-
-    # Create repository with default configuration
+    # Create repository with default configuration from settings
     repository = repository_factory.create_from_config(
         {
-            # "type": "csv",  # Default to CSV for simplicity
-            # "csv": {
-            #     "base_directory": storage_config.base_directory,
-            # },
             "type": "mongodb",  # Default to MongoDB
             "mongodb": {
-                "connection_string": "mongodb://localhost:27017/",
-                "database_name": "finsight_market_data",
-                # "collection_name": "ohlcv_data",
+                "connection_string": settings.mongodb_url,
+                "database_name": settings.mongodb_database,
             },
         }
     )

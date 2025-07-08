@@ -18,7 +18,7 @@ from .services.market_data_service import MarketDataService
 from .services.market_data_collector_service import MarketDataCollectorService
 from .factories import create_repository
 from .schemas.enums import CryptoSymbol, TimeFrame, Exchange
-from .core.config import Settings
+from .core.config import settings
 from .common.logger import LoggerFactory
 from .utils.datetime_utils import DateTimeUtils
 
@@ -54,7 +54,7 @@ class NewSymbolDataCollector:
         self.logger = LoggerFactory.get_logger(name="new_symbol_collector")
 
         # Load settings
-        self.settings = Settings()
+        self.settings = settings
 
         # Setup repository
         if repository_config is None:
@@ -76,11 +76,11 @@ class NewSymbolDataCollector:
     def _get_default_repository_config(self, repository_type: str) -> Dict[str, Any]:
         """Get default repository configuration based on type"""
         if repository_type == "csv":
-            return {"base_directory": self.settings.storage_config.base_directory}
+            return {"base_directory": self.settings.storage_base_directory}
         elif repository_type == "mongodb":
             return {
-                "connection_string": "mongodb://localhost:27017/",
-                "database_name": "finsight_market_data",
+                "connection_string": self.settings.mongodb_url,
+                "database_name": self.settings.mongodb_database,
             }
         elif repository_type == "influxdb":
             return {
@@ -94,8 +94,8 @@ class NewSymbolDataCollector:
 
     def get_default_symbol_timeframe_pairs(self) -> List[Tuple[str, str]]:
         """Get default symbol/timeframe pairs from configuration"""
-        symbols = self.settings.data_collection_config.default_symbols
-        timeframes = self.settings.data_collection_config.default_timeframes
+        symbols = self.settings.default_symbols
+        timeframes = self.settings.default_timeframes
 
         # Convert from enum-style to string values if needed
         symbol_values = [
@@ -425,15 +425,12 @@ async def main():
             pairs = None
             if args.symbol:
                 # Single symbol, all timeframes
-                timeframes = (
-                    collector.settings.data_collection_config.default_timeframes
-                )
+                timeframes = collector.settings.default_timeframes
                 pairs = [(args.symbol, tf) for tf in timeframes]
             elif args.timeframe:
                 # All symbols, single timeframe
                 symbols = [
-                    s.replace("/", "")
-                    for s in collector.settings.data_collection_config.default_symbols
+                    s.replace("/", "") for s in collector.settings.default_symbols
                 ]
                 pairs = [(sym, args.timeframe) for sym in symbols]
 

@@ -28,7 +28,7 @@ from .services.market_data_service import MarketDataService
 from .services.market_data_collector_service import MarketDataCollectorService
 from .factories import create_repository
 from .schemas.enums import Exchange
-from .core.config import Settings
+from .core.config import settings
 from .common.logger import LoggerFactory
 
 
@@ -107,7 +107,7 @@ class MarketDataJobService:
         )
 
         # Load settings
-        self.settings = Settings()
+        self.settings = settings
 
         # Initialize scheduler
         self.scheduler = AsyncIOScheduler(
@@ -167,11 +167,11 @@ class MarketDataJobService:
     def _get_default_repository_config(self) -> Dict[str, Any]:
         """Get default repository configuration"""
         if self.config.repository_type == "csv":
-            return {"base_directory": self.settings.storage_config.base_directory}
+            return {"base_directory": self.settings.storage_base_directory}
         elif self.config.repository_type == "mongodb":
             return {
-                "connection_string": "mongodb://localhost:27017/",
-                "database_name": "finsight_market_data",
+                "connection_string": self.settings.mongodb_url,
+                "database_name": self.settings.mongodb_database,
             }
         elif self.config.repository_type == "influxdb":
             return {
