@@ -101,50 +101,6 @@
         }
       }
     },
-    "/api/v1/search/trending": {
-      "get": {
-        "tags": ["search"],
-        "summary": "Get Trending Topics",
-        "description": "Get trending topics in a specific category.\n\nArgs:\n    topic: Topic category\n    search_service: Injected search service\n\nReturns:\n    SearchResponseSchema: Trending topics",
-        "operationId": "get_trending_topics_api_v1_search_trending_get",
-        "parameters": [
-          {
-            "name": "topic",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "description": "Topic category",
-              "default": "finance",
-              "title": "Topic"
-            },
-            "description": "Topic category"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SearchResponseSchema"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/search/health": {
       "get": {
         "tags": ["search"],
@@ -165,29 +121,122 @@
         }
       }
     },
-    "/api/v1/crawler/crawl": {
-      "post": {
-        "tags": ["crawler"],
-        "summary": "Start Crawl Job",
-        "description": "Start a crawl job for a specific source.\n\nArgs:\n    job: Crawl job configuration\n    background_tasks: FastAPI background tasks\n    crawler_service: Injected crawler service\n\nReturns:\n    CrawlResultSchema: Job status and initial results",
-        "operationId": "start_crawl_job_api_v1_crawler_crawl_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CrawlJobSchema"
-              }
-            }
+    "/news/": {
+      "get": {
+        "tags": ["news"],
+        "summary": "Search News",
+        "description": "Search news articles with flexible filtering options\n\n- **source**: Filter by specific news source\n- **keywords**: Search in title and description (comma-separated)\n- **start_date**: Filter articles from this date onwards\n- **end_date**: Filter articles up to this date\n- **limit**: Maximum number of articles to return (1-1000)\n- **offset**: Number of articles to skip for pagination",
+        "operationId": "search_news_news__get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/NewsSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by news source",
+              "title": "Source"
+            },
+            "description": "Filter by news source"
           },
-          "required": true
-        },
+          {
+            "name": "keywords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated keywords",
+              "title": "Keywords"
+            },
+            "description": "Comma-separated keywords"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start date (ISO format)",
+              "title": "Start Date"
+            },
+            "description": "Start date (ISO format)"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End date (ISO format)",
+              "title": "End Date"
+            },
+            "description": "End date (ISO format)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum items to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum items to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of items to skip",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of items to skip"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CrawlResultSchema"
+                  "$ref": "#/components/schemas/NewsResponse"
                 }
               }
             }
@@ -205,102 +254,67 @@
         }
       }
     },
-    "/api/v1/crawler/crawl/all": {
-      "post": {
-        "tags": ["crawler"],
-        "summary": "Start Crawl All Sources",
-        "description": "Start crawl jobs for all configured sources.\n\nArgs:\n    background_tasks: FastAPI background tasks\n    crawler_service: Injected crawler service\n\nReturns:\n    Dict[str, CrawlResultSchema]: Results keyed by source name",
-        "operationId": "start_crawl_all_sources_api_v1_crawler_crawl_all_post",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "$ref": "#/components/schemas/CrawlResultSchema"
-                  },
-                  "type": "object",
-                  "title": "Response Start Crawl All Sources Api V1 Crawler Crawl All Post"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/crawler/stats": {
+    "/news/recent": {
       "get": {
-        "tags": ["crawler"],
-        "summary": "Get Crawler Stats",
-        "description": "Get crawler statistics.\n\nReturns:\n    CrawlStatsSchema: Current crawler statistics",
-        "operationId": "get_crawler_stats_api_v1_crawler_stats_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CrawlStatsSchema"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/crawler/stats/detailed": {
-      "get": {
-        "tags": ["crawler"],
-        "summary": "Get Detailed Crawler Stats",
-        "description": "Get detailed statistics for each crawler.\n\nReturns:\n    List[Dict]: Detailed statistics per crawler",
-        "operationId": "get_detailed_crawler_stats_api_v1_crawler_stats_detailed_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "additionalProperties": true,
-                    "type": "object"
-                  },
-                  "type": "array",
-                  "title": "Response Get Detailed Crawler Stats Api V1 Crawler Stats Detailed Get"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/crawler/sources": {
-      "post": {
-        "tags": ["crawler"],
-        "summary": "Add Crawler Source",
-        "description": "Add a new crawler source configuration.\n\nArgs:\n    config: Crawler configuration\n    crawler_service: Injected crawler service\n\nReturns:\n    Dict[str, str]: Success message",
-        "operationId": "add_crawler_source_api_v1_crawler_sources_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CrawlerConfigSchema"
-              }
-            }
+        "tags": ["news"],
+        "summary": "Get Recent News",
+        "description": "Get recent news articles from the last N hours\n\n- **hours**: Number of hours to look back (1-168, default 24)\n- **source**: Optional source filter\n- **limit**: Maximum number of articles to return",
+        "operationId": "get_recent_news_news_recent_get",
+        "parameters": [
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 168,
+              "minimum": 1,
+              "description": "Hours to look back (max 1 week)",
+              "default": 24,
+              "title": "Hours"
+            },
+            "description": "Hours to look back (max 1 week)"
           },
-          "required": true
-        },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/NewsSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by news source",
+              "title": "Source"
+            },
+            "description": "Filter by news source"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum items to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum items to return"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "type": "object",
-                  "title": "Response Add Crawler Source Api V1 Crawler Sources Post"
+                  "$ref": "#/components/schemas/NewsResponse"
                 }
               }
             }
@@ -318,19 +332,369 @@
         }
       }
     },
-    "/api/v1/crawler/health": {
-      "get": {
-        "tags": ["crawler"],
-        "summary": "Health Check",
-        "description": "Health check endpoint for crawler service.\n\nReturns:\n    HealthCheckSchema: Health status",
-        "operationId": "health_check_api_v1_crawler_health_get",
+    "/news/search/time-range": {
+      "post": {
+        "tags": ["news"],
+        "summary": "Search By Time Range",
+        "description": "Advanced time-based search with optimized performance\n\nProvide ONE of the following time parameters:\n- **hours**: Look back N hours from now\n- **days**: Look back N days from now\n- **start_date**: Search from specific date (with optional end_date)",
+        "operationId": "search_by_time_range_news_search_time_range_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeRangeSearchParams"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HealthCheckSchema"
+                  "$ref": "#/components/schemas/NewsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/news/by-source/{source}": {
+      "get": {
+        "tags": ["news"],
+        "summary": "Get News By Source",
+        "description": "Get news articles from a specific source with optional date filtering\n\n- **source**: News source (coindesk, cointelegraph, etc.)\n- **limit**: Maximum number of articles to return\n- **offset**: Number of articles to skip for pagination\n- **start_date**: Optional start date filter\n- **end_date**: Optional end date filter",
+        "operationId": "get_news_by_source_news_by_source__source__get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/NewsSource",
+              "description": "News source"
+            },
+            "description": "News source"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum items to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum items to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of items to skip",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of items to skip"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start date filter",
+              "title": "Start Date"
+            },
+            "description": "Start date filter"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End date filter",
+              "title": "End Date"
+            },
+            "description": "End date filter"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/news/keywords/{keywords}": {
+      "get": {
+        "tags": ["news"],
+        "summary": "Search By Keywords",
+        "description": "Search news by keywords with optional filters\n\n- **keywords**: Comma-separated keywords to search for\n- **source**: Optional source filter\n- **limit**: Maximum number of articles to return\n- **hours**: Optional time filter (hours to look back)",
+        "operationId": "search_by_keywords_news_keywords__keywords__get",
+        "parameters": [
+          {
+            "name": "keywords",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keywords",
+              "title": "Keywords"
+            },
+            "description": "Comma-separated keywords"
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/NewsSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional source filter",
+              "title": "Source"
+            },
+            "description": "Optional source filter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum items to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum items to return"
+          },
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 8760,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Hours to look back",
+              "title": "Hours"
+            },
+            "description": "Hours to look back"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/news/{item_id}": {
+      "get": {
+        "tags": ["news"],
+        "summary": "Get News Item",
+        "description": "Get a specific news article by ID\n\n- **item_id**: Unique identifier of the news article",
+        "operationId": "get_news_item_news__item_id__get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "News item ID",
+              "title": "Item Id"
+            },
+            "description": "News item ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["news"],
+        "summary": "Delete News Item",
+        "description": "Delete a specific news article\n\n- **item_id**: Unique identifier of the news article to delete",
+        "operationId": "delete_news_item_news__item_id__delete",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "News item ID to delete",
+              "title": "Item Id"
+            },
+            "description": "News item ID to delete"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete News Item News  Item Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/news/stats/summary": {
+      "get": {
+        "tags": ["news"],
+        "summary": "Get News Statistics",
+        "description": "Get comprehensive news database statistics\n\nReturns statistics about the news database including:\n- Total article count\n- Articles by source\n- Recent activity\n- Date range information",
+        "operationId": "get_news_statistics_news_stats_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsStatsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/news/health/check": {
+      "get": {
+        "tags": ["news"],
+        "summary": "News Health Check",
+        "description": "Health check for news service functionality",
+        "operationId": "news_health_check_news_health_check_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response News Health Check News Health Check Get"
                 }
               }
             }
@@ -341,7 +705,7 @@
     "/": {
       "get": {
         "summary": "Root",
-        "description": "Root endpoint.",
+        "description": "Root endpoint with service information.",
         "operationId": "root__get",
         "responses": {
           "200": {
@@ -358,8 +722,25 @@
     "/health": {
       "get": {
         "summary": "Health Check",
-        "description": "Health check endpoint.",
+        "description": "Comprehensive health check endpoint.",
         "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Get Metrics",
+        "description": "Get service metrics and statistics.",
+        "operationId": "get_metrics_metrics_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -375,277 +756,6 @@
   },
   "components": {
     "schemas": {
-      "CrawlJobSchema": {
-        "properties": {
-          "source_name": {
-            "type": "string",
-            "title": "Source Name",
-            "description": "Source name to crawl"
-          },
-          "max_articles": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 1000,
-                "minimum": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Articles",
-            "description": "Maximum articles to crawl"
-          },
-          "priority": {
-            "type": "integer",
-            "maximum": 10,
-            "minimum": 1,
-            "title": "Priority",
-            "description": "Job priority (1=highest)",
-            "default": 1
-          },
-          "filters": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filters",
-            "description": "Additional filters"
-          }
-        },
-        "type": "object",
-        "required": ["source_name"],
-        "title": "CrawlJobSchema",
-        "description": "Crawl job DTO."
-      },
-      "CrawlResultSchema": {
-        "properties": {
-          "job_id": {
-            "type": "string",
-            "title": "Job Id"
-          },
-          "source_name": {
-            "type": "string",
-            "title": "Source Name"
-          },
-          "articles_found": {
-            "type": "integer",
-            "title": "Articles Found"
-          },
-          "articles_crawled": {
-            "type": "integer",
-            "title": "Articles Crawled"
-          },
-          "articles_saved": {
-            "type": "integer",
-            "title": "Articles Saved"
-          },
-          "duration": {
-            "type": "number",
-            "title": "Duration"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Errors"
-          },
-          "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
-          },
-          "completed_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Completed At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "job_id",
-          "source_name",
-          "articles_found",
-          "articles_crawled",
-          "articles_saved",
-          "duration",
-          "status",
-          "started_at"
-        ],
-        "title": "CrawlResultSchema",
-        "description": "Crawl result DTO."
-      },
-      "CrawlStatsSchema": {
-        "properties": {
-          "total_crawlers": {
-            "type": "integer",
-            "title": "Total Crawlers"
-          },
-          "active_crawlers": {
-            "type": "integer",
-            "title": "Active Crawlers"
-          },
-          "total_articles_crawled": {
-            "type": "integer",
-            "title": "Total Articles Crawled"
-          },
-          "total_articles_saved": {
-            "type": "integer",
-            "title": "Total Articles Saved"
-          },
-          "success_rate": {
-            "type": "number",
-            "title": "Success Rate"
-          },
-          "average_crawl_time": {
-            "type": "number",
-            "title": "Average Crawl Time"
-          },
-          "last_crawl_time": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Crawl Time"
-          },
-          "sources": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Sources"
-          }
-        },
-        "type": "object",
-        "required": [
-          "total_crawlers",
-          "active_crawlers",
-          "total_articles_crawled",
-          "total_articles_saved",
-          "success_rate",
-          "average_crawl_time",
-          "sources"
-        ],
-        "title": "CrawlStatsSchema",
-        "description": "Crawler statistics DTO."
-      },
-      "CrawlerConfigSchema": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "description": "Crawler name"
-          },
-          "base_url": {
-            "type": "string",
-            "title": "Base Url",
-            "description": "Base URL for the crawler"
-          },
-          "listing_url": {
-            "type": "string",
-            "title": "Listing Url",
-            "description": "URL for article listings"
-          },
-          "listing_selector": {
-            "type": "string",
-            "title": "Listing Selector",
-            "description": "CSS selector for article links"
-          },
-          "title_selector": {
-            "type": "string",
-            "title": "Title Selector",
-            "description": "CSS selector for article title"
-          },
-          "content_selector": {
-            "type": "string",
-            "title": "Content Selector",
-            "description": "CSS selector for article content"
-          },
-          "date_selector": {
-            "type": "string",
-            "title": "Date Selector",
-            "description": "CSS selector for publication date"
-          },
-          "author_selector": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Author Selector",
-            "description": "CSS selector for author"
-          },
-          "date_format": {
-            "type": "string",
-            "title": "Date Format",
-            "description": "Date format for parsing",
-            "default": "%Y-%m-%d"
-          },
-          "category": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category",
-            "description": "Article category"
-          },
-          "credibility_score": {
-            "type": "number",
-            "maximum": 1,
-            "minimum": 0,
-            "title": "Credibility Score",
-            "description": "Source credibility score",
-            "default": 0.8
-          },
-          "enabled": {
-            "type": "boolean",
-            "title": "Enabled",
-            "description": "Whether crawler is enabled",
-            "default": true
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "base_url",
-          "listing_url",
-          "listing_selector",
-          "title_selector",
-          "content_selector",
-          "date_selector"
-        ],
-        "title": "CrawlerConfigSchema",
-        "description": "Crawler configuration DTO."
-      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -715,6 +825,216 @@
         "title": "HealthCheckSchema",
         "description": "Health check response DTO."
       },
+      "NewsItem": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/NewsSource",
+            "description": "News source identifier"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Article title"
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Url",
+            "description": "Article URL"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Article description/summary"
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Published At",
+            "description": "Publication timestamp"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author",
+            "description": "Article author"
+          },
+          "guid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guid",
+            "description": "Unique identifier from RSS feed"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata",
+            "description": "Additional fields"
+          }
+        },
+        "type": "object",
+        "required": ["source", "title", "url", "published_at"],
+        "title": "NewsItem"
+      },
+      "NewsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NewsItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "List of news items"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count",
+            "description": "Total number of matching items"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "Applied limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset",
+            "description": "Applied offset"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Whether more items are available"
+          },
+          "filters_applied": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Filters Applied",
+            "description": "Applied filters summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total_count",
+          "limit",
+          "offset",
+          "has_more",
+          "filters_applied"
+        ],
+        "title": "NewsResponse",
+        "description": "Standardized news response"
+      },
+      "NewsSource": {
+        "type": "string",
+        "enum": ["coindesk", "cointelegraph"],
+        "title": "NewsSource"
+      },
+      "NewsStatsResponse": {
+        "properties": {
+          "total_articles": {
+            "type": "integer",
+            "title": "Total Articles",
+            "description": "Total articles in database"
+          },
+          "articles_by_source": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Articles By Source",
+            "description": "Article count by source"
+          },
+          "recent_articles_24h": {
+            "type": "integer",
+            "title": "Recent Articles 24H",
+            "description": "Articles from last 24 hours"
+          },
+          "oldest_article": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Article",
+            "description": "Oldest article date"
+          },
+          "newest_article": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newest Article",
+            "description": "Newest article date"
+          },
+          "database_info": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Database Info",
+            "description": "Database information"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_articles",
+          "articles_by_source",
+          "recent_articles_24h",
+          "database_info"
+        ],
+        "title": "NewsStatsResponse",
+        "description": "News statistics response"
+      },
       "SearchRequestSchema": {
         "properties": {
           "query": {
@@ -775,12 +1095,6 @@
             "title": "Chunks Per Source",
             "description": "Content chunks per source",
             "default": 3
-          },
-          "enable_crawler": {
-            "type": "boolean",
-            "title": "Enable Crawler",
-            "description": "Enable deep crawling for results",
-            "default": false
           }
         },
         "type": "object",
@@ -947,6 +1261,108 @@
         "required": ["url", "title", "content", "score"],
         "title": "SearchResultSchema",
         "description": "Individual search result DTO."
+      },
+      "TimeRangeSearchParams": {
+        "properties": {
+          "hours": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 8760,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours",
+            "description": "Hours to look back from now"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 365,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days",
+            "description": "Days to look back from now"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date",
+            "description": "Specific start date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date",
+            "description": "Specific end date"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NewsSource"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "News source filter"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords",
+            "description": "Keywords to search for"
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 1000,
+            "minimum": 1,
+            "title": "Limit",
+            "description": "Maximum items to return",
+            "default": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Offset",
+            "description": "Number of items to skip",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "TimeRangeSearchParams",
+        "description": "Optimized time-based search parameters"
       },
       "ValidationError": {
         "properties": {

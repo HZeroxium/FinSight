@@ -1,0 +1,2866 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FinSight Backtesting API",
+    "description": "\n    Advanced backtesting system for cryptocurrency trading strategies.\n    \n    ## Features\n    \n    * **Administrative Operations**: Data management, system statistics, maintenance\n    * **Market Data Management**: Fetch, store, and convert OHLCV data across timeframes\n    * **Strategy Backtesting**: Run and analyze trading strategies with multiple engines\n    * **Cross-Repository Support**: MongoDB, CSV, InfluxDB storage adapters\n    \n    ## Authentication\n    \n    Admin endpoints require API key authentication via Bearer token.\n    Set the `ADMIN_API_KEY` environment variable or use the default key.\n    \n    ## Architecture\n    \n    Built with Ports & Adapters (Hexagonal Architecture) for maximum flexibility:\n    - **Service Layer**: Business logic and orchestration\n    - **Repository Layer**: Pluggable storage adapters  \n    - **Strategy Layer**: Extensible trading strategies\n    - **Adapter Layer**: Exchange connectors and backtesting engines\n    ",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root",
+        "description": "API root endpoint with service information.",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Root  Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Simple health check endpoint.\n\nThis is a lightweight health check that doesn't require authentication.\nFor detailed system health, use /admin/health.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/health": {
+      "get": {
+        "tags": ["admin", "admin"],
+        "summary": "Get System Health",
+        "description": "Get system health status.\n\nThis endpoint is not protected to allow monitoring systems to check health.",
+        "operationId": "get_system_health_admin_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemHealthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/admin/stats": {
+      "get": {
+        "tags": ["admin", "admin"],
+        "summary": "Get System Stats",
+        "description": "Get comprehensive system statistics.\n\nReturns detailed information about:\n- Total records in system\n- Available symbols, exchanges, timeframes\n- Storage utilization\n- Server uptime",
+        "operationId": "get_system_stats_admin_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStatsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/admin/data/ensure": {
+      "post": {
+        "tags": ["admin", "admin"],
+        "summary": "Ensure Data Available",
+        "description": "Ensure OHLCV data is available for specified parameters.\n\nThis endpoint will:\n- Check if data exists for the specified range\n- Fetch missing data from the exchange if needed\n- Return detailed statistics about the operation\n\nUse `force_refresh=true` to re-fetch data even if it exists.",
+        "operationId": "ensure_data_available_admin_data_ensure_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataEnsureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataEnsureResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/admin/data/convert-timeframe": {
+      "post": {
+        "tags": ["admin", "admin"],
+        "summary": "Convert Timeframe Data",
+        "description": "Convert OHLCV data to different timeframe.\n\nThis endpoint will:\n- Fetch source data in the specified timeframe\n- Convert it to the target timeframe\n- Optionally save the converted data\n\nSet `save_converted=false` to get converted data without saving.",
+        "operationId": "convert_timeframe_data_admin_data_convert_timeframe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeframeConvertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeframeConvertResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/admin/data/cleanup": {
+      "post": {
+        "tags": ["admin", "admin"],
+        "summary": "Cleanup Old Data",
+        "description": "Clean up old data before specified date.\n\n**WARNING: This is a destructive operation!**\n\nSet `confirm=true` to actually perform the deletion.\nThis endpoint will delete all records before the specified cutoff date.",
+        "operationId": "cleanup_old_data_admin_data_cleanup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/admin/info": {
+      "get": {
+        "tags": ["admin", "admin"],
+        "summary": "Get Admin Info",
+        "description": "Get information about available admin operations.\n\nReturns documentation about all available admin endpoints\nand their capabilities.",
+        "operationId": "get_admin_info_admin_info_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Admin Info Admin Info Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/market-data/ohlcv": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Ohlcv Data",
+        "description": "Retrieve OHLCV (candlestick) data for specified parameters.\n\nReturns historical price and volume data for the given symbol,\nexchange, and time range.",
+        "operationId": "get_ohlcv_data_api_v1_market_data_ohlcv_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name (e.g., binance)",
+              "title": "Exchange"
+            },
+            "description": "Exchange name (e.g., binance)"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol (e.g., BTCUSDT)",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol (e.g., BTCUSDT)"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Timeframe (e.g., 1h, 1d)",
+              "title": "Timeframe"
+            },
+            "description": "Timeframe (e.g., 1h, 1d)"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Start date (ISO 8601 format)",
+              "title": "Start Date"
+            },
+            "description": "Start date (ISO 8601 format)"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "End date (ISO 8601 format)",
+              "title": "End Date"
+            },
+            "description": "End date (ISO 8601 format)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 10000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum number of records to return",
+              "title": "Limit"
+            },
+            "description": "Maximum number of records to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OHLCVResponseSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/ohlcv/stats": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Ohlcv Stats",
+        "description": "Get statistical information about OHLCV data.\n\nReturns metrics like total records, date range, price ranges,\nand volume statistics for the specified data series.",
+        "operationId": "get_ohlcv_stats_api_v1_market_data_ohlcv_stats_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name",
+              "title": "Exchange"
+            },
+            "description": "Exchange name"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Timeframe",
+              "title": "Timeframe"
+            },
+            "description": "Timeframe"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OHLCVStatsSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/ohlcv/latest-timestamp": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Latest Timestamp",
+        "description": "Get the timestamp of the latest OHLCV record.\n\nUseful for determining data freshness and identifying\nwhere to resume data collection.",
+        "operationId": "get_latest_timestamp_api_v1_market_data_ohlcv_latest_timestamp_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name",
+              "title": "Exchange"
+            },
+            "description": "Exchange name"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Timeframe",
+              "title": "Timeframe"
+            },
+            "description": "Timeframe"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Latest Timestamp Api V1 Market Data Ohlcv Latest Timestamp Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/ohlcv/gaps": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Data Gaps",
+        "description": "Identify gaps in OHLCV data within specified date range.\n\nReturns a list of missing time periods that need to be collected\nto ensure data completeness.",
+        "operationId": "get_data_gaps_api_v1_market_data_ohlcv_gaps_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name",
+              "title": "Exchange"
+            },
+            "description": "Exchange name"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Timeframe",
+              "title": "Timeframe"
+            },
+            "description": "Timeframe"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Start date for gap analysis",
+              "title": "Start Date"
+            },
+            "description": "Start date for gap analysis"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "End date for gap analysis",
+              "title": "End Date"
+            },
+            "description": "End date for gap analysis"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Data Gaps Api V1 Market Data Ohlcv Gaps Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/exchanges": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Available Exchanges",
+        "description": "Get list of available exchanges in the system.\n\nReturns all exchanges that have data stored in the repository.",
+        "operationId": "get_available_exchanges_api_v1_market_data_exchanges_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Available Exchanges Api V1 Market Data Exchanges Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/symbols": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Available Symbols",
+        "description": "Get list of available symbols for an exchange.\n\nReturns all symbols that have data stored for the specified exchange.",
+        "operationId": "get_available_symbols_api_v1_market_data_symbols_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name",
+              "title": "Exchange"
+            },
+            "description": "Exchange name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Available Symbols Api V1 Market Data Symbols Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/timeframes": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Available Timeframes",
+        "description": "Get list of available timeframes for a symbol.\n\nReturns all timeframes that have data stored for the specified\nexchange and symbol combination.",
+        "operationId": "get_available_timeframes_api_v1_market_data_timeframes_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name",
+              "title": "Exchange"
+            },
+            "description": "Exchange name"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Available Timeframes Api V1 Market Data Timeframes Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/storage-info": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Storage Info",
+        "description": "Get information about the storage backend.\n\nReturns metadata about the underlying storage system,\nincluding type, capacity, and utilization.",
+        "operationId": "get_storage_info_api_v1_market_data_storage_info_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Storage Info Api V1 Market Data Storage Info Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/strategies": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Available Strategies",
+        "description": "Get list of available trading strategies.\n\nReturns all registered strategies with their descriptions,\nparameters, and configuration options.",
+        "operationId": "get_available_strategies_api_v1_backtesting_strategies_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/strategies/{strategy_name}/config": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Strategy Config",
+        "description": "Get configuration schema for a specific strategy.\n\nReturns the parameter definitions, default values,\nand validation rules for the strategy.",
+        "operationId": "get_strategy_config_api_v1_backtesting_strategies__strategy_name__config_get",
+        "parameters": [
+          {
+            "name": "strategy_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Strategy Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyConfigSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/run": {
+      "post": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Run Backtest",
+        "description": "Execute a backtest with specified parameters.\n\nRuns the specified strategy against historical market data\nand returns comprehensive performance metrics and analysis.",
+        "operationId": "run_backtest_api_v1_backtesting_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/results/{backtest_id}": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Backtest Results",
+        "description": "Retrieve results from a previous backtest.\n\nReturns stored backtest results by ID, with options to include\nor exclude detailed trade and equity curve data.",
+        "operationId": "get_backtest_results_api_v1_backtesting_results__backtest_id__get",
+        "parameters": [
+          {
+            "name": "backtest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Backtest Id"
+            }
+          },
+          {
+            "name": "include_trades",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include trade details",
+              "default": true,
+              "title": "Include Trades"
+            },
+            "description": "Include trade details"
+          },
+          {
+            "name": "include_equity_curve",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include equity curve data",
+              "default": true,
+              "title": "Include Equity Curve"
+            },
+            "description": "Include equity curve data"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Delete Backtest Results",
+        "description": "Delete stored backtest results.\n\nRemoves backtest results and associated data from storage.\nThis operation cannot be undone.",
+        "operationId": "delete_backtest_results_api_v1_backtesting_results__backtest_id__delete",
+        "parameters": [
+          {
+            "name": "backtest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Backtest Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestDeletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/history": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Backtest History",
+        "description": "Get history of recent backtests.\n\nReturns a paginated list of recent backtest executions with basic\nmetadata and performance summaries.",
+        "operationId": "get_backtest_history_api_v1_backtesting_history_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number"
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Items per page",
+              "default": 10,
+              "title": "Per Page"
+            },
+            "description": "Items per page"
+          },
+          {
+            "name": "strategy_filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by strategy name",
+              "title": "Strategy Filter"
+            },
+            "description": "Filter by strategy name"
+          },
+          {
+            "name": "symbol_filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by symbol",
+              "title": "Symbol Filter"
+            },
+            "description": "Filter by symbol"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/engines": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Available Engines",
+        "description": "Get list of available backtesting engines.\n\nReturns information about supported backtesting engines\nand their capabilities.",
+        "operationId": "get_available_engines_api_v1_backtesting_engines_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestEnginesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/stats": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Backtesting Stats",
+        "description": "Get backtesting system statistics.\n\nReturns statistics about stored backtests, performance metrics,\nand system utilization.",
+        "operationId": "get_backtesting_stats_api_v1_backtesting_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Backtesting Stats Api V1 Backtesting Stats Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdminStatsResponse": {
+        "properties": {
+          "total_records": {
+            "type": "integer",
+            "title": "Total Records",
+            "description": "Total OHLCV records in system"
+          },
+          "unique_symbols": {
+            "type": "integer",
+            "title": "Unique Symbols",
+            "description": "Number of unique symbols"
+          },
+          "unique_exchanges": {
+            "type": "integer",
+            "title": "Unique Exchanges",
+            "description": "Number of unique exchanges"
+          },
+          "available_timeframes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Timeframes",
+            "description": "Available timeframes"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols",
+            "description": "List of available symbols"
+          },
+          "exchanges": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exchanges",
+            "description": "List of available exchanges"
+          },
+          "storage_info": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Storage Info",
+            "description": "Storage utilization info"
+          },
+          "uptime_seconds": {
+            "type": "integer",
+            "title": "Uptime Seconds",
+            "description": "Server uptime in seconds"
+          },
+          "server_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Server Timestamp",
+            "description": "Current server timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_records",
+          "unique_symbols",
+          "unique_exchanges",
+          "available_timeframes",
+          "symbols",
+          "exchanges",
+          "storage_info",
+          "uptime_seconds",
+          "server_timestamp"
+        ],
+        "title": "AdminStatsResponse",
+        "description": "Response schema for admin statistics."
+      },
+      "BacktestDeletionResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether deletion was successful"
+          },
+          "backtest_id": {
+            "type": "string",
+            "title": "Backtest Id",
+            "description": "Deleted backtest identifier"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Status message"
+          },
+          "deleted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deleted At"
+          }
+        },
+        "type": "object",
+        "required": ["success", "backtest_id", "message"],
+        "title": "BacktestDeletionResponse",
+        "description": "Response schema for backtest deletion endpoint."
+      },
+      "BacktestEngineInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Engine name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Engine description"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Engine version"
+          },
+          "supported_strategies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Strategies",
+            "description": "Supported strategies"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Features",
+            "description": "Engine features"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "version",
+          "supported_strategies",
+          "features"
+        ],
+        "title": "BacktestEngineInfo",
+        "description": "Information about a backtesting engine."
+      },
+      "BacktestEnginesResponse": {
+        "properties": {
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestEngineInfo"
+            },
+            "type": "array",
+            "title": "Engines",
+            "description": "List of available engines"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Total number of engines"
+          },
+          "current_engine": {
+            "type": "string",
+            "title": "Current Engine",
+            "description": "Currently active engine"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": ["engines", "count", "current_engine"],
+        "title": "BacktestEnginesResponse",
+        "description": "Response schema for backtesting engines endpoint."
+      },
+      "BacktestHistoryItem": {
+        "properties": {
+          "backtest_id": {
+            "type": "string",
+            "title": "Backtest Id",
+            "description": "Unique backtest identifier"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Timeframe"
+          },
+          "strategy_type": {
+            "$ref": "#/components/schemas/StrategyType",
+            "description": "Strategy type"
+          },
+          "total_return": {
+            "type": "number",
+            "title": "Total Return",
+            "description": "Total return percentage"
+          },
+          "sharpe_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharpe Ratio",
+            "description": "Sharpe ratio"
+          },
+          "max_drawdown": {
+            "type": "number",
+            "title": "Max Drawdown",
+            "description": "Maximum drawdown percentage"
+          },
+          "win_rate": {
+            "type": "number",
+            "title": "Win Rate",
+            "description": "Win rate percentage"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date",
+            "description": "Backtest start date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date",
+            "description": "Backtest end date"
+          },
+          "executed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Executed At",
+            "description": "Execution timestamp"
+          },
+          "execution_time_seconds": {
+            "type": "number",
+            "title": "Execution Time Seconds",
+            "description": "Execution time in seconds"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Backtest status",
+            "default": "completed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "backtest_id",
+          "symbol",
+          "timeframe",
+          "strategy_type",
+          "total_return",
+          "max_drawdown",
+          "win_rate",
+          "start_date",
+          "end_date",
+          "executed_at",
+          "execution_time_seconds"
+        ],
+        "title": "BacktestHistoryItem",
+        "description": "Single item in backtest history."
+      },
+      "BacktestHistoryResponse": {
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestHistoryItem"
+            },
+            "type": "array",
+            "title": "History",
+            "description": "List of backtest history items"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Total number of items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "description": "Current page number",
+            "default": 1
+          },
+          "total_pages": {
+            "type": "integer",
+            "title": "Total Pages",
+            "description": "Total number of pages",
+            "default": 1
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": ["history", "count"],
+        "title": "BacktestHistoryResponse",
+        "description": "Response schema for backtest history endpoint."
+      },
+      "BacktestRequest": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol (e.g., BTCUSDT)"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Timeframe (e.g., 1h, 1d)"
+          },
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name",
+            "default": "binance"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date",
+            "description": "Backtest start date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date",
+            "description": "Backtest end date"
+          },
+          "strategy_type": {
+            "$ref": "#/components/schemas/StrategyType",
+            "description": "Strategy type to use"
+          },
+          "strategy_params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Strategy Params",
+            "description": "Strategy-specific parameters"
+          },
+          "initial_capital": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "Initial Capital",
+            "description": "Initial capital for backtesting",
+            "default": 10000
+          },
+          "commission": {
+            "type": "number",
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Commission",
+            "description": "Commission rate (0.001 = 0.1%)",
+            "default": 0.001
+          },
+          "max_position_size": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Size",
+            "description": "Maximum position size as fraction of capital"
+          },
+          "stop_loss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss",
+            "description": "Stop loss percentage (0.05 = 5%)"
+          },
+          "take_profit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take Profit",
+            "description": "Take profit percentage (0.10 = 10%)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "timeframe",
+          "start_date",
+          "end_date",
+          "strategy_type"
+        ],
+        "title": "BacktestRequest",
+        "description": "Request schema for backtesting operations."
+      },
+      "BacktestResult": {
+        "properties": {
+          "backtest_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backtest Id",
+            "description": "Unique backtest identifier"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe"
+          },
+          "exchange": {
+            "type": "string",
+            "title": "Exchange"
+          },
+          "strategy_type": {
+            "$ref": "#/components/schemas/StrategyType"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date"
+          },
+          "duration_days": {
+            "type": "integer",
+            "title": "Duration Days"
+          },
+          "initial_capital": {
+            "type": "number",
+            "title": "Initial Capital"
+          },
+          "final_capital": {
+            "type": "number",
+            "title": "Final Capital"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/PerformanceMetrics"
+          },
+          "trades": {
+            "items": {
+              "$ref": "#/components/schemas/TradeResult"
+            },
+            "type": "array",
+            "title": "Trades"
+          },
+          "equity_curve": {
+            "items": {
+              "$ref": "#/components/schemas/EquityCurvePoint"
+            },
+            "type": "array",
+            "title": "Equity Curve"
+          },
+          "strategy_data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Strategy Data",
+            "description": "Strategy-specific output data"
+          },
+          "execution_time_seconds": {
+            "type": "number",
+            "title": "Execution Time Seconds"
+          },
+          "engine_used": {
+            "type": "string",
+            "title": "Engine Used"
+          },
+          "is_valid": {
+            "type": "boolean",
+            "title": "Is Valid",
+            "description": "Whether results are valid",
+            "default": true
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Execution warnings"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "Execution errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "timeframe",
+          "exchange",
+          "strategy_type",
+          "start_date",
+          "end_date",
+          "duration_days",
+          "initial_capital",
+          "final_capital",
+          "metrics",
+          "trades",
+          "equity_curve",
+          "execution_time_seconds",
+          "engine_used"
+        ],
+        "title": "BacktestResult",
+        "description": "Comprehensive backtesting result."
+      },
+      "CleanupRequest": {
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Data timeframe"
+          },
+          "cutoff_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Cutoff Date",
+            "description": "Delete data before this date"
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "description": "Confirmation flag for destructive operation",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["exchange", "symbol", "timeframe", "cutoff_date"],
+        "title": "CleanupRequest",
+        "description": "Request schema for data cleanup operations."
+      },
+      "CleanupResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether cleanup was successful"
+          },
+          "records_before": {
+            "type": "integer",
+            "title": "Records Before",
+            "description": "Records count before cleanup"
+          },
+          "records_deleted": {
+            "type": "integer",
+            "title": "Records Deleted",
+            "description": "Number of records deleted"
+          },
+          "cutoff_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Cutoff Date",
+            "description": "Cutoff date used"
+          },
+          "operation_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Operation Timestamp",
+            "description": "When operation completed"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error message if cleanup failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "records_before",
+          "records_deleted",
+          "cutoff_date",
+          "operation_timestamp"
+        ],
+        "title": "CleanupResponse",
+        "description": "Response schema for cleanup operations."
+      },
+      "DataEnsureRequest": {
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name (e.g., binance)"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol (e.g., BTCUSDT)"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Timeframe (e.g., 1h, 1d)"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date",
+            "description": "Start date for data range"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date",
+            "description": "End date for data range"
+          },
+          "force_refresh": {
+            "type": "boolean",
+            "title": "Force Refresh",
+            "description": "Force refresh even if data exists",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "exchange",
+          "symbol",
+          "timeframe",
+          "start_date",
+          "end_date"
+        ],
+        "title": "DataEnsureRequest",
+        "description": "Request schema for ensuring data availability."
+      },
+      "DataEnsureResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether operation was successful"
+          },
+          "data_was_missing": {
+            "type": "boolean",
+            "title": "Data Was Missing",
+            "description": "Whether data was missing"
+          },
+          "records_fetched": {
+            "type": "integer",
+            "title": "Records Fetched",
+            "description": "Number of records fetched"
+          },
+          "records_saved": {
+            "type": "integer",
+            "title": "Records Saved",
+            "description": "Number of records saved"
+          },
+          "data_statistics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OHLCVStatsSchema"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Data statistics after operation"
+          },
+          "operation_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Operation Timestamp",
+            "description": "When operation completed"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error message if operation failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "data_was_missing",
+          "records_fetched",
+          "records_saved",
+          "operation_timestamp"
+        ],
+        "title": "DataEnsureResponse",
+        "description": "Response schema for data ensure operations."
+      },
+      "EquityCurvePoint": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "portfolio_value": {
+            "type": "number",
+            "title": "Portfolio Value"
+          },
+          "cash": {
+            "type": "number",
+            "title": "Cash"
+          },
+          "position_value": {
+            "type": "number",
+            "title": "Position Value"
+          },
+          "drawdown": {
+            "type": "number",
+            "title": "Drawdown",
+            "description": "Drawdown from peak"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "portfolio_value",
+          "cash",
+          "position_value",
+          "drawdown"
+        ],
+        "title": "EquityCurvePoint",
+        "description": "Single point in equity curve."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "OHLCVResponseSchema": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/OHLCVSchema"
+            },
+            "type": "array",
+            "title": "Data",
+            "description": "OHLCV records"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Count",
+            "description": "Number of records returned"
+          },
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Timeframe"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date",
+            "description": "Query start date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date",
+            "description": "Query end date"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Whether more data is available"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "count",
+          "exchange",
+          "symbol",
+          "timeframe",
+          "start_date",
+          "end_date",
+          "has_more"
+        ],
+        "title": "OHLCVResponseSchema",
+        "description": "Schema for OHLCV API responses."
+      },
+      "OHLCVSchema": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "Timestamp of the candle in UTC"
+          },
+          "open": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "Open",
+            "description": "Opening price"
+          },
+          "high": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "High",
+            "description": "Highest price during the period"
+          },
+          "low": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "Low",
+            "description": "Lowest price during the period"
+          },
+          "close": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "Close",
+            "description": "Closing price"
+          },
+          "volume": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Volume",
+            "description": "Volume traded during the period"
+          },
+          "symbol": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Symbol",
+            "description": "Trading symbol (e.g., BTCUSDT)"
+          },
+          "exchange": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exchange",
+            "description": "Exchange name (e.g., binance)"
+          },
+          "timeframe": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Timeframe",
+            "description": "Timeframe (e.g., 1h, 1d)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "open",
+          "high",
+          "low",
+          "close",
+          "volume",
+          "symbol",
+          "exchange",
+          "timeframe"
+        ],
+        "title": "OHLCVSchema",
+        "description": "Base OHLCV data schema for API layer.\n\nThis represents the standardized format for OHLCV data\nacross all parts of the system."
+      },
+      "OHLCVStatsSchema": {
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Timeframe"
+          },
+          "total_records": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Total Records",
+            "description": "Total number of records"
+          },
+          "date_range": {
+            "additionalProperties": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "type": "object",
+            "title": "Date Range",
+            "description": "Date range with 'start' and 'end' keys"
+          },
+          "price_range": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Price Range",
+            "description": "Price range with 'min' and 'max' keys"
+          },
+          "volume_stats": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Volume Stats",
+            "description": "Volume statistics with 'min', 'max', 'avg' keys"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exchange",
+          "symbol",
+          "timeframe",
+          "total_records",
+          "date_range",
+          "price_range",
+          "volume_stats"
+        ],
+        "title": "OHLCVStatsSchema",
+        "description": "Schema for OHLCV statistics."
+      },
+      "ParameterSchema": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Parameter name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Parameter type (string, integer, float, boolean)"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Parameter description"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "description": "Whether parameter is required"
+          },
+          "default_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Value",
+            "description": "Default value"
+          },
+          "min_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Value",
+            "description": "Minimum value (for numeric types)"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Value",
+            "description": "Maximum value (for numeric types)"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices",
+            "description": "Valid choices (for string types)"
+          }
+        },
+        "type": "object",
+        "required": ["name", "type", "description", "required"],
+        "title": "ParameterSchema",
+        "description": "Schema for strategy parameter definition."
+      },
+      "PerformanceMetrics": {
+        "properties": {
+          "total_return": {
+            "type": "number",
+            "title": "Total Return",
+            "description": "Total return percentage"
+          },
+          "annual_return": {
+            "type": "number",
+            "title": "Annual Return",
+            "description": "Annualized return percentage"
+          },
+          "total_trades": {
+            "type": "integer",
+            "title": "Total Trades",
+            "description": "Total number of trades"
+          },
+          "winning_trades": {
+            "type": "integer",
+            "title": "Winning Trades",
+            "description": "Number of winning trades"
+          },
+          "losing_trades": {
+            "type": "integer",
+            "title": "Losing Trades",
+            "description": "Number of losing trades"
+          },
+          "max_drawdown": {
+            "type": "number",
+            "title": "Max Drawdown",
+            "description": "Maximum drawdown percentage"
+          },
+          "sharpe_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharpe Ratio",
+            "description": "Sharpe ratio"
+          },
+          "sortino_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sortino Ratio",
+            "description": "Sortino ratio"
+          },
+          "calmar_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calmar Ratio",
+            "description": "Calmar ratio"
+          },
+          "win_rate": {
+            "type": "number",
+            "title": "Win Rate",
+            "description": "Win rate percentage"
+          },
+          "average_win": {
+            "type": "number",
+            "title": "Average Win",
+            "description": "Average winning trade percentage"
+          },
+          "average_loss": {
+            "type": "number",
+            "title": "Average Loss",
+            "description": "Average losing trade percentage"
+          },
+          "profit_factor": {
+            "type": "number",
+            "title": "Profit Factor",
+            "description": "Profit factor (gross profit / gross loss)"
+          },
+          "volatility": {
+            "type": "number",
+            "title": "Volatility",
+            "description": "Strategy volatility (annualized)"
+          },
+          "var_95": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Var 95",
+            "description": "95% Value at Risk"
+          },
+          "total_commission": {
+            "type": "number",
+            "title": "Total Commission",
+            "description": "Total commission paid"
+          },
+          "holding_period_avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holding Period Avg",
+            "description": "Average holding period in days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_return",
+          "annual_return",
+          "total_trades",
+          "winning_trades",
+          "losing_trades",
+          "max_drawdown",
+          "sharpe_ratio",
+          "sortino_ratio",
+          "calmar_ratio",
+          "win_rate",
+          "average_win",
+          "average_loss",
+          "profit_factor",
+          "volatility",
+          "var_95",
+          "total_commission",
+          "holding_period_avg"
+        ],
+        "title": "PerformanceMetrics",
+        "description": "Comprehensive performance metrics."
+      },
+      "PositionSide": {
+        "type": "string",
+        "enum": ["long", "short"],
+        "title": "PositionSide",
+        "description": "Position side for trades."
+      },
+      "StrategyConfigSchema": {
+        "properties": {
+          "strategy_name": {
+            "type": "string",
+            "title": "Strategy Name",
+            "description": "Strategy name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Strategy description"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/components/schemas/ParameterSchema"
+            },
+            "type": "array",
+            "title": "Parameters",
+            "description": "Strategy parameters"
+          },
+          "examples": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Examples",
+            "description": "Example configurations"
+          }
+        },
+        "type": "object",
+        "required": ["strategy_name", "description", "parameters"],
+        "title": "StrategyConfigSchema",
+        "description": "Response schema for strategy configuration endpoint."
+      },
+      "StrategyListResponse": {
+        "properties": {
+          "strategies": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Strategies",
+            "description": "List of available strategies"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Total number of strategies"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": ["strategies", "count"],
+        "title": "StrategyListResponse",
+        "description": "Response schema for strategy list endpoint."
+      },
+      "StrategyType": {
+        "type": "string",
+        "enum": [
+          "moving_average_crossover",
+          "rsi_strategy",
+          "bollinger_bands",
+          "macd_strategy",
+          "simple_buy_hold"
+        ],
+        "title": "StrategyType",
+        "description": "Supported strategy types."
+      },
+      "SystemHealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Overall health status"
+          },
+          "repository_connected": {
+            "type": "boolean",
+            "title": "Repository Connected",
+            "description": "Repository connectivity"
+          },
+          "data_fresh": {
+            "type": "boolean",
+            "title": "Data Fresh",
+            "description": "Whether data is fresh"
+          },
+          "memory_usage_percent": {
+            "type": "number",
+            "title": "Memory Usage Percent",
+            "description": "Memory usage percentage"
+          },
+          "disk_usage_percent": {
+            "type": "number",
+            "title": "Disk Usage Percent",
+            "description": "Disk usage percentage"
+          },
+          "checks_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checks Timestamp",
+            "description": "When checks were performed"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error message if unhealthy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "repository_connected",
+          "data_fresh",
+          "memory_usage_percent",
+          "disk_usage_percent",
+          "checks_timestamp"
+        ],
+        "title": "SystemHealthResponse",
+        "description": "Response schema for system health checks."
+      },
+      "TimeframeConvertRequest": {
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name (e.g., binance)"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol (e.g., BTCUSDT)"
+          },
+          "source_timeframe": {
+            "type": "string",
+            "title": "Source Timeframe",
+            "description": "Source timeframe (e.g., 1h)"
+          },
+          "target_timeframe": {
+            "type": "string",
+            "title": "Target Timeframe",
+            "description": "Target timeframe (e.g., 1d)"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date",
+            "description": "Start date for conversion"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date",
+            "description": "End date for conversion"
+          },
+          "save_converted": {
+            "type": "boolean",
+            "title": "Save Converted",
+            "description": "Whether to save converted data",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "exchange",
+          "symbol",
+          "source_timeframe",
+          "target_timeframe",
+          "start_date",
+          "end_date"
+        ],
+        "title": "TimeframeConvertRequest",
+        "description": "Request schema for timeframe conversion."
+      },
+      "TimeframeConvertResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether conversion was successful"
+          },
+          "source_records": {
+            "type": "integer",
+            "title": "Source Records",
+            "description": "Number of source records"
+          },
+          "converted_records": {
+            "type": "integer",
+            "title": "Converted Records",
+            "description": "Number of converted records"
+          },
+          "saved_records": {
+            "type": "integer",
+            "title": "Saved Records",
+            "description": "Number of saved records"
+          },
+          "operation_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Operation Timestamp",
+            "description": "When operation completed"
+          },
+          "converted_data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OHLCVSchema"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converted Data",
+            "description": "Converted data (if not saved)"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error message if conversion failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "source_records",
+          "converted_records",
+          "saved_records",
+          "operation_timestamp"
+        ],
+        "title": "TimeframeConvertResponse",
+        "description": "Response schema for timeframe conversion."
+      },
+      "TradeResult": {
+        "properties": {
+          "entry_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Entry Date"
+          },
+          "exit_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Date"
+          },
+          "entry_price": {
+            "type": "number",
+            "title": "Entry Price"
+          },
+          "exit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Price"
+          },
+          "position_side": {
+            "$ref": "#/components/schemas/PositionSide"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl"
+          },
+          "pnl_percentage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Percentage"
+          },
+          "commission_paid": {
+            "type": "number",
+            "title": "Commission Paid",
+            "default": 0
+          },
+          "entry_reason": {
+            "type": "string",
+            "title": "Entry Reason",
+            "description": "Reason for entry",
+            "default": "signal"
+          },
+          "exit_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Reason",
+            "description": "Reason for exit"
+          },
+          "is_open": {
+            "type": "boolean",
+            "title": "Is Open",
+            "description": "Whether position is still open",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": ["entry_date", "entry_price", "position_side", "quantity"],
+        "title": "TradeResult",
+        "description": "Individual trade result."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

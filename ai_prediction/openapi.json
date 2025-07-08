@@ -1,0 +1,1147 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FinSight Model Builder",
+    "description": "Time Series Model Training and Prediction API for Financial Data",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/training/train": {
+      "post": {
+        "tags": ["training"],
+        "summary": "Train Model",
+        "description": "Train a time series model\n\nThis endpoint trains a model based on the provided parameters.\nIt validates that the required dataset exists and the model type is supported.",
+        "operationId": "train_model_training_train_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/status/{training_id}": {
+      "get": {
+        "tags": ["training"],
+        "summary": "Get Training Status",
+        "description": "Get status of a training job\n\nReturns the current status, progress, and metrics of a training job.",
+        "operationId": "get_training_status_training_status__training_id__get",
+        "parameters": [
+          {
+            "name": "training_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Training Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Training Status Training Status  Training Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/training/active": {
+      "get": {
+        "tags": ["training"],
+        "summary": "Get Active Trainings",
+        "description": "Get all active training jobs\n\nReturns a list of all currently active training jobs with their status.",
+        "operationId": "get_active_trainings_training_active_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Active Trainings Training Active Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/prediction/predict": {
+      "post": {
+        "tags": ["prediction"],
+        "summary": "Predict",
+        "description": "Make predictions using a trained model\n\nThis endpoint uses a trained model to make predictions for the specified\nsymbol and timeframe. It automatically selects the best available model\nif no specific model type is provided.",
+        "operationId": "predict_prediction_predict_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PredictionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/prediction/models": {
+      "get": {
+        "tags": ["prediction"],
+        "summary": "Get Available Models",
+        "description": "Get information about available trained models\n\nReturns a comprehensive list of all trained models with their metadata,\norganized by symbol and timeframe.",
+        "operationId": "get_available_models_prediction_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Available Models Prediction Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/info": {
+      "get": {
+        "tags": ["models"],
+        "summary": "Get Model Info",
+        "description": "Get comprehensive information about available and trained models\n\nReturns information about:\n- Available model types that can be trained\n- Currently trained models with their metadata\n- Supported timeframes and symbols",
+        "operationId": "get_model_info_models_info_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelInfoResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/available": {
+      "get": {
+        "tags": ["models"],
+        "summary": "Get Available Models",
+        "description": "Get list of available model types that can be trained",
+        "operationId": "get_available_models_models_available_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Available Models Models Available Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/trained": {
+      "get": {
+        "tags": ["models"],
+        "summary": "Get Trained Models",
+        "description": "Get information about all trained models",
+        "operationId": "get_trained_models_models_trained_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Trained Models Models Trained Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/check": {
+      "get": {
+        "tags": ["models"],
+        "summary": "Check Model Exists",
+        "description": "Check if a trained model exists\n\nChecks whether a trained model exists for the specified symbol, timeframe,\nand optionally model type.",
+        "operationId": "check_model_exists_models_check_get",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/TimeFrame",
+              "description": "Data timeframe"
+            },
+            "description": "Data timeframe"
+          },
+          {
+            "name": "model_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ModelType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Specific model type",
+              "title": "Model Type"
+            },
+            "description": "Specific model type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Check Model Exists Models Check Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/details": {
+      "get": {
+        "tags": ["models"],
+        "summary": "Get Model Details",
+        "description": "Get detailed information about a specific model\n\nReturns comprehensive details about a trained model including\nconfiguration, training metrics, and file information.",
+        "operationId": "get_model_details_models_details_get",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/TimeFrame",
+              "description": "Data timeframe"
+            },
+            "description": "Data timeframe"
+          },
+          {
+            "name": "model_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ModelType",
+              "description": "Model type"
+            },
+            "description": "Model type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Model Details Models Details Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/delete": {
+      "delete": {
+        "tags": ["models"],
+        "summary": "Delete Model",
+        "description": "Delete a trained model\n\nPermanently removes a trained model and all associated files.\nThis action cannot be undone.",
+        "operationId": "delete_model_models_delete_delete",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/TimeFrame",
+              "description": "Data timeframe"
+            },
+            "description": "Data timeframe"
+          },
+          {
+            "name": "model_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ModelType",
+              "description": "Model type"
+            },
+            "description": "Model type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/performance": {
+      "get": {
+        "tags": ["models"],
+        "summary": "Get Model Performance",
+        "description": "Get performance metrics for a specific model\n\nReturns training and validation performance metrics for the specified model.",
+        "operationId": "get_model_performance_models_performance_get",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/TimeFrame",
+              "description": "Data timeframe"
+            },
+            "description": "Data timeframe"
+          },
+          {
+            "name": "model_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ModelType",
+              "description": "Model type"
+            },
+            "description": "Model type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Model Performance Models Performance Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "description": "Root endpoint with API information",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Root  Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Health check endpoint",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BaseResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the operation was successful"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if operation failed"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata",
+            "description": "Additional metadata"
+          }
+        },
+        "type": "object",
+        "required": ["success", "message"],
+        "title": "BaseResponse",
+        "description": "Base response schema for all API responses"
+      },
+      "CryptoSymbol": {
+        "type": "string",
+        "enum": ["BTCUSDT", "ETHUSDT"],
+        "title": "CryptoSymbol",
+        "description": "Supported cryptocurrency symbols"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Service health status"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp",
+            "description": "Current timestamp"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Service version"
+          },
+          "dependencies": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dependencies",
+            "description": "Status of dependencies"
+          }
+        },
+        "type": "object",
+        "required": ["status", "timestamp", "version"],
+        "title": "HealthResponse",
+        "description": "Health check response schema"
+      },
+      "ModelConfig": {
+        "properties": {
+          "context_length": {
+            "type": "integer",
+            "maximum": 512,
+            "exclusiveMinimum": 0,
+            "title": "Context Length",
+            "description": "Input sequence length",
+            "default": 64
+          },
+          "prediction_length": {
+            "type": "integer",
+            "maximum": 24,
+            "exclusiveMinimum": 0,
+            "title": "Prediction Length",
+            "description": "Prediction horizon",
+            "default": 1
+          },
+          "target_column": {
+            "type": "string",
+            "title": "Target Column",
+            "description": "Target column to predict",
+            "default": "close"
+          },
+          "feature_columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feature Columns",
+            "description": "Specific feature columns to use (if None, will use default)"
+          },
+          "num_epochs": {
+            "type": "integer",
+            "maximum": 100,
+            "exclusiveMinimum": 0,
+            "title": "Num Epochs",
+            "description": "Number of training epochs",
+            "default": 10
+          },
+          "batch_size": {
+            "type": "integer",
+            "maximum": 256,
+            "exclusiveMinimum": 0,
+            "title": "Batch Size",
+            "description": "Training batch size",
+            "default": 32
+          },
+          "learning_rate": {
+            "type": "number",
+            "maximum": 1,
+            "exclusiveMinimum": 0,
+            "title": "Learning Rate",
+            "description": "Learning rate",
+            "default": 0.001
+          },
+          "use_technical_indicators": {
+            "type": "boolean",
+            "title": "Use Technical Indicators",
+            "description": "Whether to add technical indicators",
+            "default": true
+          },
+          "add_datetime_features": {
+            "type": "boolean",
+            "title": "Add Datetime Features",
+            "description": "Whether to add datetime features",
+            "default": false
+          },
+          "normalize_features": {
+            "type": "boolean",
+            "title": "Normalize Features",
+            "description": "Whether to normalize features",
+            "default": true
+          },
+          "train_ratio": {
+            "type": "number",
+            "exclusiveMaximum": 1,
+            "exclusiveMinimum": 0,
+            "title": "Train Ratio",
+            "description": "Training data ratio",
+            "default": 0.8
+          },
+          "val_ratio": {
+            "type": "number",
+            "exclusiveMaximum": 1,
+            "exclusiveMinimum": 0,
+            "title": "Val Ratio",
+            "description": "Validation data ratio",
+            "default": 0.1
+          },
+          "model_specific_params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Model Specific Params",
+            "description": "Model-specific parameters"
+          }
+        },
+        "type": "object",
+        "title": "ModelConfig",
+        "description": "Model configuration schema"
+      },
+      "ModelInfoResponse": {
+        "properties": {
+          "available_models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Models",
+            "description": "List of available model types"
+          },
+          "trained_models": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Trained Models",
+            "description": "Information about trained models"
+          },
+          "supported_timeframes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Timeframes",
+            "description": "Supported timeframes"
+          },
+          "supported_symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Symbols",
+            "description": "Available symbols"
+          }
+        },
+        "type": "object",
+        "required": [
+          "available_models",
+          "trained_models",
+          "supported_timeframes",
+          "supported_symbols"
+        ],
+        "title": "ModelInfoResponse",
+        "description": "Model information response schema"
+      },
+      "ModelType": {
+        "type": "string",
+        "enum": [
+          "ibm/patchtst-forecasting",
+          "ibm/patchtsmixer-forecasting",
+          "pytorch-lightning/time-series-transformer",
+          "enhanced-transformer"
+        ],
+        "title": "ModelType",
+        "description": "Supported time series model types for fine-tuning"
+      },
+      "PredictionRequest": {
+        "properties": {
+          "symbol": {
+            "$ref": "#/components/schemas/CryptoSymbol",
+            "minLength": 1,
+            "description": "Trading symbol",
+            "default": "BTCUSDT"
+          },
+          "timeframe": {
+            "$ref": "#/components/schemas/TimeFrame",
+            "description": "Data timeframe",
+            "default": "1d"
+          },
+          "model_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model type (if None, will auto-select best available)"
+          },
+          "n_steps": {
+            "type": "integer",
+            "maximum": 100,
+            "exclusiveMinimum": 0,
+            "title": "N Steps",
+            "description": "Number of prediction steps",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "title": "PredictionRequest",
+        "description": "Request schema for model prediction"
+      },
+      "PredictionResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the operation was successful"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if operation failed"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata",
+            "description": "Additional metadata"
+          },
+          "predictions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predictions",
+            "description": "Prediction values"
+          },
+          "prediction_timestamps": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prediction Timestamps",
+            "description": "Prediction timestamps"
+          },
+          "current_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Price",
+            "description": "Current price"
+          },
+          "predicted_change_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predicted Change Pct",
+            "description": "Predicted change percentage"
+          },
+          "confidence_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Score",
+            "description": "Confidence score"
+          },
+          "model_info": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Info",
+            "description": "Model information"
+          }
+        },
+        "type": "object",
+        "required": ["success", "message"],
+        "title": "PredictionResponse",
+        "description": "Response schema for model prediction"
+      },
+      "TimeFrame": {
+        "type": "string",
+        "enum": ["1m", "5m", "15m", "1h", "4h", "12h", "1d", "1w"],
+        "title": "TimeFrame",
+        "description": "Supported timeframes for data"
+      },
+      "TrainingRequest": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Symbol",
+            "description": "Trading symbol (e.g., BTCUSDT)",
+            "default": "BTCUSDT"
+          },
+          "timeframe": {
+            "$ref": "#/components/schemas/TimeFrame",
+            "description": "Data timeframe",
+            "default": "1d"
+          },
+          "model_type": {
+            "$ref": "#/components/schemas/ModelType",
+            "description": "Type of model to train",
+            "default": "ibm/patchtst-forecasting"
+          },
+          "config": {
+            "$ref": "#/components/schemas/ModelConfig",
+            "description": "Model configuration"
+          }
+        },
+        "type": "object",
+        "title": "TrainingRequest",
+        "description": "Request schema for model training"
+      },
+      "TrainingResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the operation was successful"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Error message if operation failed"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata",
+            "description": "Additional metadata"
+          },
+          "training_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Training Id",
+            "description": "Training job identifier"
+          },
+          "model_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Path",
+            "description": "Path to saved model"
+          },
+          "training_metrics": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Training Metrics",
+            "description": "Training performance metrics"
+          },
+          "validation_metrics": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Metrics",
+            "description": "Validation performance metrics"
+          },
+          "training_duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Training Duration",
+            "description": "Training duration in seconds"
+          }
+        },
+        "type": "object",
+        "required": ["success", "message"],
+        "title": "TrainingResponse",
+        "description": "Response schema for model training"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
