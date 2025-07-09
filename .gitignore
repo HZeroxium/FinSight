@@ -23,3 +23,7 @@ coverage.xml
 *.env
 scripts
 *.csv
+
+deprecated/
+postman_collection.json
+.github
