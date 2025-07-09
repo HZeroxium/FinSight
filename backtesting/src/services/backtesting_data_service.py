@@ -9,7 +9,7 @@ Acts as an abstraction layer over the repository pattern.
 
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any
 from math import ceil
 
 from ..interfaces.backtesting_repository import (
@@ -23,7 +23,7 @@ from ..schemas.backtesting_schemas import (
     BacktestDeletionResponse,
     StrategyType,
 )
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 
 
 class BacktestingDataServiceError(Exception):

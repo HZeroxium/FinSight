@@ -19,7 +19,7 @@ from .services.market_data_collector_service import MarketDataCollectorService
 from .factories import create_repository
 from .schemas.enums import CryptoSymbol, TimeFrame, Exchange
 from .core.config import settings
-from .common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from .utils.datetime_utils import DateTimeUtils
 
 

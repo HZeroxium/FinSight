@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any, Tuple
 
 from ..schemas.enums import TimeFrame, TimeFrameMultiplier
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 
 
 class TimeFrameUtils:

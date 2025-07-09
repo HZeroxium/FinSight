@@ -11,7 +11,7 @@ from typing import Dict, List, Any, Optional, Tuple
 
 from ..interfaces.market_data_repository import MarketDataRepository
 from ..interfaces.errors import ValidationError
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from ..utils.datetime_utils import DateTimeUtils
 from ..schemas.ohlcv_schemas import (
     OHLCVSchema,

@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional, Tuple
 import pandas as pd
 
 from ..schemas.ohlcv_schemas import OHLCVSchema
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from ..utils.timeframe_utils import TimeFrameUtils
 
 

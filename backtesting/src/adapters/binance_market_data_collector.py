@@ -16,7 +16,7 @@ from binance.exceptions import BinanceAPIException, BinanceRequestException
 
 from ..interfaces.market_data_collector import MarketDataCollector
 from ..interfaces.errors import CollectionError, ValidationError
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 from ..utils.datetime_utils import DateTimeUtils
 from ..schemas.ohlcv_schemas import OHLCVSchema
 from ..schemas.enums import TimeFrame, Exchange

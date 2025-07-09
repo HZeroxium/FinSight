@@ -20,7 +20,7 @@ from ..schemas.ohlcv_schemas import OHLCVSchema
 from ..services.market_data_service import MarketDataService
 from ..services.backtesting_data_service import BacktestingDataService
 from ..strategies.strategy_factory import StrategyFactory
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 
 
 class BacktestingServiceError(Exception):

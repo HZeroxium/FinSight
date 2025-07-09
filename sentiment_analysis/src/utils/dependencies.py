@@ -11,7 +11,7 @@ from ..adapters.rabbitmq_broker import RabbitMQBroker
 from ..repositories.mongodb_sentiment_repository import MongoDBSentimentRepository
 from ..services.sentiment_service import SentimentService
 from ..core.config import settings
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 # Create logger for dependencies
 logger = LoggerFactory.get_logger(

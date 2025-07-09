@@ -14,7 +14,7 @@ from ..services.search_service import SearchService
 from ..services.news_collector_service import NewsCollectorService
 from ..adapters.rabbitmq_broker import RabbitMQBroker
 from ..adapters.tavily_search_engine import TavilySearchEngine
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 from ..core.config import settings
 
 

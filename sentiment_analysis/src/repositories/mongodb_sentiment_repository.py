@@ -24,7 +24,7 @@ from ..models.sentiment import (
     SentimentAggregation,
     SentimentLabel,
 )
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
     name="mongodb-sentiment-repository",

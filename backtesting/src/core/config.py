@@ -15,12 +15,9 @@ Configuration management for the backtesting system.
 Centralized configuration using Pydantic settings with environment variable support.
 """
 
-from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import SettingsConfigDict, BaseSettings
-
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class Settings(BaseSettings):

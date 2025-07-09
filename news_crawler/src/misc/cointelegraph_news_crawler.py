@@ -18,7 +18,7 @@ from ..adapters.api_cointelegraph_news_collector import APICoinTelegraphNewsColl
 from ..schemas.news_schemas import NewsCollectorConfig, NewsSource
 from ..services.news_service import NewsService
 from ..repositories.mongo_news_repository import MongoNewsRepository
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class CoinTelegraphCrawler:

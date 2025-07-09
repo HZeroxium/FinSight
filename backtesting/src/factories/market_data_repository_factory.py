@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional, Type
 
 from ..interfaces.market_data_repository import MarketDataRepository
 from ..interfaces.errors import RepositoryError
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from ..schemas.enums import RepositoryType
 
 

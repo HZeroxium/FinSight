@@ -1,3 +1,5 @@
+# converters/ohlcv_converter.py
+
 """
 OHLCV data converter for converting between schemas and models.
 
@@ -7,9 +9,9 @@ storage implementations.
 """
 
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Type, TypeVar, Union
+from typing import List, Dict, Any, TypeVar, Union
 
-from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVBatchSchema
+from ..schemas.ohlcv_schemas import OHLCVSchema
 from ..models.ohlcv_models import (
     OHLCVModelMongoDB,
     OHLCVModelInfluxDB,
@@ -17,7 +19,7 @@ from ..models.ohlcv_models import (
     OHLCVModelTimeScaleDB,
     OHLCVModelGeneric,
 )
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 
 # Type variables for generic typing
 T = TypeVar("T")

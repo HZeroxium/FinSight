@@ -26,7 +26,7 @@ from ..schemas.backtesting_schemas import (
     BacktestEngineInfo,
 )
 from ..strategies.strategy_factory import StrategyFactory
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from ..factories.backtesting_factory import (
     get_backtesting_service,
     get_backtesting_data_service,

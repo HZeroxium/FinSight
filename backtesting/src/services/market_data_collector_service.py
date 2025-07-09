@@ -14,9 +14,8 @@ import time
 
 from ..interfaces.market_data_collector import MarketDataCollector
 from ..services.market_data_service import MarketDataService
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from ..utils.datetime_utils import DateTimeUtils
-from ..schemas.ohlcv_schemas import OHLCVBatchSchema
 
 
 class MarketDataCollectorService:

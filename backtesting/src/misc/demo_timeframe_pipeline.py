@@ -24,7 +24,7 @@ from .timeframe_load_convert_save import (
 )
 from ..schemas.enums import CryptoSymbol, TimeFrame, Exchange, RepositoryType
 from ..utils.datetime_utils import DateTimeUtils
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 
 
 class CrossRepositoryDemoConfig:

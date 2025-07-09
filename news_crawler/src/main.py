@@ -22,7 +22,7 @@ from .utils.dependencies import (
     get_news_service,
     initialize_services,
 )
-from .common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 # Setup application logger
 logger = LoggerFactory.get_logger(

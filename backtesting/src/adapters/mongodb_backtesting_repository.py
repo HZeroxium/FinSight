@@ -24,9 +24,8 @@ from ..interfaces.backtesting_repository import (
 from ..schemas.backtesting_schemas import (
     BacktestResult,
     BacktestHistoryItem,
-    StrategyType,
 )
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 
 
 class MongoDBBacktestingRepository(BacktestingRepository):

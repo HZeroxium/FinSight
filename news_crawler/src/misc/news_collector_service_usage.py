@@ -19,7 +19,7 @@ from ..services.news_service import NewsService
 from ..repositories.mongo_news_repository import MongoNewsRepository
 from ..schemas.news_schemas import NewsSource
 from ..core.news_collector_factory import CollectorType
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 # Initialize logging

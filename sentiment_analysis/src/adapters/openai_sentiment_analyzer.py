@@ -19,7 +19,7 @@ from ..models.sentiment import (
     SentimentLabel,
     SentimentScore,
 )
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
     name="openai-sentiment-analyzer",

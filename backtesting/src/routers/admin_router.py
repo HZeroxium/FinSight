@@ -25,7 +25,7 @@ from ..schemas.admin_schemas import (
     CleanupResponse,
 )
 from ..core.config import Settings
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from ..factories.admin_factory import get_admin_service
 from ..utils.datetime_utils import DateTimeUtils
 

@@ -24,7 +24,7 @@ from ..services.sentiment_service import SentimentService
 from ..models.sentiment import SentimentQueryFilter, SentimentAnalysisResult
 from ..interfaces.sentiment_analyzer import SentimentAnalysisError
 from ..utils.dependencies import get_sentiment_service
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
     name="sentiment-router", logger_type=LoggerType.STANDARD, level=LogLevel.INFO

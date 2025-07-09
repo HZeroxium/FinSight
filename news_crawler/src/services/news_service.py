@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from ..interfaces.news_repository_interface import NewsRepositoryInterface
 from ..schemas.news_schemas import NewsItem, NewsSource
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class NewsSearchRequest(BaseModel):

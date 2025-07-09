@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from ..interfaces.news_collector_interface import NewsCollectorInterface
 from ..schemas.news_schemas import NewsCollectionResult, NewsCollectorConfig
 from ..core.api_parsing_strategies import get_api_parsing_strategy
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 from ..utils.browser_session import BrowserSession
 
 

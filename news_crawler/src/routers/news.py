@@ -14,7 +14,7 @@ from ..schemas.news_schemas import (
     TimeRangeSearchParams,
 )
 from ..utils.dependencies import get_news_service
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 # Initialize router
 router = APIRouter(prefix="/news", tags=["news"])

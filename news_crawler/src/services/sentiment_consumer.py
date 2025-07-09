@@ -10,7 +10,7 @@ from typing import Dict, Any
 from ..schemas.message_schemas import SentimentResultMessageSchema
 from ..interfaces.message_broker import MessageBroker
 from ..core.config import settings
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
     name="sentiment-consumer", logger_type=LoggerType.STANDARD, level=LogLevel.INFO

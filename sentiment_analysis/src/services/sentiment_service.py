@@ -21,8 +21,8 @@ from ..models.sentiment import (
     SentimentScore,
 )
 from ..schemas.message_schemas import SentimentResultMessageSchema
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
-from ..common.cache import CacheFactory, CacheType
+from common.logger import LoggerFactory, LoggerType, LogLevel
+from common.cache import CacheFactory, CacheType
 from ..core.config import settings
 
 logger = LoggerFactory.get_logger(

@@ -22,7 +22,7 @@ from ..converters.ohlcv_converter import OHLCVConverter
 from ..converters.timeframe_converter import TimeFrameConverter
 from .timeframe_utils import TimeFrameUtils
 from .datetime_utils import DateTimeUtils
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from ..schemas.enums import RepositoryType
 
 

@@ -23,7 +23,7 @@ from ..schemas.backtesting_schemas import (
     BacktestHistoryItem,
     StrategyType,
 )
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 
 
 class FileBacktestingRepository(BacktestingRepository):

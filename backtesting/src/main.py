@@ -10,7 +10,7 @@ Data collection and cron jobs are handled by separate scripts.
 import uvicorn
 from .app import app
 from .core.config import settings
-from .common.logger import LoggerFactory
+from common.logger import LoggerFactory
 
 
 def main():

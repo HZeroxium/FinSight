@@ -16,7 +16,7 @@ from ..adapters.mongodb_backtesting_repository import MongoDBBacktestingReposito
 from ..services.backtesting_service import BacktestingService
 from ..services.backtesting_data_service import BacktestingDataService
 from ..services.market_data_service import MarketDataService
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from ..core.config import Settings
 
 

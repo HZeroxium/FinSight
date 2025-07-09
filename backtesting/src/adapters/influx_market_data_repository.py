@@ -22,7 +22,7 @@ except ImportError:
 
 from ..interfaces.market_data_repository import MarketDataRepository
 from ..interfaces.errors import RepositoryError, ValidationError
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVBatchSchema, OHLCVQuerySchema
 from ..models.ohlcv_models import OHLCVModelInfluxDB
 from ..converters.ohlcv_converter import OHLCVConverter

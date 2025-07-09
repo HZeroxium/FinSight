@@ -12,7 +12,7 @@ from ..schemas.common_schemas import HealthCheckSchema, ErrorResponseSchema
 from ..services.search_service import SearchService
 from ..interfaces.search_engine import SearchEngineError
 from ..utils.dependencies import get_search_service
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
     name="search-router", logger_type=LoggerType.STANDARD, level=LogLevel.INFO

@@ -19,7 +19,7 @@ from aio_pika import (
 )
 
 from ..interfaces.message_broker import MessageBroker, MessageBrokerError
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 
 logger = LoggerFactory.get_logger(
     name="rabbitmq-broker",

@@ -15,8 +15,8 @@ from ..schemas.search_schemas import (
     SearchResponseSchema,
     SearchResultSchema,
 )
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
-from ..common.cache import CacheFactory, CacheType
+from common.logger import LoggerFactory, LoggerType, LogLevel
+from common.cache import CacheFactory, CacheType
 from ..core.config import settings
 from ..schemas.message_schemas import ArticleMessageSchema
 

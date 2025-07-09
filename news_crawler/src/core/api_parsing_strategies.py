@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 import dateutil.parser
 
 from ..schemas.news_schemas import NewsItem, NewsSource
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
     name="api-parsing-strategies",

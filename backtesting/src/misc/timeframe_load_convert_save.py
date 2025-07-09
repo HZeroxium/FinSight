@@ -25,7 +25,7 @@ from ..interfaces.market_data_repository import MarketDataRepository
 from ..factories.market_data_repository_factory import MarketDataRepositoryFactory
 from ..services.market_data_service import MarketDataService
 from ..converters.timeframe_converter import TimeFrameConverter
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 
 
 class CrossRepositoryTimeFramePipeline:

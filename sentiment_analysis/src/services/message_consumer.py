@@ -11,7 +11,7 @@ import asyncio
 from ..interfaces.message_broker import MessageBroker
 from ..services.sentiment_service import SentimentService
 from ..core.config import settings
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 from ..schemas.message_schemas import ArticleMessageSchema, SentimentResultMessageSchema
 from ..models.sentiment import (
     SentimentAnalysisResult,

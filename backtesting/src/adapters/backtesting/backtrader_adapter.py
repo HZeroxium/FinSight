@@ -22,7 +22,7 @@ from ...schemas.backtesting_schemas import (
 )
 from ...schemas.ohlcv_schemas import OHLCVSchema
 from ...strategies.strategy_factory import StrategyFactory
-from ...common.logger import LoggerFactory
+from common.logger import LoggerFactory
 
 
 class BacktraderStrategy(bt.Strategy):

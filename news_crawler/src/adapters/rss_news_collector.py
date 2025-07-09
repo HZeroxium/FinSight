@@ -11,7 +11,7 @@ from ..schemas.news_schemas import (
     NewsCollectorConfig,
 )
 from ..core.rss_parsing_strategies import get_parsing_strategy
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class RSSNewsCollector(NewsCollectorInterface):

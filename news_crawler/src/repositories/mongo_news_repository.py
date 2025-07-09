@@ -15,7 +15,7 @@ from pymongo.errors import DuplicateKeyError
 from ..interfaces.news_repository_interface import NewsRepositoryInterface
 from ..schemas.news_schemas import NewsItem, NewsSource
 from ..models.news_model import NewsModel
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class MongoNewsRepository(NewsRepositoryInterface):

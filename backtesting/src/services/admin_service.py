@@ -14,7 +14,7 @@ from ..interfaces.market_data_repository import MarketDataRepository
 from ..services.market_data_service import MarketDataService
 from ..services.market_data_collector_service import MarketDataCollectorService
 from ..converters.timeframe_converter import TimeFrameConverter
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from ..schemas.admin_schemas import (
     AdminStatsResponse,
     DataEnsureRequest,

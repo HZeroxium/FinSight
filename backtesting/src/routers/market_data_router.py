@@ -20,7 +20,7 @@ from ..schemas.ohlcv_schemas import (
     OHLCVResponseSchema,
     OHLCVStatsSchema,
 )
-from ..common.logger import LoggerFactory
+from common.logger import LoggerFactory
 from ..factories.market_data_repository_factory import get_market_data_service
 from ..utils.datetime_utils import DateTimeUtils
 

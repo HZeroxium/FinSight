@@ -18,7 +18,7 @@ from .utils.dependencies import (
     get_sentiment_repository,
     get_message_broker,
 )
-from .common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 # Setup logging using custom logger factory
 logger = LoggerFactory.get_logger(

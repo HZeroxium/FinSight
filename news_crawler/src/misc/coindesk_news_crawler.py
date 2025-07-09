@@ -18,7 +18,7 @@ from ..adapters.api_coindesk_news_collector import APICoinDeskNewsCollector
 from ..schemas.news_schemas import NewsCollectorConfig, NewsSource
 from ..services.news_service import NewsService
 from ..repositories.mongo_news_repository import MongoNewsRepository
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class CoinDeskCrawler:

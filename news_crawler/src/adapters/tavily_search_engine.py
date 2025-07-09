@@ -13,7 +13,7 @@ from tavily import TavilyClient
 from pydantic import HttpUrl
 
 from ..interfaces.search_engine import SearchEngine, SearchEngineError
-from ..common.logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
     name="tavily-search-engine", logger_type=LoggerType.STANDARD, level=LogLevel.INFO
