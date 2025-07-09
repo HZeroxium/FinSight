@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # MongoDB configuration
     mongodb_url: str = "mongodb://localhost:27017"
-    mongodb_database: str = "news_crawler"
+    mongodb_database: str = "finsight_coindesk_news"
     mongodb_collection_articles: str = "articles"
     mongodb_collection_sources: str = "sources"
 
