@@ -24,6 +24,8 @@ from .timeframe_load_convert_save import (
 )
 from ..schemas.enums import CryptoSymbol, TimeFrame, Exchange, RepositoryType
 from ..utils.datetime_utils import DateTimeUtils
+from ..services.market_data_service import MarketDataService
+from ..core.config import settings
 from common.logger import LoggerFactory
 
 
@@ -39,9 +41,10 @@ class CrossRepositoryDemoConfig:
 
     # Default timeframes for conversion
     DEFAULT_TARGET_TIMEFRAMES = [
-        TimeFrame.HOUR_2.value,
+        TimeFrame.HOUR_1.value,
+        # TimeFrame.HOUR_2.value,
         TimeFrame.HOUR_4.value,
-        TimeFrame.HOUR_12.value,
+        # TimeFrame.HOUR_12.value,
         TimeFrame.DAY_1.value,
     ]
 
@@ -67,7 +70,7 @@ async def demo_mongodb_to_csv_conversion():
             "connection_string": "mongodb://localhost:27017/",
             "database_name": "finsight_market_data",
         },
-        target_repo_config={"base_directory": "data/demo_converted/mongodb_to_csv"},
+        target_repo_config={"base_directory": "data/market_data/mongodb_to_csv"},
     )
 
     # Create pipeline
@@ -385,7 +388,12 @@ async def demo_comprehensive_cross_repository():
         print("-" * 90)
         mongodb_to_csv_results = await demo_mongodb_to_csv_conversion()
 
-        # 3. Demonstrate CSV → MongoDB conversion
+        # 3. Demonstrate MongoDB → MongoDB conversion (timeframe updates)
+        print(f"\n{'🔄 MongoDB → MongoDB Conversion (Timeframe Updates)':<70}")
+        print("-" * 90)
+        mongodb_to_mongodb_results = await demo_mongodb_to_mongodb_conversion()
+
+        # 4. Demonstrate CSV → MongoDB conversion
         print(f"\n{'🔄 CSV → MongoDB Conversion':<70}")
         print("-" * 90)
         try:
@@ -395,7 +403,7 @@ async def demo_comprehensive_cross_repository():
             print("⚠️  CSV → MongoDB demo skipped (data not available)")
             csv_to_mongodb_results = None
 
-        # 4. Demonstrate bidirectional conversion
+        # 5. Demonstrate bidirectional conversion
         print(f"\n{'🔄 Bidirectional Conversion':<70}")
         print("-" * 90)
         try:
@@ -404,7 +412,7 @@ async def demo_comprehensive_cross_repository():
             logger.warning(f"Bidirectional demo skipped: {e}")
             print("⚠️  Bidirectional demo skipped")
 
-        # 5. Summary
+        # 6. Summary
         print("\n" + "=" * 90)
         print("📊 CROSS-REPOSITORY DEMO SUMMARY")
         print("=" * 90)
@@ -415,6 +423,13 @@ async def demo_comprehensive_cross_repository():
             )
         else:
             print("❌ MongoDB → CSV: Failed")
+
+        if mongodb_to_mongodb_results:
+            print(
+                f"✅ MongoDB → MongoDB: {mongodb_to_mongodb_results.get('success_rate', 0):.1f}% success rate"
+            )
+        else:
+            print("❌ MongoDB → MongoDB: Failed")
 
         if csv_to_mongodb_results:
             print(
@@ -431,6 +446,139 @@ async def demo_comprehensive_cross_repository():
         traceback.print_exc()
 
 
+async def demo_mongodb_to_mongodb_conversion():
+    """
+    Demonstrate MongoDB → MongoDB timeframe conversion for automatic timeframe updates.
+
+    This demo fetches available symbols from the database and converts existing 1h data
+    to other timeframes within the same MongoDB instance. This is useful for:
+    - Automatically updating larger timeframes without hitting rate limits
+    - Maintaining data consistency across timeframes
+    - Efficient storage and retrieval of aggregated data
+    """
+    logger = LoggerFactory.get_logger("MongoDBToMongoDBDemo")
+    logger.info("Starting MongoDB to MongoDB timeframe conversion demo")
+
+    print("\n" + "=" * 80)
+    print("MONGODB → MONGODB TIMEFRAME CONVERSION")
+    print("=" * 80)
+    print("Purpose: Convert existing 1h data to larger timeframes within same database")
+    print("Benefits: Avoid rate limits, maintain consistency, efficient aggregation")
+    print("-" * 80)
+
+    # Configure repositories (same MongoDB instance, different collections/prefixes)
+    config = CrossRepositoryConfig(
+        source_repo_type=RepositoryType.MONGODB,
+        target_repo_type=RepositoryType.MONGODB,
+        source_repo_config={
+            "connection_string": "mongodb://localhost:27017/",
+            "database_name": "finsight_market_data",
+            "collection_prefix": "ohlcv",  # Source: existing 1h data
+        },
+        target_repo_config={
+            "connection_string": "mongodb://localhost:27017/",
+            "database_name": "finsight_market_data",
+            "collection_prefix": "ohlcv_aggregated",  # Target: aggregated timeframes
+        },
+    )
+
+    # Create pipeline with target timeframes from settings
+    pipeline = create_cross_repository_pipeline(
+        config=config,
+        source_timeframe=TimeFrame.HOUR_1.value,
+        target_timeframes=[
+            TimeFrame.HOUR_2.value,
+            TimeFrame.HOUR_4.value,
+            TimeFrame.HOUR_6.value,
+            TimeFrame.HOUR_12.value,
+            TimeFrame.DAY_1.value,
+        ],  # Use configured target timeframes
+    )
+
+    try:
+        # Get available symbols from the source repository using market data service
+        source_service = MarketDataService(pipeline.source_repository)
+        exchange = Exchange.BINANCE.value
+
+        logger.info(f"Fetching available symbols for {exchange}")
+        available_symbols = await source_service.get_available_symbols(exchange)
+
+        if not available_symbols:
+            logger.warning("No symbols found in source repository")
+            print("⚠️  No symbols found in source repository")
+            return None
+
+        # Limit symbols for demo purposes (configurable)
+        max_symbols_for_demo = 5  # getattr(settings, 'demo_max_symbols', 5)
+        demo_symbols = available_symbols[:max_symbols_for_demo]
+
+        logger.info(
+            f"Found {len(available_symbols)} symbols, processing {len(demo_symbols)} for demo"
+        )
+        print(f"📊 Found {len(available_symbols)} symbols in database")
+        print(f"🔄 Processing {len(demo_symbols)} symbols for demo: {demo_symbols}")
+
+        # Date range for conversion (configurable)
+        demo_days_back = 7  # getattr(settings, 'demo_days_back', 7)
+        end_date = DateTimeUtils.now_iso()
+        start_date = DateTimeUtils.to_iso_string(
+            DateTimeUtils.now_utc() - timedelta(days=demo_days_back)
+        )
+
+        print(f"📅 Date range: Last {demo_days_back} days ({start_date} to {end_date})")
+        print(f"⏱️  Source timeframe: {TimeFrame.HOUR_1.value}")
+        print(
+            f"🎯 Target timeframes: {[
+            TimeFrame.HOUR_2.value,
+            TimeFrame.HOUR_4.value,
+            TimeFrame.HOUR_6.value,
+            TimeFrame.HOUR_12.value,
+            TimeFrame.DAY_1.value,
+        ]}"
+        )
+        print()
+
+        # Run the pipeline
+        results = await pipeline.run_cross_repository_pipeline(
+            symbols=demo_symbols,
+            exchange=exchange,
+            start_date=start_date,
+            end_date=end_date,
+            overwrite_existing=True,  # Allow overwriting for updates
+        )
+
+        # Display detailed results
+        print("📊 CONVERSION RESULTS")
+        print("-" * 40)
+        print(f"Symbols processed: {results.get('symbols_processed', 0)}")
+        print(f"Success rate: {results.get('success_rate', 0):.1f}%")
+        print(
+            f"Total conversions: {results.get('successful_conversions', 0)}/{results.get('total_conversions', 0)}"
+        )
+
+        # Show per-symbol results if available
+        if "symbol_results" in results:
+            print("\n📈 Per-Symbol Results:")
+            for symbol_result in results["symbol_results"][:3]:  # Show first 3
+                symbol = symbol_result.get("symbol", "Unknown")
+                success_count = symbol_result.get("successful_conversions", 0)
+                total_count = symbol_result.get("total_conversions", 0)
+                print(f"  {symbol}: {success_count}/{total_count} timeframes converted")
+
+        # Show target repository statistics
+        target_service = MarketDataService(pipeline.target_repository)
+        target_symbols = await target_service.get_available_symbols(exchange)
+        print(f"\n🎯 Target repository now contains {len(target_symbols)} symbols")
+
+        logger.info("MongoDB to MongoDB conversion completed successfully")
+        return results
+
+    except Exception as e:
+        logger.error(f"MongoDB to MongoDB demo failed: {str(e)}")
+        print(f"❌ MongoDB → MongoDB conversion failed: {str(e)}")
+        return None
+
+
 async def main():
     """Main demonstration entry point"""
 
@@ -441,14 +589,15 @@ async def main():
     print("This demo will showcase:")
     print("1. 📊 Pipeline capabilities and statistics")
     print("2. 🔄 MongoDB → CSV conversion")
-    print("3. 🔄 CSV → MongoDB conversion")
-    print("4. ↔️  Bidirectional conversion workflows")
-    print("5. 📈 Cross-repository timeframe aggregation")
+    print("3. 🔄 MongoDB → MongoDB conversion (automatic timeframe updates)")
+    print("4. 🔄 CSV → MongoDB conversion")
+    print("5. ↔️  Bidirectional conversion workflows")
+    print("6. 📈 Cross-repository timeframe aggregation")
     print()
 
     try:
         # await demo_comprehensive_cross_repository()
-        await demo_mongodb_to_csv_conversion()
+        await demo_mongodb_to_mongodb_conversion()
 
     except KeyboardInterrupt:
         print("\n⏹️  Demo interrupted by user")
