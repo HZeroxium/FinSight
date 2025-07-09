@@ -374,14 +374,14 @@ class MarketDataCollectorService:
         try:
             # Get symbols and timeframes to process
             if symbols is None:
-                symbols = self.data_service.get_available_symbols(exchange)
+                symbols = await self.data_service.get_available_symbols(exchange)
                 if not symbols:
                     # Get from collector if none in database
-                    symbols = self.collector.get_available_symbols()
+                    symbols = await self.collector.get_available_symbols()
                     symbols = symbols[:5]  # Limit for demo
 
             if timeframes is None:
-                timeframes = self.collector.get_available_timeframes()
+                timeframes = await self.collector.get_available_timeframes()
                 timeframes = timeframes[:2]  # Limit for demo
 
             scan_result["total_combinations"] = len(symbols) * len(timeframes)

@@ -38,7 +38,7 @@ class APICoinDeskNewsCollector(NewsCollectorInterface):
         self,
         max_items: Optional[int] = None,
         to_timestamp: Optional[int] = None,
-        limit: int = 10,
+        limit: Optional[int] = None,
         lang: str = "EN",
         source_ids: Optional[List[str]] = None,
         categories: Optional[List[str]] = None,
@@ -48,9 +48,9 @@ class APICoinDeskNewsCollector(NewsCollectorInterface):
         Collect news items from CoinDesk API endpoint
 
         Args:
-            max_items: Maximum number of items to collect
+            max_items: Maximum number of items to collect (takes precedence)
             to_timestamp: Unix timestamp for pagination (get articles before this time)
-            limit: Number of items per request
+            limit: Number of items per request (fallback, usually for API pagination)
             lang: Language filter (EN, ES, TR, FR, JP, PT)
             source_ids: List of source keys to include
             categories: List of categories to include
@@ -59,10 +59,12 @@ class APICoinDeskNewsCollector(NewsCollectorInterface):
         Returns:
             NewsCollectionResult with collected items
         """
+        # Priority: max_items > config.max_items > limit > default
         actual_limit = (
-            min(max_items or self.config.max_items or limit, limit)
-            if max_items
-            else limit
+            max_items
+            or self.config.max_items
+            or limit
+            or 10  # Default fallback for API pagination
         )
 
         self.logger.info(

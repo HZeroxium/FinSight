@@ -33,21 +33,28 @@ class APICoinTelegraphNewsCollector(NewsCollectorInterface):
         self.logger.info(f"Initialized API collector for {config.source.value}")
 
     async def collect_news(
-        self, max_items: Optional[int] = None, offset: int = 0, limit: int = 10
+        self,
+        max_items: Optional[int] = None,
+        offset: int = 0,
+        limit: Optional[int] = None,
     ) -> NewsCollectionResult:
         """
         Collect news items from API endpoint with anti-detection measures
 
         Args:
-            max_items: Maximum number of items to collect
+            max_items: Maximum number of items to collect (takes precedence)
             offset: Starting offset for pagination
-            limit: Number of items per request
+            limit: Number of items per request (fallback, usually for API pagination)
 
         Returns:
             NewsCollectionResult with collected items
         """
+        # Priority: max_items > config.max_items > limit > default
         actual_limit = (
-            min(max_items or self.config.max_items, limit) if max_items else limit
+            max_items
+            or self.config.max_items
+            or limit
+            or 10  # Default fallback for API pagination
         )
 
         self.logger.info(

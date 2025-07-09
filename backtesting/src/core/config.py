@@ -105,6 +105,10 @@ class Settings(BaseSettings):
         default="market_data_job.pid", env="CRON_JOB_PID_FILE"
     )
 
+    # Demo configuration
+    demo_max_symbols: int = Field(default=5, env="DEMO_MAX_SYMBOLS")
+    demo_days_back: int = Field(default=7, env="DEMO_DAYS_BACK")
+
     @field_validator("default_symbols", mode="before")
     @classmethod
     def parse_symbols(cls, v):
