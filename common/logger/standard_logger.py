@@ -138,6 +138,13 @@ class StandardLogger(LoggerInterface):
 
     def _setup_file_handler(self, log_file: str) -> logging.FileHandler:
         """Setup file handler without colors and with level filtering"""
+        # Create directory if it doesn't exist
+        import os
+
+        log_dir = os.path.dirname(log_file)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+
         file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
 
         # Add level filter for file if file_level is set

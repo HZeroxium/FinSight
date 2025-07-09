@@ -27,3 +27,4 @@ scripts
 deprecated/
 postman_collection.json
 .github
+common/finsight_common.egg-info/
