@@ -275,7 +275,7 @@ class CoinDeskParallelCrawler:
                 logger_type=LoggerType.STANDARD,
                 level=LogLevel.INFO,
                 file_level=LogLevel.DEBUG,
-                log_file=f"logs/coindesk_chunk_{chunk_id}.log",
+                log_file=f"logs/coindesk_chunks/coindesk_chunk_{chunk_id}.log",
             )
 
             try:

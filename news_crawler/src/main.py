@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .core.config import settings
-from .routers import search, news
+from .routers import news_router, search
 from .services.sentiment_consumer import SentimentConsumerService
 from .utils.dependencies import (
     get_search_service,
@@ -159,7 +159,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(search.router)
-app.include_router(news.router)
+app.include_router(news_router.router)
 
 
 @app.get("/")
