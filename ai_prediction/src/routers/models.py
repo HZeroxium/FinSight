@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 from ..services.model_service import ModelService
 from ..schemas.base_schemas import ModelInfoResponse, BaseResponse
 from ..schemas.enums import ModelType, TimeFrame
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 
 router = APIRouter(prefix="/models", tags=["models"])
 model_service = ModelService()

@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 from ..models.model_facade import ModelFacade
 from ..schemas.enums import ModelType, TimeFrame
 from ..schemas.base_schemas import ModelInfoResponse
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
 
 

@@ -14,7 +14,7 @@ except ImportError:
     TA_AVAILABLE = False
 
 from ..interfaces.feature_engineering_interface import IFeatureEngineering
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 
 
 class BasicFeatureEngineering(IFeatureEngineering):
@@ -171,8 +171,6 @@ class BasicFeatureEngineering(IFeatureEngineering):
         if self.add_datetime_features and "timestamp" in df.columns:
             df = self._add_datetime_features(df)
 
-        
-        
         # Select only specified features (if provided) plus any new technical indicators
         if self.feature_columns:
             available_features = [

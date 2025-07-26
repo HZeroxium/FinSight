@@ -13,7 +13,7 @@ from ..data.feature_engineering import BasicFeatureEngineering
 from ..schemas.enums import TimeFrame
 from ..schemas.model_schemas import ModelConfig
 from ..core.config import get_settings
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 
 
 class DataService:

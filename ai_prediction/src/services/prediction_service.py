@@ -8,7 +8,7 @@ from ..models.model_facade import ModelFacade
 from ..services.data_service import DataService
 from ..schemas.model_schemas import PredictionRequest, PredictionResponse
 from ..schemas.enums import ModelType, TimeFrame
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
 
 

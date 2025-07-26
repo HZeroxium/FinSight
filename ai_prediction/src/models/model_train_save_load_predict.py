@@ -15,7 +15,7 @@ from typing import Dict, Any
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from ..logger.logger_factory import LoggerFactory, LogLevel
+from common.logger.logger_factory import LoggerFactory, LogLevel
 from .model_facade import ModelFacade
 from ..schemas.enums import ModelType, TimeFrame
 from ..schemas.model_schemas import ModelConfig

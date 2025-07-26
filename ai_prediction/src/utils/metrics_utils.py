@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 
 
 class MetricUtils:

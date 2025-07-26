@@ -8,7 +8,7 @@ from typing import Any, Optional, Callable
 
 from .cache_interface import CacheInterface
 from .cache_factory import CacheFactory, CacheType
-from ..logger import LoggerFactory, LoggerType, LogLevel
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 # Create logger for cache decorators
 logger = LoggerFactory.get_logger(

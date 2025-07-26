@@ -10,7 +10,7 @@ from .core.config import get_settings
 from .routers import training_router, prediction_router
 from .routers.models import router as models_router
 from .schemas.base_schemas import HealthResponse
-from .logger.logger_factory import LoggerFactory
+from common.logger import LoggerFactory
 
 
 @asynccontextmanager

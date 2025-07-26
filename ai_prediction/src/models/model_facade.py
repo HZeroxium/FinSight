@@ -15,7 +15,7 @@ from ..models.model_factory import ModelFactory
 from ..schemas.enums import ModelType, TimeFrame
 from ..schemas.model_schemas import ModelConfig, ModelInfo
 from ..utils.model_utils import ModelUtils
-from ..logger.logger_factory import LoggerFactory, LogLevel
+from common.logger.logger_factory import LoggerFactory, LogLevel
 
 
 class ModelFacade:

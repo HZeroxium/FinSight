@@ -5,7 +5,7 @@ import pandas as pd
 from pathlib import Path
 from ..interfaces.data_loader_interface import IDataLoader
 from ..schemas.enums import TimeFrame
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
 
 

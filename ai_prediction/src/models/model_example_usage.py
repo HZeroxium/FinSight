@@ -19,7 +19,7 @@ from .model_facade import ModelFacade
 from ..data.data_loader import CSVDataLoader
 from ..data.feature_engineering import BasicFeatureEngineering
 from ..schemas.enums import ModelType, TimeFrame
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 
 from ..utils.visualization_utils import VisualizationUtils
 from ..utils.backtest_strategy_utils import BacktestEngine, HyperparameterTuner
@@ -50,7 +50,7 @@ from .model_facade import ModelFacade
 from ..data.data_loader import CSVDataLoader
 from ..data.feature_engineering import BasicFeatureEngineering
 from ..schemas.enums import ModelType, TimeFrame
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 
 # Import utilities - these will be created if they don't exist
 try:

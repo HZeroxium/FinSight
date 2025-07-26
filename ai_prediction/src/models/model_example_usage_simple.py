@@ -18,7 +18,7 @@ from pathlib import Path
 from .model_facade import ModelFacade
 from ..data.data_loader import CSVDataLoader
 from ..schemas.enums import ModelType, TimeFrame
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 from ..utils.visualization_utils import VisualizationUtils
 
 

@@ -9,7 +9,7 @@ from .adapters.transformer_adapter import TransformerAdapter
 from .adapters.enhanced_transformer_adapter import (
     EnhancedTransformerAdapter,
 )  # New import
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 
 
 class ModelFactory:

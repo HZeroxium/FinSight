@@ -13,7 +13,7 @@ from datetime import datetime
 
 from ..schemas.enums import ModelType, TimeFrame
 from ..core.config import get_settings
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 
 
 class ModelUtils:

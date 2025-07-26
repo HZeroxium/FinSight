@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 from ..services.training_service import TrainingService
 from ..schemas.model_schemas import TrainingRequest, TrainingResponse
-from ..logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 
 router = APIRouter(prefix="/training", tags=["training"])
 training_service = TrainingService()

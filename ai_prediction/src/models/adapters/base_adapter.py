@@ -16,7 +16,7 @@ import json
 from sklearn.preprocessing import StandardScaler
 
 from ...interfaces.model_interface import ITimeSeriesModel
-from ...logger.logger_factory import LoggerFactory
+from common.logger import LoggerFactory
 from ...utils.metrics_utils import MetricUtils
 
 
