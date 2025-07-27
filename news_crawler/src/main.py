@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from .core.config import settings
 from .routers import news_router, search
 from .services.sentiment_consumer import SentimentConsumerService
+from .grpc_services import create_grpc_server, GrpcServer
 from .utils.dependencies import (
     get_search_service,
     get_message_broker,
@@ -34,20 +35,29 @@ logger = LoggerFactory.get_logger(
     log_file=f"{settings.log_file_path}news_crawler_main.log",
 )
 
-# Global variable for sentiment consumer
+# Global variables for services
 sentiment_consumer: SentimentConsumerService = None
+grpc_server: GrpcServer = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Application lifespan manager with improved error handling and startup sequence.
+    Includes both REST API and gRPC server initialization.
     """
-    global sentiment_consumer
+    global sentiment_consumer, grpc_server
 
     logger.info(f"🚀 Starting {settings.app_name} v1.0.0")
     logger.info(f"📊 Environment: {settings.environment}")
-    logger.info(f"🌐 Host: {settings.host}:{settings.port}")
+    logger.info(f"🌐 FastAPI Host: {settings.host}:{settings.port}")
+
+    # Check if gRPC is enabled
+    grpc_enabled = getattr(settings, "enable_grpc", True)
+    grpc_port = getattr(settings, "grpc_port", 50051)
+
+    if grpc_enabled:
+        logger.info(f"🔌 gRPC Server: {settings.host}:{grpc_port}")
 
     startup_errors = []
 
@@ -60,8 +70,23 @@ async def lifespan(app: FastAPI):
         # Step 2: Wait a moment for services to stabilize
         await asyncio.sleep(0.5)
 
-        # Step 3: Initialize sentiment consumer with improved error handling
-        logger.info("📋 Step 2: Initializing sentiment consumer...")
+        # Step 3: Initialize gRPC server if enabled
+        if grpc_enabled:
+            logger.info("📋 Step 2: Initializing gRPC server...")
+            try:
+                news_service = get_news_service()
+                grpc_server = await create_grpc_server(
+                    news_service=news_service, host=settings.host, port=grpc_port
+                )
+                await grpc_server.start()
+                logger.info("✅ gRPC server started successfully")
+            except Exception as grpc_error:
+                logger.error(f"⚠️ Failed to start gRPC server: {grpc_error}")
+                startup_errors.append(f"gRPC server error: {str(grpc_error)}")
+                grpc_server = None
+
+        # Step 4: Initialize sentiment consumer with improved error handling
+        logger.info("📋 Step 3: Initializing sentiment consumer...")
         try:
             message_broker = get_message_broker()
             sentiment_consumer = SentimentConsumerService(message_broker=message_broker)
@@ -83,8 +108,8 @@ async def lifespan(app: FastAPI):
             startup_errors.append(f"Sentiment consumer error: {str(consumer_error)}")
             sentiment_consumer = None
 
-        # Step 4: Health check for search service (with timeout and error handling)
-        logger.info("📋 Step 3: Performing health checks...")
+        # Step 5: Health check for search service (with timeout and error handling)
+        logger.info("📋 Step 4: Performing health checks...")
         try:
             search_service = get_search_service()
 
@@ -111,7 +136,12 @@ async def lifespan(app: FastAPI):
             logger.warning(f"⚠️ Service started with warnings: {startup_errors}")
             logger.info("🔧 Service is operational but some components may be degraded")
         else:
-            logger.info("🎉 News Crawler Service is fully operational!")
+            if grpc_enabled:
+                logger.info(
+                    "🎉 News Crawler Service is fully operational (REST + gRPC)!"
+                )
+            else:
+                logger.info("🎉 News Crawler Service is fully operational (REST only)!")
 
     except Exception as e:
         logger.error(f"❌ Critical startup error: {str(e)}")
@@ -124,6 +154,12 @@ async def lifespan(app: FastAPI):
     # Cleanup phase
     logger.info("🛑 Shutting down services...")
     try:
+        # Stop gRPC server first
+        if grpc_server:
+            await grpc_server.stop()
+            logger.info("✅ gRPC server stopped")
+
+        # Stop sentiment consumer
         if sentiment_consumer:
             await sentiment_consumer.stop_consuming()
             logger.info("✅ Sentiment consumer stopped")
@@ -184,8 +220,8 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Comprehensive health check endpoint."""
-    global sentiment_consumer
+    """Comprehensive health check endpoint including gRPC status."""
+    global sentiment_consumer, grpc_server
 
     health_status = {
         "status": "healthy",
@@ -194,7 +230,22 @@ async def health_check():
         "timestamp": None,
         "components": {},
         "metrics": {},
+        "protocols": {
+            "rest_api": {"enabled": True, "port": settings.port, "status": "healthy"}
+        },
     }
+
+    # Add gRPC status if enabled
+    grpc_enabled = getattr(settings, "enable_grpc", True)
+    if grpc_enabled:
+        grpc_status = (
+            "healthy" if grpc_server and grpc_server.is_running() else "stopped"
+        )
+        health_status["protocols"]["grpc"] = {
+            "enabled": grpc_enabled,
+            "port": getattr(settings, "grpc_port", 50051),
+            "status": grpc_status,
+        }
 
     try:
         # Check search service
@@ -222,6 +273,10 @@ async def health_check():
             for k, v in health_status["components"].items()
             if v in ["unhealthy", "stopped"]
         ]
+
+        # Check if gRPC is supposed to be running but isn't
+        if grpc_enabled and health_status["protocols"]["grpc"]["status"] == "stopped":
+            unhealthy_components.append("grpc_server")
 
         if unhealthy_components:
             health_status["status"] = "degraded"

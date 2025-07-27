@@ -14,6 +14,7 @@ class NewsSearchRequest(BaseModel):
 
     source: Optional[NewsSource] = Field(None, description="Filter by news source")
     keywords: Optional[List[str]] = Field(None, description="Keywords to search")
+    tags: Optional[List[str]] = Field(None, description="Tags to filter by")
     start_date: Optional[datetime] = Field(None, description="Start date filter")
     end_date: Optional[datetime] = Field(None, description="End date filter")
     limit: int = Field(100, ge=1, le=1000, description="Maximum items to return")
@@ -168,6 +169,7 @@ class NewsService:
             return await self.repository.search_news(
                 source=search_request.source,
                 keywords=search_request.keywords,
+                tags=search_request.tags,
                 start_date=search_request.start_date,
                 end_date=search_request.end_date,
                 limit=search_request.limit,
@@ -262,6 +264,8 @@ class NewsService:
     async def count_news(
         self,
         source: Optional[NewsSource] = None,
+        keywords: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
     ) -> int:
@@ -270,6 +274,8 @@ class NewsService:
 
         Args:
             source: Filter by news source
+            keywords: Keywords to search for
+            tags: Tags to filter by
             start_date: Start date filter
             end_date: End date filter
 
@@ -278,11 +284,51 @@ class NewsService:
         """
         try:
             return await self.repository.count_news(
-                source=source, start_date=start_date, end_date=end_date
+                source=source,
+                keywords=keywords,
+                tags=tags,
+                start_date=start_date,
+                end_date=end_date,
             )
         except Exception as e:
             self.logger.error(f"Failed to count news: {str(e)}")
             return 0
+
+    async def get_news_by_tags(
+        self, tags: List[str], limit: int = 100, offset: int = 0
+    ) -> List[NewsItem]:
+        """
+        Get news items matching specific tags
+
+        Args:
+            tags: Tags to filter by
+            limit: Maximum number of items
+            offset: Number of items to skip
+
+        Returns:
+            List[NewsItem]: Matching news items
+        """
+        search_request = NewsSearchRequest(tags=tags, limit=limit, offset=offset)
+        return await self.search_news(search_request)
+
+    async def get_unique_tags(
+        self, source: Optional[NewsSource] = None, limit: int = 100
+    ) -> List[str]:
+        """
+        Get unique tags from news items
+
+        Args:
+            source: Optional source filter
+            limit: Maximum number of tags to return
+
+        Returns:
+            List[str]: Unique tags sorted by frequency
+        """
+        try:
+            return await self.repository.get_unique_tags(source=source, limit=limit)
+        except Exception as e:
+            self.logger.error(f"Failed to get unique tags: {str(e)}")
+            return []
 
     async def delete_news_item(self, item_id: str) -> bool:
         """

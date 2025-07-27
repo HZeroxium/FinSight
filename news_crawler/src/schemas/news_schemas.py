@@ -134,10 +134,44 @@ class TimeRangeSearchParams(BaseModel):
         return values
 
 
+class NewsItemResponse(BaseModel):
+    """Streamlined news item response for frontend consumption"""
+
+    source: str = Field(..., description="News source identifier")
+    title: str = Field(..., description="Article title")
+    url: HttpUrl = Field(..., description="Article URL")
+    description: Optional[str] = Field(None, description="Article description/summary")
+    published_at: datetime = Field(..., description="Publication timestamp")
+    author: Optional[str] = Field(None, description="Article author")
+    tags: List[str] = Field(default_factory=list, description="Article tags")
+    sentiment: Optional[str] = Field(None, description="Article sentiment")
+
+    @classmethod
+    def from_news_item(cls, news_item: NewsItem) -> "NewsItemResponse":
+        """Convert NewsItem to NewsItemResponse"""
+        source_override = None
+        if news_item.metadata:
+            si = news_item.metadata.get("source_info")
+            if isinstance(si, dict):
+                source_override = si.get("source_key")
+        return cls(
+            source=source_override or news_item.source,
+            title=news_item.title,
+            url=news_item.url,
+            description=news_item.description,
+            published_at=news_item.published_at,
+            author=news_item.author,
+            tags=news_item.tags or [],
+            sentiment=(
+                news_item.metadata.get("sentiment") if news_item.metadata else None
+            ),
+        )
+
+
 class NewsResponse(BaseModel):
     """Standardized news response"""
 
-    items: List[NewsItem] = Field(..., description="List of news items")
+    items: List[NewsItemResponse] = Field(..., description="List of news items")
     total_count: int = Field(..., description="Total number of matching items")
     limit: int = Field(..., description="Applied limit")
     offset: int = Field(..., description="Applied offset")

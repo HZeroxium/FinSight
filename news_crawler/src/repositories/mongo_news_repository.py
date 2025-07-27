@@ -199,12 +199,13 @@ class MongoNewsRepository(NewsRepositoryInterface):
         self,
         source: Optional[NewsSource] = None,
         keywords: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> List[NewsItem]:
-        """Search news items with filters"""
+        """Search news items with filters including tags"""
         try:
             # Build query filter
             query_filter = {}
@@ -224,6 +225,10 @@ class MongoNewsRepository(NewsRepositoryInterface):
                 # Use text search for keywords
                 search_text = " ".join(keywords)
                 query_filter["$text"] = {"$search": search_text}
+
+            if tags:
+                # Filter by tags - documents must contain all specified tags
+                query_filter["tags"] = {"$all": tags}
 
             # Execute query
             cursor = (
@@ -264,10 +269,12 @@ class MongoNewsRepository(NewsRepositoryInterface):
     async def count_news(
         self,
         source: Optional[NewsSource] = None,
+        keywords: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
     ) -> int:
-        """Count news items with filters"""
+        """Count news items with filters including tags"""
         try:
             query_filter = {}
 
@@ -282,12 +289,53 @@ class MongoNewsRepository(NewsRepositoryInterface):
                     date_filter["$lte"] = end_date
                 query_filter["published_at"] = date_filter
 
+            if keywords:
+                search_text = " ".join(keywords)
+                query_filter["$text"] = {"$search": search_text}
+
+            if tags:
+                query_filter["tags"] = {"$all": tags}
+
             count = await self.collection.count_documents(query_filter)
+
+            self.logger.debug(f"Found {count} total news items for count query")
             return count
 
         except Exception as e:
             self.logger.error(f"Failed to count news items: {e}")
             return 0
+
+    async def get_unique_tags(
+        self, source: Optional[NewsSource] = None, limit: int = 100
+    ) -> List[str]:
+        """Get unique tags from news items"""
+        try:
+            pipeline = []
+
+            # Add source filter if specified
+            if source:
+                pipeline.append({"$match": {"source": source.value}})
+
+            # Unwind tags array and group to get unique tags
+            pipeline.extend(
+                [
+                    {"$unwind": "$tags"},
+                    {"$group": {"_id": "$tags", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                    {"$limit": limit},
+                    {"$project": {"_id": 1}},
+                ]
+            )
+
+            cursor = self.collection.aggregate(pipeline)
+            tags = [doc["_id"] for doc in await cursor.to_list(length=limit)]
+
+            self.logger.debug(f"Found {len(tags)} unique tags")
+            return tags
+
+        except Exception as e:
+            self.logger.error(f"Failed to get unique tags: {e}")
+            return []
 
     async def delete_news_item(self, item_id: str) -> bool:
         """Delete a news item"""

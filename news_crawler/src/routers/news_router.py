@@ -1,6 +1,6 @@
 # routers/news.py
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from fastapi.responses import JSONResponse
@@ -8,12 +8,14 @@ from fastapi.responses import JSONResponse
 from ..services.news_service import NewsService, NewsSearchRequest
 from ..schemas.news_schemas import (
     NewsItem,
+    NewsItemResponse,
     NewsSource,
     NewsResponse,
     NewsStatsResponse,
     TimeRangeSearchParams,
 )
 from ..utils.dependencies import get_news_service
+from ..utils.response_converters import build_news_response, build_filters_summary
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
 # Initialize router
@@ -33,6 +35,7 @@ logger = LoggerFactory.get_logger(
 async def search_news(
     source: Optional[NewsSource] = Query(None, description="Filter by news source"),
     keywords: Optional[str] = Query(None, description="Comma-separated keywords"),
+    tags: Optional[str] = Query(None, description="Comma-separated tags"),
     start_date: Optional[datetime] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[datetime] = Query(None, description="End date (ISO format)"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum items to return"),
@@ -44,6 +47,7 @@ async def search_news(
 
     - **source**: Filter by specific news source
     - **keywords**: Search in title and description (comma-separated)
+    - **tags**: Filter by tags (comma-separated)
     - **start_date**: Filter articles from this date onwards
     - **end_date**: Filter articles up to this date
     - **limit**: Maximum number of articles to return (1-1000)
@@ -51,18 +55,23 @@ async def search_news(
     """
     try:
         logger.info(
-            f"Searching news with filters: source={source}, keywords={keywords}"
+            f"Searching news with filters: source={source}, keywords={keywords}, tags={tags}"
         )
 
-        # Parse keywords
+        # Parse keywords and tags
         keyword_list = None
         if keywords:
             keyword_list = [k.strip() for k in keywords.split(",") if k.strip()]
+
+        tag_list = None
+        if tags:
+            tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
         # Create search request
         search_request = NewsSearchRequest(
             source=source,
             keywords=keyword_list,
+            tags=tag_list,
             start_date=start_date,
             end_date=end_date,
             limit=limit,
@@ -74,24 +83,28 @@ async def search_news(
 
         # Get total count for pagination
         total_count = await news_service.count_news(
-            source=source, start_date=start_date, end_date=end_date
+            source=source,
+            keywords=keyword_list,
+            tags=tag_list,
+            start_date=start_date,
+            end_date=end_date,
         )
 
-        # Prepare response
-        filters_applied = {
-            "source": source.value if source else None,
-            "keywords": keyword_list,
-            "start_date": start_date,
-            "end_date": end_date,
-            "has_date_filter": start_date is not None or end_date is not None,
-        }
+        # Build filters summary
+        filters_applied = build_filters_summary(
+            source=source.value if source else None,
+            keywords=keyword_list,
+            tags=tag_list,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
-        response = NewsResponse(
+        # Build response using converter
+        response = build_news_response(
             items=items,
             total_count=total_count,
             limit=limit,
             offset=offset,
-            has_more=(offset + len(items)) < total_count,
             filters_applied=filters_applied,
         )
 
@@ -132,19 +145,20 @@ async def get_recent_news(
             source=source, start_date=start_date
         )
 
-        filters_applied = {
-            "time_range_hours": hours,
-            "source": source.value if source else None,
-            "start_date": start_date,
-            "end_date": datetime.now(timezone.utc),
-        }
+        # Build filters summary
+        filters_applied = build_filters_summary(
+            source=source.value if source else None,
+            hours=hours,
+            start_date=start_date,
+            end_date=datetime.now(timezone.utc),
+        )
 
-        response = NewsResponse(
+        # Build response using converter
+        response = build_news_response(
             items=items,
             total_count=total_count,
             limit=limit,
             offset=0,
-            has_more=len(items) >= limit and total_count > limit,
             filters_applied=filters_applied,
         )
 
@@ -215,12 +229,11 @@ async def search_by_time_range(
             "optimization": "time-range-optimized",
         }
 
-        response = NewsResponse(
+        response = build_news_response(
             items=items,
             total_count=total_count,
             limit=params.limit,
             offset=params.offset,
-            has_more=(params.offset + len(items)) < total_count,
             filters_applied=filters_applied,
         )
 
@@ -378,15 +391,124 @@ async def search_by_keywords(
         raise HTTPException(status_code=500, detail=f"Keyword search failed: {str(e)}")
 
 
-@router.get("/{item_id}", response_model=NewsItem)
+@router.get("/by-tag/{tags}", response_model=NewsResponse)
+async def get_news_by_tags(
+    tags: str = Path(..., description="Comma-separated tags"),
+    source: Optional[NewsSource] = Query(None, description="Optional source filter"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum items to return"),
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
+    hours: Optional[int] = Query(None, ge=1, le=8760, description="Hours to look back"),
+    news_service: NewsService = Depends(get_news_service),
+) -> NewsResponse:
+    """
+    Get news articles by tags with optional filters
+
+    - **tags**: Comma-separated tags to filter by
+    - **source**: Optional source filter
+    - **limit**: Maximum number of articles to return
+    - **offset**: Number of articles to skip for pagination
+    - **hours**: Optional time filter (hours to look back)
+    """
+    try:
+        logger.info(f"Getting news by tags: {tags}")
+
+        # Parse tags
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+        if not tag_list:
+            raise HTTPException(status_code=400, detail="At least one tag is required")
+
+        # Calculate date range if hours specified
+        start_date = None
+        if hours:
+            start_date = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+        # Create search request
+        search_request = NewsSearchRequest(
+            source=source,
+            tags=tag_list,
+            start_date=start_date,
+            limit=limit,
+            offset=offset,
+        )
+
+        # Execute search
+        items = await news_service.search_news(search_request)
+
+        # Get total count
+        total_count = await news_service.count_news(
+            source=source,
+            tags=tag_list,
+            start_date=start_date,
+        )
+
+        # Build filters summary
+        filters_applied = build_filters_summary(
+            source=source.value if source else None,
+            tags=tag_list,
+            hours=hours,
+            start_date=start_date,
+        )
+
+        # Build response using converter
+        response = build_news_response(
+            items=items,
+            total_count=total_count,
+            limit=limit,
+            offset=offset,
+            filters_applied=filters_applied,
+        )
+
+        logger.info(f"Tag search completed: {len(items)} items")
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error searching by tags: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Tag search failed: {str(e)}")
+
+
+@router.get("/tags/available", response_model=Dict[str, Any])
+async def get_available_tags(
+    source: Optional[NewsSource] = Query(None, description="Optional source filter"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum tags to return"),
+    news_service: NewsService = Depends(get_news_service),
+) -> Dict[str, Any]:
+    """
+    Get available tags from news articles
+
+    - **source**: Optional source filter
+    - **limit**: Maximum number of tags to return (sorted by frequency)
+    """
+    try:
+        logger.info(f"Getting available tags for source: {source}")
+
+        tags = await news_service.get_unique_tags(source=source, limit=limit)
+
+        response = {
+            "tags": tags,
+            "total_count": len(tags),
+            "source_filter": source.value if source else None,
+            "limit": limit,
+        }
+
+        logger.info(f"Available tags retrieved: {len(tags)} tags")
+        return response
+
+    except Exception as e:
+        logger.error(f"Error getting available tags: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get tags: {str(e)}")
+
+
+@router.get("/{item_id}", response_model=NewsItemResponse)
 async def get_news_item(
     item_id: str = Path(..., description="News item ID"),
     news_service: NewsService = Depends(get_news_service),
-) -> NewsItem:
+) -> NewsItemResponse:
     """
-    Get a specific news article by ID
+    Get a specific news item by ID
 
-    - **item_id**: Unique identifier of the news article
+    - **item_id**: Unique identifier of the news item
     """
     try:
         logger.info(f"Getting news item: {item_id}")
@@ -395,8 +517,13 @@ async def get_news_item(
         if not item:
             raise HTTPException(status_code=404, detail="News item not found")
 
-        logger.info(f"News item retrieved: {item.title[:50]}...")
-        return item
+        # Convert to response format
+        from ..utils.response_converters import convert_news_item_to_response
+
+        response = convert_news_item_to_response(item)
+
+        logger.info(f"News item retrieved: {item_id}")
+        return response
 
     except HTTPException:
         raise
