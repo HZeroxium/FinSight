@@ -1,0 +1,164 @@
+// proto/news_service.proto
+
+syntax = "proto3";
+
+package news_crawler;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// News source enumeration
+enum NewsSource {
+  NEWS_SOURCE_UNSPECIFIED = 0;
+  NEWS_SOURCE_COINDESK = 1;
+  NEWS_SOURCE_COINTELEGRAPH = 2;
+}
+
+// Individual news item response
+message NewsItemResponse {
+  NewsSource source = 1;
+  string title = 2;
+  string url = 3;
+  string description = 4;
+  google.protobuf.Timestamp published_at = 5;
+  string author = 6;
+  repeated string tags = 7;
+}
+
+// Filters applied summary
+message FiltersApplied {
+  string source = 1;
+  repeated string keywords = 2;
+  repeated string tags = 3;
+  google.protobuf.Timestamp start_date = 4;
+  google.protobuf.Timestamp end_date = 5;
+  bool has_date_filter = 6;
+  bool has_keywords_filter = 7;
+  bool has_tags_filter = 8;
+  int32 time_range_hours = 9;
+  bool is_recent_search = 10;
+}
+
+// Standard news response
+message NewsResponse {
+  repeated NewsItemResponse items = 1;
+  int32 total_count = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+  bool has_more = 5;
+  FiltersApplied filters_applied = 6;
+}
+
+// Search request parameters
+message SearchNewsRequest {
+  NewsSource source = 1;
+  repeated string keywords = 2;
+  repeated string tags = 3;
+  google.protobuf.Timestamp start_date = 4;
+  google.protobuf.Timestamp end_date = 5;
+  int32 limit = 6;
+  int32 offset = 7;
+}
+
+// Recent news request
+message GetRecentNewsRequest {
+  int32 hours = 1;
+  NewsSource source = 2;
+  int32 limit = 3;
+}
+
+// News by source request
+message GetNewsBySourceRequest {
+  NewsSource source = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  google.protobuf.Timestamp start_date = 4;
+  google.protobuf.Timestamp end_date = 5;
+}
+
+// News by keywords request
+message SearchByKeywordsRequest {
+  repeated string keywords = 1;
+  NewsSource source = 2;
+  int32 limit = 3;
+  int32 hours = 4;
+}
+
+// News by tags request
+message GetNewsByTagsRequest {
+  repeated string tags = 1;
+  NewsSource source = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+  int32 hours = 5;
+}
+
+// Get news item request
+message GetNewsItemRequest {
+  string item_id = 1;
+}
+
+// Available tags request
+message GetAvailableTagsRequest {
+  NewsSource source = 1;
+  int32 limit = 2;
+}
+
+// Available tags response
+message AvailableTagsResponse {
+  repeated string tags = 1;
+  int32 total_count = 2;
+  string source_filter = 3;
+  int32 limit = 4;
+}
+
+// News statistics response
+message NewsStatsResponse {
+  int32 total_articles = 1;
+  map<string, int32> articles_by_source = 2;
+  int32 recent_articles_24h = 3;
+  google.protobuf.Timestamp oldest_article = 4;
+  google.protobuf.Timestamp newest_article = 5;
+  map<string, string> database_info = 6;
+}
+
+// Delete news item request
+message DeleteNewsItemRequest {
+  string item_id = 1;
+}
+
+// Delete response
+message DeleteResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// gRPC service definition
+service NewsService {
+  // Search news with flexible filters
+  rpc SearchNews(SearchNewsRequest) returns (NewsResponse);
+  
+  // Get recent news
+  rpc GetRecentNews(GetRecentNewsRequest) returns (NewsResponse);
+  
+  // Get news by source
+  rpc GetNewsBySource(GetNewsBySourceRequest) returns (NewsResponse);
+  
+  // Search by keywords
+  rpc SearchByKeywords(SearchByKeywordsRequest) returns (NewsResponse);
+  
+  // Get news by tags
+  rpc GetNewsByTags(GetNewsByTagsRequest) returns (NewsResponse);
+  
+  // Get specific news item
+  rpc GetNewsItem(GetNewsItemRequest) returns (NewsItemResponse);
+  
+  // Get available tags
+  rpc GetAvailableTags(GetAvailableTagsRequest) returns (AvailableTagsResponse);
+  
+  // Get news statistics
+  rpc GetNewsStatistics(google.protobuf.Empty) returns (NewsStatsResponse);
+  
+  // Delete news item
+  rpc DeleteNewsItem(DeleteNewsItemRequest) returns (DeleteResponse);
+}
