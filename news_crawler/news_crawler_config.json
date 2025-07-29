@@ -1,16 +1,12 @@
 {
-  "sources": ["coindesk", "cointelegraph"],
+  "sources": ["coindesk"],
   "collector_preferences": {
-    "coindesk": "api_rest",
-    "cointelegraph": "api_graphql"
+    "coindesk": "api_rest"
   },
-  "max_items_per_source": 100,
+  "max_items_per_source": 10,
   "enable_fallback": true,
-  "schedule": "0 */1 * * *",
-  "config_overrides": {
-    "timeout": 30,
-    "retry_attempts": 3
-  },
+  "schedule": "*/1 * * * *",
+  "config_overrides": {},
   "notification": {
     "enabled": false,
     "webhook_url": null,

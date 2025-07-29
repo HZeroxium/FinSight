@@ -1,0 +1,6 @@
+google-ai-generativelanguage
+google-generativeai
+langchain-core
+langchain-google-genai
+langchain-openai
+langchain-text-splitters
