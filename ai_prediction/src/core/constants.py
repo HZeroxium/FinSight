@@ -72,6 +72,8 @@ class TrainingConstants:
     MAX_CONCURRENT_TRAININGS = 3
     MAX_QUEUE_SIZE = 10
 
+    STATS_CACHE_TTL = 3600 * 24 * 7  # 7 days
+
     # Progress tracking
     PROGRESS_STAGES = {
         TrainingJobStatus.PENDING: 0.0,
@@ -108,6 +110,7 @@ class StorageConstants:
     JOB_STORAGE_TTL = 86400  # 24 hours
     COMPLETED_JOB_TTL = 3600  # 1 hour for completed jobs
     FAILED_JOB_TTL = 7200  # 2 hours for failed jobs
+    PROGRESS_TTL = 3600  # 1 hour for progress updates
 
     # Model cache
     MODEL_CACHE_SIZE = 10
@@ -116,6 +119,13 @@ class StorageConstants:
     # File patterns
     JOB_FILE_PATTERN = "training_job_{job_id}.json"
     PROGRESS_FILE_PATTERN = "progress_{job_id}.json"
+
+    # Redis-specific constants
+    REDIS_KEY_PREFIX = "finsight:training_job:"
+    REDIS_ACTIVE_JOBS_SET = "finsight:active_jobs"
+    REDIS_PROGRESS_PREFIX = "finsight:progress:"
+    REDIS_STATS_KEY = "finsight:training_stats"
+    REDIS_JOB_HASH_PREFIX = "finsight:job:"
 
 
 # Validation Constants

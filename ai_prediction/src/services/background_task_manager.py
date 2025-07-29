@@ -21,7 +21,9 @@ from ..schemas.training_schemas import (
     BackgroundTaskHealth,
 )
 from ..core.constants import TrainingJobStatus, TrainingConstants, BackgroundTaskConfig
-from ..repositories.training_job_repository import TrainingJobRepository
+from ..repositories.training_job_facade import (
+    TrainingJobFacade,
+)
 from common.logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
 
@@ -44,10 +46,10 @@ class BackgroundTaskManager:
     queue management, and resource monitoring
     """
 
-    def __init__(self, job_repository: TrainingJobRepository):
+    def __init__(self, job_facade: TrainingJobFacade):
         self.logger = LoggerFactory.get_logger("BackgroundTaskManager")
         self.settings = get_settings()
-        self.job_repository = job_repository
+        self.job_facade = job_facade
 
         # Worker management
         self.workers: Dict[str, TaskWorker] = {}
@@ -164,7 +166,7 @@ class BackgroundTaskManager:
             )
 
             # Save job to repository
-            await self.job_repository.create_job(job_info)
+            await self.job_facade.create_job(job_info)
 
             # Create task data
             task_data = {
@@ -180,7 +182,7 @@ class BackgroundTaskManager:
             await self.priority_queue.put((task_data["priority_score"], task_data))
 
             # Update job status
-            await self.job_repository.update_job(
+            await self.job_facade.update_job(
                 job_id,
                 {
                     "status": TrainingJobStatus.QUEUED,
@@ -212,7 +214,7 @@ class BackgroundTaskManager:
         """
         try:
             # Get job info
-            job_info = await self.job_repository.get_job(job_id)
+            job_info = await self.job_facade.get_job(job_id)
             if not job_info:
                 self.logger.warning(f"Job {job_id} not found for cancellation")
                 return False
@@ -242,7 +244,7 @@ class BackgroundTaskManager:
                 self.active_tasks.pop(job_id, None)
 
             # Update job status
-            await self.job_repository.update_job(
+            await self.job_facade.update_job(
                 job_id,
                 {
                     "status": TrainingJobStatus.CANCELLED,
@@ -269,7 +271,7 @@ class BackgroundTaskManager:
     async def get_queue_info(self) -> Dict[str, Any]:
         """Get information about the training queue"""
         try:
-            active_jobs = await self.job_repository.get_active_jobs()
+            active_jobs = await self.job_facade.get_active_jobs()
 
             # Count jobs by status
             pending_count = sum(
@@ -473,7 +475,7 @@ class BackgroundTaskManager:
             self.logger.info(f"Executing training job {job_id}")
 
             # Update job status
-            await self.job_repository.update_job(
+            await self.job_facade.update_job(
                 job_id,
                 {
                     "status": TrainingJobStatus.INITIALIZING,
@@ -508,7 +510,7 @@ class BackgroundTaskManager:
                     )
 
                     # Update repository
-                    await self.job_repository.update_progress(job_id, progress_update)
+                    await self.job_facade.update_progress(job_id, progress_update)
 
                     # Call user progress callback if provided
                     if progress_callback:
@@ -532,7 +534,7 @@ class BackgroundTaskManager:
 
             # Update job with results
             if result.get("success", False):
-                await self.job_repository.update_job(
+                await self.job_facade.update_job(
                     job_id,
                     {
                         "status": TrainingJobStatus.COMPLETED,
@@ -552,7 +554,7 @@ class BackgroundTaskManager:
                 self.logger.info(f"Completed job {job_id} in {duration:.2f}s")
             else:
                 # Training failed
-                await self.job_repository.update_job(
+                await self.job_facade.update_job(
                     job_id,
                     {
                         "status": TrainingJobStatus.FAILED,
@@ -571,7 +573,7 @@ class BackgroundTaskManager:
 
         except asyncio.CancelledError:
             # Job was cancelled
-            await self.job_repository.update_job(
+            await self.job_facade.update_job(
                 job_id,
                 {
                     "status": TrainingJobStatus.CANCELLED,
@@ -585,7 +587,7 @@ class BackgroundTaskManager:
 
         except Exception as e:
             # Unexpected error
-            await self.job_repository.update_job(
+            await self.job_facade.update_job(
                 job_id,
                 {
                     "status": TrainingJobStatus.FAILED,

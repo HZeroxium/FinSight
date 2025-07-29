@@ -13,7 +13,10 @@ from datetime import datetime
 from ..models.model_facade import ModelFacade
 from ..services.data_service import DataService
 from ..services.background_task_manager import BackgroundTaskManager
-from ..repositories.training_job_repository import TrainingJobRepository
+from ..repositories.training_job_facade import (
+    TrainingJobFacade,
+    get_training_job_facade,
+)
 from ..schemas.model_schemas import TrainingRequest, TrainingResponse
 from ..schemas.training_schemas import (
     AsyncTrainingRequest,
@@ -44,8 +47,8 @@ class TrainingService:
         self.data_service = DataService()
 
         # Initialize async components (but don't start them yet)
-        self.job_repository = TrainingJobRepository()
-        self.background_manager = BackgroundTaskManager(self.job_repository)
+        self.job_facade: Optional[TrainingJobFacade] = None
+        self.background_manager: Optional[BackgroundTaskManager] = None
 
         # Legacy sync support
         self.active_trainings: Dict[str, Dict[str, Any]] = {}
@@ -59,10 +62,11 @@ class TrainingService:
             return
 
         try:
-            # Initialize repository first
-            await self.job_repository.initialize()
+            # Initialize job facade
+            self.job_facade = await get_training_job_facade()
 
-            # Initialize background manager
+            # Initialize background task manager with the facade
+            self.background_manager = BackgroundTaskManager(self.job_facade)
             await self.background_manager.initialize()
 
             self._is_initialized = True
@@ -160,7 +164,7 @@ class TrainingService:
         try:
             await self._ensure_initialized()
 
-            job_info = await self.job_repository.get_job(job_id)
+            job_info = await self.job_facade.get_job(job_id)
 
             if not job_info:
                 return TrainingJobStatusResponse(
@@ -196,10 +200,10 @@ class TrainingService:
         try:
             await self._ensure_initialized()
 
-            jobs = await self.job_repository.list_jobs(filter_criteria)
+            jobs = await self.job_facade.list_jobs(filter_criteria)
 
             # Get statistics
-            stats = await self.job_repository.get_job_statistics()
+            stats = await self.job_facade.get_job_statistics()
 
             return TrainingJobListResponse(
                 success=True,
@@ -234,7 +238,7 @@ class TrainingService:
             await self._ensure_initialized()
 
             # Get job info to check if it was running
-            job_info = await self.job_repository.get_job(job_id)
+            job_info = await self.job_facade.get_job(job_id)
             if not job_info:
                 return TrainingJobCancelResponse(
                     success=False,
@@ -591,7 +595,7 @@ class TrainingService:
         """Check if similar training is already running"""
         try:
             # Get active jobs
-            active_jobs = await self.job_repository.get_active_jobs()
+            active_jobs = await self.job_facade.get_active_jobs()
 
             # Look for matching jobs
             for job in active_jobs:
@@ -635,10 +639,12 @@ class TrainingService:
             self.logger.info("Shutting down training service...")
 
             # Shutdown background manager
-            await self.background_manager.shutdown()
+            if self.background_manager:
+                await self.background_manager.shutdown()
 
-            # Shutdown job repository
-            await self.job_repository.shutdown()
+            # Shutdown job facade
+            if self.job_facade:
+                await self.job_facade.shutdown()
 
             self.logger.info("Training service shutdown completed")
 

@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     torchserve_initial_workers: int = Field(1, env="TORCHSERVE_INITIAL_WORKERS")
     torchserve_max_workers: int = Field(4, env="TORCHSERVE_MAX_WORKERS")
 
+    # Redis settings
+    redis_url: str = Field("redis://localhost:6379/0", env="REDIS_URL")
+    training_job_repository_type: str = Field(
+        "file", env="TRAINING_JOB_REPOSITORY_TYPE"
+    )
+
     class Config:
         env_file = ".env"
         case_sensitive = False
