@@ -1,0 +1,48 @@
+services:
+  news-crawler:
+    container_name: news-crawler-server
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+      - HOST=0.0.0.0
+      - PORT=8000
+      - GRPC_PORT=50051
+    healthcheck:
+      interval: 30s
+      retries: 3
+      start_period: 60s
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8000/health
+      timeout: 10s
+    image: hzeroxium/news-service:latest
+    ports:
+      - 8000:8000
+      - 50051:50051
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+  news-crawler-cron:
+    command: cron
+    container_name: news-crawler-cron
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+    image: hzeroxium/news-service:latest
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+
+networks:
+  default:
+    name: news-service-network
+
+volumes:
+  mongodb_data: {}
+  rabbitmq_data: {}

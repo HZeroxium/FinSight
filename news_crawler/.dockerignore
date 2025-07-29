@@ -1,0 +1,158 @@
+# Git and version control
+.git
+.gitignore
+.gitattributes
+.github/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.virtualenv/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Testing
+.tox/
+.coverage
+.pytest_cache/
+htmlcov/
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+tests/
+test_*.py
+*_test.py
+
+# Documentation
+docs/
+*.md
+!README.md
+*.rst
+*.txt
+!requirements.txt
+
+# Logs and temporary files
+logs/
+*.log
+tmp/
+temp/
+.tmp/
+*.tmp
+*.temp
+
+# Development and build files
+.editorconfig
+.flake8
+.isort.cfg
+mypy.ini
+pyproject.toml
+setup.py
+setup.cfg
+tox.ini
+Makefile
+*.yml
+*.yaml
+!docker-compose*.yml
+
+# Database and data files
+*.db
+*.sqlite
+*.sqlite3
+data/
+*.csv
+*.json
+!*config*.json
+
+# Environment and secrets
+.env*
+!.env.example
+secrets/
+.secrets/
+
+# Docker
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+.docker/
+
+# Scripts (except entrypoint)
+scripts/
+!scripts/docker-entrypoint.sh
+*.sh
+*.bat
+!docker-entrypoint.sh
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Model files and ML artifacts
+models/
+*.pkl
+*.joblib
+*.h5
+*.pb
+wandb/
+lightning_logs/
+checkpoints/
+
+# Cache directories
+.cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Local configuration overrides
+local_config.py
+local_settings.py
