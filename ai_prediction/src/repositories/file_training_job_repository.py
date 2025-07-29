@@ -1,13 +1,13 @@
 # repositories/training_job_repository.py
 
 """
-Repository for managing training job persistence and retrieval
+JSON file-based repository implementation for managing training job persistence and retrieval
 """
 
 import json
 import asyncio
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..schemas.training_schemas import (
     TrainingJobInfo,
@@ -17,13 +17,16 @@ from ..schemas.training_schemas import (
 from ..core.constants import TrainingJobStatus, StorageConstants, TrainingConstants
 from common.logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
+from ..interfaces.training_job_repository_interface import (
+    TrainingJobRepositoryInterface,
+)
 
 
-class TrainingJobRepository:
+class FileTrainingJobRepository(TrainingJobRepositoryInterface):
     """Repository for persisting and retrieving training job information"""
 
     def __init__(self):
-        self.logger = LoggerFactory.get_logger("TrainingJobRepository")
+        self.logger = LoggerFactory.get_logger("FileTrainingJobRepository")
         self.settings = get_settings()
 
         # Create jobs directory
@@ -372,7 +375,7 @@ class TrainingJobRepository:
         """
         try:
             cleaned_count = 0
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
 
             all_jobs = await self._get_all_jobs()
 
