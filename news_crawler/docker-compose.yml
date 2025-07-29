@@ -1,6 +1,13 @@
+# FinSight News Crawler Service - Production Docker Compose
+# Pulls pre-built images from registry
+
 services:
-  news-crawler:
+  news-crawler-server:
     container_name: news-crawler-server
+    image: hzeroxium/news-service:latest
+    ports:
+      - "8000:8000"
+      - "50051:50051"
     env_file:
       - .env
     environment:
@@ -8,41 +15,46 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - GRPC_PORT=50051
-    healthcheck:
-      interval: 30s
-      retries: 3
-      start_period: 60s
-      test:
-        - CMD
-        - curl
-        - -f
-        - http://localhost:8000/health
-      timeout: 10s
-    image: hzeroxium/news-service:latest
-    ports:
-      - 8000:8000
-      - 50051:50051
-    restart: unless-stopped
+      - LOG_LEVEL=INFO
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    command: ["server"]
+    networks:
+      - news-service-network
+
   news-crawler-cron:
-    command: cron
     container_name: news-crawler-cron
+    image: hzeroxium/news-service:latest
     env_file:
       - .env
     environment:
       - APP_ENV=production
-    image: hzeroxium/news-service:latest
-    restart: unless-stopped
+      - LOG_LEVEL=INFO
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
+    restart: unless-stopped
+    command: ["cron"]
+    networks:
+      - news-service-network
+    depends_on:
+      - news-crawler-server
 
 networks:
-  default:
+  news-service-network:
+    driver: bridge
     name: news-service-network
 
 volumes:
-  mongodb_data: {}
-  rabbitmq_data: {}
+  logs:
+    driver: local
+  data:
+    driver: local

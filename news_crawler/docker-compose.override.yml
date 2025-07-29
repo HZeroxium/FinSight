@@ -1,0 +1,38 @@
+# FinSight News Crawler Service - Development Docker Compose Override
+# Builds images locally from Dockerfile
+
+services:
+  news-crawler-server:
+    build:
+      context: ..
+      dockerfile: news_crawler/Dockerfile
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VERSION: ${VERSION:-1.0.0}
+        VCS_REF: ${VCS_REF:-}
+    image: hzeroxium/news-service:latest
+    environment:
+      - APP_ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+
+  news-crawler-cron:
+    build:
+      context: ..
+      dockerfile: news_crawler/Dockerfile
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VERSION: ${VERSION:-1.0.0}
+        VCS_REF: ${VCS_REF:-}
+    image: hzeroxium/news-service:latest
+    environment:
+      - APP_ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+
+networks:
+  news-service-network:
+    driver: bridge
+    name: news-service-network

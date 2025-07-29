@@ -1,9 +1,13 @@
 aio-pika==9.5.5
 aiofiles==24.1.0
+aiohappyeyeballs==2.6.1
+aiohttp==3.12.14
 aiormq==6.8.1
+aiosignal==1.4.0
 annotated-types==0.7.0
 anyio==4.9.0
 APScheduler==3.11.0
+attrs==25.3.0
 beautifulsoup4==4.13.4
 bs4==0.0.2
 cachetools==5.5.2
@@ -16,7 +20,9 @@ distro==1.9.0
 dnspython==2.7.0
 exceptiongroup==1.3.0
 fastapi==0.115.13
+feedparser==6.0.11
 filetype==1.2.0
+frozenlist==1.7.0
 google-api-core==2.25.1
 google-api-python-client==2.177.0
 google-auth==2.40.3
@@ -61,6 +67,7 @@ requests==2.32.4
 requests-toolbelt==1.0.0
 rsa==4.9.1
 setuptools==80.9.0
+sgmllib3k==1.0.0
 six==1.17.0
 sniffio==1.3.1
 soupsieve==2.7

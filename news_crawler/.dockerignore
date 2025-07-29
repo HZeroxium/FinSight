@@ -87,9 +87,6 @@ setup.py
 setup.cfg
 tox.ini
 Makefile
-*.yml
-*.yaml
-!docker-compose*.yml
 
 # Database and data files
 *.db
@@ -106,18 +103,14 @@ data/
 secrets/
 .secrets/
 
-# Docker
+# Docker (exclude everything except what we need)
 Dockerfile*
 .dockerignore
 docker-compose*.yml
 .docker/
 
 # Scripts (except entrypoint)
-scripts/
 !scripts/docker-entrypoint.sh
-*.sh
-*.bat
-!docker-entrypoint.sh
 
 # Jupyter notebooks
 *.ipynb
@@ -156,3 +149,14 @@ Thumbs.db
 # Local configuration overrides
 local_config.py
 local_settings.py
+
+# Exclude other services (we'll include common explicitly)
+ai_prediction/
+backtesting/
+sentiment_analysis/
+deprecated/
+jobs/
+test/
+
+# But keep common module for our build
+!common/
