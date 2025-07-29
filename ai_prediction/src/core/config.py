@@ -50,6 +50,41 @@ class Settings(BaseSettings):
     enable_model_cache: bool = Field(True, env="ENABLE_MODEL_CACHE")
     max_cached_models: int = Field(5, env="MAX_CACHED_MODELS")
 
+    # Serving adapter settings
+    serving_adapter_type: str = Field("simple", env="SERVING_ADAPTER_TYPE")
+
+    # Simple adapter settings
+    simple_max_models_in_memory: int = Field(5, env="SIMPLE_MAX_MODELS_IN_MEMORY")
+    simple_model_timeout_seconds: int = Field(3600, env="SIMPLE_MODEL_TIMEOUT_SECONDS")
+
+    # Triton adapter settings
+    triton_server_url: str = Field("localhost:8000", env="TRITON_SERVER_URL")
+    triton_server_grpc_url: str = Field("localhost:8001", env="TRITON_SERVER_GRPC_URL")
+    triton_use_grpc: bool = Field(False, env="TRITON_USE_GRPC")
+    triton_ssl: bool = Field(False, env="TRITON_SSL")
+    triton_insecure: bool = Field(True, env="TRITON_INSECURE")
+    triton_model_repository: str = Field("/models", env="TRITON_MODEL_REPOSITORY")
+    triton_default_model_version: str = Field("1", env="TRITON_DEFAULT_MODEL_VERSION")
+    triton_max_batch_size: int = Field(8, env="TRITON_MAX_BATCH_SIZE")
+    triton_timeout_seconds: int = Field(30, env="TRITON_TIMEOUT_SECONDS")
+
+    # TorchServe adapter settings
+    torchserve_inference_url: str = Field(
+        "http://localhost:8080", env="TORCHSERVE_INFERENCE_URL"
+    )
+    torchserve_management_url: str = Field(
+        "http://localhost:8081", env="TORCHSERVE_MANAGEMENT_URL"
+    )
+    torchserve_metrics_url: str = Field(
+        "http://localhost:8082", env="TORCHSERVE_METRICS_URL"
+    )
+    torchserve_model_store: str = Field("./model_store", env="TORCHSERVE_MODEL_STORE")
+    torchserve_batch_size: int = Field(1, env="TORCHSERVE_BATCH_SIZE")
+    torchserve_max_batch_delay: int = Field(100, env="TORCHSERVE_MAX_BATCH_DELAY")
+    torchserve_timeout_seconds: int = Field(30, env="TORCHSERVE_TIMEOUT_SECONDS")
+    torchserve_initial_workers: int = Field(1, env="TORCHSERVE_INITIAL_WORKERS")
+    torchserve_max_workers: int = Field(4, env="TORCHSERVE_MAX_WORKERS")
+
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -72,6 +107,50 @@ class Settings(BaseSettings):
         # Create directories if they don't exist
         for directory in [self.data_dir, self.models_dir, self.logs_dir]:
             directory.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def serving(self) -> dict:
+        """Get serving adapter configuration"""
+        adapter_type = self.serving_adapter_type.lower()
+
+        if adapter_type == "simple":
+            adapter_config = {
+                "max_models_in_memory": self.simple_max_models_in_memory,
+                "model_timeout_seconds": self.simple_model_timeout_seconds,
+            }
+        elif adapter_type == "triton":
+            adapter_config = {
+                "server_url": self.triton_server_url,
+                "server_grpc_url": self.triton_server_grpc_url,
+                "use_grpc": self.triton_use_grpc,
+                "ssl": self.triton_ssl,
+                "insecure": self.triton_insecure,
+                "model_repository": self.triton_model_repository,
+                "default_model_version": self.triton_default_model_version,
+                "max_batch_size": self.triton_max_batch_size,
+                "timeout_seconds": self.triton_timeout_seconds,
+            }
+        elif adapter_type == "torchserve":
+            adapter_config = {
+                "inference_url": self.torchserve_inference_url,
+                "management_url": self.torchserve_management_url,
+                "metrics_url": self.torchserve_metrics_url,
+                "model_store": self.torchserve_model_store,
+                "batch_size": self.torchserve_batch_size,
+                "max_batch_delay": self.torchserve_max_batch_delay,
+                "timeout_seconds": self.torchserve_timeout_seconds,
+                "initial_workers": self.torchserve_initial_workers,
+                "max_workers": self.torchserve_max_workers,
+            }
+        else:
+            # Default to simple adapter
+            adapter_config = {
+                "max_models_in_memory": self.simple_max_models_in_memory,
+                "model_timeout_seconds": self.simple_model_timeout_seconds,
+            }
+            adapter_type = "simple"
+
+        return {"adapter_type": adapter_type, "adapter_config": adapter_config}
 
 
 # Global settings instance

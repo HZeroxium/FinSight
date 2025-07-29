@@ -1,8 +1,14 @@
 # services/training_service.py
 
+"""
+Consolidated training service for handling both synchronous and asynchronous model training
+"""
+
 import time
 import uuid
+import asyncio
 from typing import Dict, Any, Optional, Callable
+from datetime import datetime
 
 from ..models.model_facade import ModelFacade
 from ..services.data_service import DataService
@@ -21,17 +27,18 @@ from ..schemas.training_schemas import (
     TrainingProgressUpdate,
     TrainingJobFilter,
     BackgroundTaskHealthResponse,
+    TrainingJobPriority,
 )
 from ..core.constants import TrainingJobStatus, TrainingConstants, ResponseMessages
 from common.logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
 
 
-class AsyncTrainingService:
-    """Enhanced service for handling asynchronous model training operations"""
+class TrainingService:
+    """Consolidated service for handling both synchronous and asynchronous model training operations"""
 
     def __init__(self):
-        self.logger = LoggerFactory.get_logger("AsyncTrainingService")
+        self.logger = LoggerFactory.get_logger("TrainingService")
         self.settings = get_settings()
         self.model_facade = ModelFacade()
         self.data_service = DataService()
@@ -59,10 +66,10 @@ class AsyncTrainingService:
             await self.background_manager.initialize()
 
             self._is_initialized = True
-            self.logger.info("AsyncTrainingService initialized successfully")
+            self.logger.info("TrainingService initialized successfully")
 
         except Exception as e:
-            self.logger.error(f"Failed to initialize AsyncTrainingService: {e}")
+            self.logger.error(f"Failed to initialize TrainingService: {e}")
             raise
 
     async def _ensure_initialized(self) -> None:
@@ -151,6 +158,8 @@ class AsyncTrainingService:
             TrainingJobStatusResponse: Job status information
         """
         try:
+            await self._ensure_initialized()
+
             job_info = await self.job_repository.get_job(job_id)
 
             if not job_info:
@@ -185,6 +194,8 @@ class AsyncTrainingService:
             TrainingJobListResponse: List of training jobs
         """
         try:
+            await self._ensure_initialized()
+
             jobs = await self.job_repository.list_jobs(filter_criteria)
 
             # Get statistics
@@ -220,6 +231,8 @@ class AsyncTrainingService:
             TrainingJobCancelResponse: Cancellation result
         """
         try:
+            await self._ensure_initialized()
+
             # Get job info to check if it was running
             job_info = await self.job_repository.get_job(job_id)
             if not job_info:
@@ -232,7 +245,11 @@ class AsyncTrainingService:
                     cleanup_completed=False,
                 )
 
-            was_running = TrainingJobStatus.is_active(job_info.status)
+            was_running = TrainingJobStatus.is_active(
+                job_info.status.value
+                if hasattr(job_info.status, "value")
+                else job_info.status
+            )
 
             # Cancel the job
             success = await self.background_manager.cancel_job(
@@ -271,6 +288,8 @@ class AsyncTrainingService:
     async def get_queue_info(self) -> TrainingQueueResponse:
         """Get information about the training queue"""
         try:
+            await self._ensure_initialized()
+
             queue_info = await self.background_manager.get_queue_info()
 
             from ..schemas.training_schemas import TrainingQueueInfo
@@ -292,6 +311,8 @@ class AsyncTrainingService:
     async def get_background_health(self) -> BackgroundTaskHealthResponse:
         """Get background task system health"""
         try:
+            await self._ensure_initialized()
+
             health_status = await self.background_manager.get_health_status()
 
             return BackgroundTaskHealthResponse(
@@ -424,10 +445,6 @@ class AsyncTrainingService:
                 error=str(e),
                 training_duration=training_time,
             )
-
-    def get_training_status(self, job_id: str) -> Optional[Dict[str, Any]]:
-        """Get status of active training (legacy method)"""
-        return self.active_trainings.get(job_id)
 
     # Private async methods for background task execution
 
@@ -629,5 +646,4 @@ class AsyncTrainingService:
             self.logger.error(f"Error during training service shutdown: {e}")
 
 
-# Create alias for backward compatibility
-TrainingService = AsyncTrainingService
+# No alias needed - TrainingService is the main class
