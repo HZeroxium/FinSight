@@ -1,4 +1,8 @@
-# services/training_service.py
+# services/async_training_service.py
+
+"""
+Enhanced asynchronous training service for handling non-blocking model training
+"""
 
 import time
 import uuid
@@ -22,7 +26,7 @@ from ..schemas.training_schemas import (
     TrainingJobFilter,
     BackgroundTaskHealthResponse,
 )
-from ..core.constants import TrainingJobStatus, TrainingConstants, ResponseMessages
+from ..core.constants import TrainingJobStatus, ResponseMessages
 from common.logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
 
@@ -36,39 +40,12 @@ class AsyncTrainingService:
         self.model_facade = ModelFacade()
         self.data_service = DataService()
 
-        # Initialize async components (but don't start them yet)
+        # Initialize async components
         self.job_repository = TrainingJobRepository()
         self.background_manager = BackgroundTaskManager(self.job_repository)
 
-        # Legacy sync support
+        # Legacy sync support for backward compatibility
         self.active_trainings: Dict[str, Dict[str, Any]] = {}
-        self._is_initialized = False
-
-    async def initialize(self) -> None:
-        """
-        Initialize async components (call this when event loop is running)
-        """
-        if self._is_initialized:
-            return
-
-        try:
-            # Initialize repository first
-            await self.job_repository.initialize()
-
-            # Initialize background manager
-            await self.background_manager.initialize()
-
-            self._is_initialized = True
-            self.logger.info("AsyncTrainingService initialized successfully")
-
-        except Exception as e:
-            self.logger.error(f"Failed to initialize AsyncTrainingService: {e}")
-            raise
-
-    async def _ensure_initialized(self) -> None:
-        """Ensure service is initialized before use"""
-        if not self._is_initialized:
-            await self.initialize()
 
     async def start_async_training(
         self, request: AsyncTrainingRequest
@@ -82,8 +59,6 @@ class AsyncTrainingService:
         Returns:
             AsyncTrainingResponse: Response with job ID and status
         """
-        await self._ensure_initialized()
-
         try:
             self.logger.info(
                 f"Starting async training for {request.symbol} {request.timeframe} {request.model_type}"
@@ -615,7 +590,7 @@ class AsyncTrainingService:
     async def shutdown(self) -> None:
         """Shutdown the training service and cleanup resources"""
         try:
-            self.logger.info("Shutting down training service...")
+            self.logger.info("Shutting down async training service...")
 
             # Shutdown background manager
             await self.background_manager.shutdown()
@@ -623,11 +598,11 @@ class AsyncTrainingService:
             # Shutdown job repository
             await self.job_repository.shutdown()
 
-            self.logger.info("Training service shutdown completed")
+            self.logger.info("Async training service shutdown completed")
 
         except Exception as e:
-            self.logger.error(f"Error during training service shutdown: {e}")
+            self.logger.error(f"Error during async training service shutdown: {e}")
 
 
-# Create alias for backward compatibility
+# Create alias for backward compatibility and smooth transition
 TrainingService = AsyncTrainingService
