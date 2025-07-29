@@ -194,7 +194,7 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(search.router)
+# app.include_router(search.router)
 app.include_router(news_router.router)
 
 

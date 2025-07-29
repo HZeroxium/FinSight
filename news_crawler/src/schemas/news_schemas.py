@@ -144,6 +144,7 @@ class NewsItemResponse(BaseModel):
     published_at: datetime = Field(..., description="Publication timestamp")
     author: Optional[str] = Field(None, description="Article author")
     tags: List[str] = Field(default_factory=list, description="Article tags")
+    image_url: Optional[HttpUrl] = Field(None, description="Image URL if available")
     sentiment: Optional[str] = Field(None, description="Article sentiment")
 
     @classmethod
@@ -162,6 +163,9 @@ class NewsItemResponse(BaseModel):
             published_at=news_item.published_at,
             author=news_item.author,
             tags=news_item.tags or [],
+            image_url=(
+                news_item.metadata.get("image_url") if news_item.metadata else None
+            ),
             sentiment=(
                 news_item.metadata.get("sentiment") if news_item.metadata else None
             ),
