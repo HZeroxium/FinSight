@@ -54,7 +54,7 @@ class ModelServingFacade:
         self.logger = LoggerFactory.get_logger(
             "ModelServingFacade",
             level=LogLevel.INFO,
-            console_level=LogLevel.INFO,
+            console_level=LogLevel.DEBUG,
             log_file="logs/model_serving_facade.log",
         )
 
@@ -144,6 +144,11 @@ class ModelServingFacade:
                 f"Making async prediction: {symbol} {timeframe.value} {model_type.value}"
             )
 
+            # Ensure adapter is initialized if we want to use it
+            if use_serving_adapter and self._use_serving_adapter:
+                if not self._adapter_initialized:
+                    await self.initialize()
+
             # Try serving adapter first if enabled and available
             if (
                 use_serving_adapter
@@ -153,6 +158,9 @@ class ModelServingFacade:
             ):
 
                 try:
+                    self.logger.debug(
+                        f"Using serving adapter for prediction: {symbol} {timeframe.value} {model_type.value}"
+                    )
                     return await self._predict_with_serving_adapter(
                         symbol, timeframe, model_type, recent_data, n_steps
                     )
@@ -161,6 +169,9 @@ class ModelServingFacade:
                     self.logger.info("Falling back to legacy prediction")
 
             # Fallback to legacy prediction
+            self.logger.debug(
+                f"Using legacy model loading for prediction: {symbol} {timeframe.value} {model_type.value}"
+            )
             return await self._predict_legacy(
                 symbol, timeframe, model_type, recent_data, n_steps
             )
@@ -288,7 +299,7 @@ class ModelServingFacade:
                 return {"success": False, "error": "Model not found"}
 
             # Check if already loaded
-            loaded_models = await self.serving_adapter.list_models()
+            loaded_models = await self.serving_adapter.list_loaded_models()
             if not force_reload and any(m.model_id == model_id for m in loaded_models):
                 return {
                     "success": True,
@@ -296,23 +307,18 @@ class ModelServingFacade:
                     "model_id": model_id,
                 }
 
-            # Load model to serving adapter
-            serving_model_info = ServingModelInfo(
-                model_id=model_id,
-                model_type=model_type.value,
+            # Load model using correct serving adapter interface
+            model_info = await self.serving_adapter.load_model(
                 model_path=str(model_path),
-                metadata={
-                    "symbol": symbol,
-                    "timeframe": timeframe.value,
-                    "model_type": model_type.value,
-                },
+                symbol=symbol,
+                timeframe=timeframe,
+                model_type=model_type,
+                model_config={},
             )
 
-            success = await self.serving_adapter.load_model(serving_model_info)
-
-            if success:
+            if model_info and model_info.is_loaded:
                 self.logger.info(f"Model loaded to serving adapter: {model_id}")
-                return {"success": True, "model_id": model_id}
+                return {"success": True, "model_id": model_id, "model_info": model_info}
             else:
                 return {
                     "success": False,
@@ -572,9 +578,10 @@ class ModelServingFacade:
                 f"Failed to load model to serving adapter: {load_result.get('error')}"
             )
 
-        # Convert DataFrame to dict if needed
+        # Convert DataFrame to dict if needed for some adapters,
+        # but keep DataFrame format for our adapters
         if isinstance(recent_data, pd.DataFrame):
-            input_data = recent_data.to_dict("records")
+            input_data = recent_data  # Keep as DataFrame for better compatibility
         else:
             input_data = recent_data
 
@@ -583,6 +590,11 @@ class ModelServingFacade:
             model_id=model_id,
             input_data=input_data,
             n_steps=n_steps,
+        )
+
+        # Print what adapter type is being used
+        self.logger.info(
+            f"Using {self.serving_config.adapter_type} adapter for prediction"
         )
 
         # Convert serving result to legacy format

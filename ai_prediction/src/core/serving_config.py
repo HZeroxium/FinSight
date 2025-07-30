@@ -92,7 +92,7 @@ def get_serving_config() -> ServingConfig:
     settings = get_settings()
 
     # Get adapter type from environment or default
-    adapter_type = os.getenv("SERVING_ADAPTER_TYPE", "torchserve").lower()
+    adapter_type = os.getenv("SERVING_ADAPTER_TYPE", "simple").lower()
 
     # Simple serving configuration
     simple_config = SimpleServingConfig(
@@ -127,11 +127,23 @@ def get_serving_config() -> ServingConfig:
         response_timeout=int(os.getenv("TORCHSERVE_RESPONSE_TIMEOUT", "120")),
     )
 
+    # TorchScript configuration
+    torchscript_config = TorchScriptServingConfig(
+        device=os.getenv("TORCHSCRIPT_DEVICE", "cpu"),
+        optimize_for_inference=os.getenv("TORCHSCRIPT_OPTIMIZE", "true").lower()
+        == "true",
+        enable_fusion=os.getenv("TORCHSCRIPT_ENABLE_FUSION", "true").lower() == "true",
+        compile_mode=os.getenv("TORCHSCRIPT_COMPILE_MODE", "trace"),
+        max_models_in_memory=int(os.getenv("TORCHSCRIPT_MAX_MODELS", "5")),
+        model_timeout_seconds=int(os.getenv("TORCHSCRIPT_MODEL_TIMEOUT", "3600")),
+    )
+
     return ServingConfig(
         adapter_type=adapter_type,
         simple=simple_config,
         triton=triton_config,
         torchserve=torchserve_config,
+        torchscript=torchscript_config,
         enable_metrics=os.getenv("SERVING_ENABLE_METRICS", "true").lower() == "true",
         enable_health_checks=os.getenv("SERVING_ENABLE_HEALTH_CHECKS", "true").lower()
         == "true",

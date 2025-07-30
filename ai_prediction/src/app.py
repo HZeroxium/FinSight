@@ -35,12 +35,18 @@ async def lifespan(app: FastAPI):
 
         logger.info("✅ Async training services initialized successfully")
 
-        # Initialize serving adapter
+        # Initialize serving adapter (use the same singleton instances)
         logger.info("Initializing serving adapter...")
-        from .facades import ModelFacade
+        from .facades import get_serving_facade, get_unified_facade
 
-        facade = ModelFacade()
-        await facade.initialize_serving()
+        # Initialize the serving facade singleton
+        serving_facade = get_serving_facade()
+        await serving_facade.initialize()
+
+        # Also initialize the unified facade singleton
+        unified_facade = get_unified_facade()
+        await unified_facade.initialize()
+
         logger.info("✅ Serving adapter initialized successfully")
 
     except Exception as e:

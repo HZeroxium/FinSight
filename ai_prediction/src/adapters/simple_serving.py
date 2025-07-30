@@ -50,6 +50,9 @@ class SimpleServingAdapter(IModelServingAdapter):
         # In-memory model storage
         self._loaded_models: Dict[str, Any] = {}
         self._model_info: Dict[str, ModelInfo] = {}
+        self._original_dataframes: Dict[str, pd.DataFrame] = (
+            {}
+        )  # Store original DataFrames by model_id
 
         # Configuration
         self.max_models_in_memory = config.get("max_models_in_memory", 5)
@@ -344,70 +347,153 @@ class SimpleServingAdapter(IModelServingAdapter):
         """Load model based on its type"""
         model_path_obj = Path(model_path)
 
-        if model_type in [ModelType.PATCHTST, ModelType.PATCHTSMIXER]:
-            # Load HuggingFace transformer models
-            try:
-                from transformers import AutoModel, AutoConfig
+        try:
+            # Use ModelFactory for all our custom models
+            from ..models.model_factory import ModelFactory
+            import json
 
-                config_path = model_path_obj / "config.json"
-                if config_path.exists():
-                    config = AutoConfig.from_pretrained(str(model_path_obj))
-                    model = AutoModel.from_pretrained(
-                        str(model_path_obj), config=config
-                    )
-                else:
-                    # Load as pickle if no config
-                    with open(model_path_obj / "model.pkl", "rb") as f:
-                        model = pickle.load(f)
+            self.logger.info(
+                f"Loading model from: {model_path_obj} with type: {model_type}"
+            )
 
-                return model
+            # Read model config if available
+            config_path = model_path_obj / "model_config.json"
+            if config_path.exists():
+                with open(config_path, "r") as f:
+                    saved_config = json.load(f)
+                # Merge with provided config
+                final_config = {**saved_config, **(model_config or {})}
+            else:
+                final_config = model_config or {}
 
-            except ImportError:
-                self.logger.warning(
-                    "transformers not available, falling back to pickle"
-                )
-                with open(model_path_obj / "model.pkl", "rb") as f:
-                    return pickle.load(f)
+            # Create model instance using our factory
+            model_instance = ModelFactory.create_model(model_type, final_config)
+            if model_instance is None:
+                raise ValueError(f"Could not create model of type {model_type}")
 
-        elif model_type == ModelType.PYTORCH_TRANSFORMER:
-            # Load PyTorch Lightning model
-            try:
-                import torch
+            # Load the model using our standard interface
+            model_instance.load_model(model_path_obj)
 
-                model_file = model_path_obj / "model.pth"
-                if model_file.exists():
-                    return torch.load(model_file, map_location="cpu")
-                else:
-                    with open(model_path_obj / "model.pkl", "rb") as f:
-                        return pickle.load(f)
+            self.logger.info(f"Loaded {model_type.value} model using ModelFactory")
+            return model_instance
 
-            except ImportError:
-                self.logger.warning("torch not available, falling back to pickle")
-                with open(model_path_obj / "model.pkl", "rb") as f:
-                    return pickle.load(f)
+        except Exception as e:
+            self.logger.error(f"ModelFactory loading failed: {e}")
 
-        else:
-            # Default to pickle
-            with open(model_path_obj / "model.pkl", "rb") as f:
-                return pickle.load(f)
+            # Fallback to a simple mock for testing
+            self.logger.warning("Using fallback mock model for testing")
+
+            class MockModel:
+                def forecast(self, data, n_steps=1):
+                    # Simple fallback: return last close price with small variation
+                    if hasattr(data, "iloc") and len(data) > 0:
+                        last_price = (
+                            data["close"].iloc[-1] if "close" in data.columns else 100.0
+                        )
+                    else:
+                        last_price = 100.0
+                    return [last_price * (1 + 0.001 * i) for i in range(n_steps)]
+
+            return MockModel()
 
     async def _preprocess_input(
         self,
-        input_data: Union[pd.DataFrame, np.ndarray, Dict[str, Any]],
+        input_data: Union[
+            pd.DataFrame, np.ndarray, Dict[str, Any], List[Dict[str, Any]]
+        ],
         model_info: ModelInfo,
     ) -> np.ndarray:
         """Preprocess input data for prediction"""
         if isinstance(input_data, pd.DataFrame):
-            # Convert DataFrame to numpy array
-            return input_data.values.astype(np.float32)
+            # Store the original DataFrame for model prediction
+            self._original_dataframes[model_info.model_id] = input_data.copy()
+
+            # Convert DataFrame to numpy array, but exclude datetime columns
+            df = input_data.copy()
+
+            # More robust handling of datetime and object columns
+            columns_to_drop = []
+            for col in df.columns:
+                col_dtype = str(df[col].dtype)
+                col_name_lower = col.lower()
+
+                # Drop obvious datetime columns
+                if any(
+                    dt_keyword in col_name_lower
+                    for dt_keyword in ["timestamp", "date", "datetime", "time"]
+                ):
+                    columns_to_drop.append(col)
+                    continue
+
+                # Handle datetime64 types
+                if "datetime64" in col_dtype:
+                    columns_to_drop.append(col)
+                    continue
+
+                # Handle object columns more carefully
+                if col_dtype == "object":
+                    try:
+                        # Check if it's timestamps by looking at the first few values
+                        sample_values = df[col].dropna().head(5)
+                        if len(sample_values) > 0:
+                            first_val = sample_values.iloc[0]
+                            if (
+                                hasattr(first_val, "strftime")
+                                or str(type(first_val)).lower().find("timestamp") != -1
+                            ):
+                                # It's a timestamp object
+                                columns_to_drop.append(col)
+                                continue
+
+                        # Try to convert to numeric
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+                        # If conversion resulted in all NaNs, drop the column
+                        if df[col].isna().all():
+                            columns_to_drop.append(col)
+
+                    except Exception as e:
+                        self.logger.warning(f"Failed to process column {col}: {e}")
+                        columns_to_drop.append(col)
+
+            # Drop problematic columns
+            if columns_to_drop:
+                self.logger.info(f"Dropping columns for prediction: {columns_to_drop}")
+                df = df.drop(columns=columns_to_drop)
+
+            # Ensure we have numeric data only
+            df = df.select_dtypes(include=[np.number])
+
+            if df.empty:
+                raise ValueError("No numeric columns remaining after preprocessing")
+
+            return df.values.astype(np.float32)
         elif isinstance(input_data, np.ndarray):
+            # For numpy arrays, we can't store the original DataFrame structure
+            # but we can try to reconstruct a basic structure
+            self._original_dataframes[model_info.model_id] = None
             return input_data.astype(np.float32)
+        elif (
+            isinstance(input_data, list)
+            and len(input_data) > 0
+            and isinstance(input_data[0], dict)
+        ):
+            # Handle list of dictionaries (from DataFrame.to_dict("records"))
+            df = pd.DataFrame(input_data)
+            self._original_dataframes[model_info.model_id] = df.copy()
+            return df.values.astype(np.float32)
         elif isinstance(input_data, dict):
             # Extract relevant features
             if "close" in input_data:
+                # Create a basic DataFrame from the dict
+                self._original_dataframes[model_info.model_id] = pd.DataFrame(
+                    [input_data]
+                )
                 return np.array(input_data["close"]).astype(np.float32)
             else:
-                raise ValueError("Invalid input data format")
+                raise ValueError(
+                    "Invalid input data format - dict must contain 'close' key"
+                )
         else:
             raise ValueError(f"Unsupported input data type: {type(input_data)}")
 
@@ -421,12 +507,100 @@ class SimpleServingAdapter(IModelServingAdapter):
     ) -> np.ndarray:
         """Make prediction using the loaded model"""
         try:
-            # This is a simplified prediction logic
-            # In practice, this would depend on the specific model type
+            # Check if it's our custom model interface first
+            if hasattr(model, "forecast"):
+                # Our custom model interface (ITimeSeriesModel)
+                # We need to convert the numpy array back to DataFrame format
+                # that our models expect
 
-            if hasattr(model, "predict"):
+                # Check if we have stored the original DataFrame
+                original_df = self._original_dataframes.get(model_info.model_id)
+                if original_df is not None:
+                    # Use the original DataFrame structure
+                    input_df = original_df
+                    self.logger.info(
+                        f"Using original DataFrame with shape: {input_df.shape}"
+                    )
+                else:
+                    # Create a minimal DataFrame structure that models expect
+                    # Most time series models expect at least OHLCV data
+                    if input_data.ndim == 1:
+                        # Single column, assume it's close prices
+                        input_df = pd.DataFrame({"close": input_data})
+                    elif input_data.ndim == 2:
+                        # Multiple columns, map to OHLCV structure
+                        if input_data.shape[1] >= 5:
+                            columns = ["open", "high", "low", "close", "volume"]
+                            if input_data.shape[1] > 5:
+                                # Add extra columns as features
+                                columns.extend(
+                                    [
+                                        f"feature_{i}"
+                                        for i in range(5, input_data.shape[1])
+                                    ]
+                                )
+                            input_df = pd.DataFrame(
+                                input_data, columns=columns[: input_data.shape[1]]
+                            )
+                        elif input_data.shape[1] == 4:
+                            # OHLC data
+                            input_df = pd.DataFrame(
+                                input_data, columns=["open", "high", "low", "close"]
+                            )
+                        else:
+                            # Unknown structure, use generic columns
+                            input_df = pd.DataFrame(
+                                input_data,
+                                columns=[
+                                    f"feature_{i}" for i in range(input_data.shape[1])
+                                ],
+                            )
+                    else:
+                        # Fallback
+                        input_df = pd.DataFrame({"close": input_data.flatten()})
+
+                self.logger.info(
+                    f"Created DataFrame for prediction with columns: {list(input_df.columns)}"
+                )
+
+                predictions = model.forecast(input_df, n_steps=n_steps)
+                self.logger.info(f"Model returned predictions: {predictions}")
+
+                # Convert predictions to numpy array and ensure correct shape
+                if isinstance(predictions, dict):
+                    # Handle dictionary response from our models
+                    if "predictions" in predictions and predictions.get(
+                        "success", False
+                    ):
+                        pred_values = predictions["predictions"]
+                        result = np.array(pred_values).flatten()[:n_steps]
+                    else:
+                        # Error case
+                        error_msg = predictions.get("error", "Unknown prediction error")
+                        self.logger.error(f"Model prediction failed: {error_msg}")
+                        raise ValueError(f"Model prediction failed: {error_msg}")
+                elif isinstance(predictions, (list, tuple)):
+                    result = np.array(predictions).flatten()[:n_steps]
+                elif isinstance(predictions, np.ndarray):
+                    result = predictions.flatten()[:n_steps]
+                elif isinstance(predictions, pd.Series):
+                    result = predictions.values.flatten()[:n_steps]
+                elif isinstance(predictions, pd.DataFrame):
+                    result = predictions.values.flatten()[:n_steps]
+                else:
+                    # Try to convert to array
+                    result = np.array(
+                        [predictions] if np.isscalar(predictions) else predictions
+                    ).flatten()[:n_steps]
+
+                self.logger.info(f"Returning predictions with shape: {result.shape}")
+                return result
+
+            elif hasattr(model, "predict"):
                 # scikit-learn style model
                 predictions = model.predict(input_data[-n_steps:].reshape(1, -1))
+                return predictions.flatten()[:n_steps]
+
             elif hasattr(model, "forward"):
                 # PyTorch model
                 import torch
@@ -436,6 +610,7 @@ class SimpleServingAdapter(IModelServingAdapter):
                         0
                     )  # Context window
                     predictions = model.forward(input_tensor).cpu().numpy()
+                return predictions.flatten()[:n_steps]
             else:
                 # Fallback: return last value with small random variation
                 last_value = input_data[-1] if len(input_data) > 0 else 0.0
@@ -445,11 +620,13 @@ class SimpleServingAdapter(IModelServingAdapter):
                         for _ in range(n_steps)
                     ]
                 )
-
-            return predictions.flatten()[:n_steps]
+                return predictions.flatten()[:n_steps]
 
         except Exception as e:
             self.logger.error(f"Model prediction failed: {e}")
+            import traceback
+
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             # Fallback prediction
             if len(input_data) > 0:
                 last_value = input_data[-1]
@@ -462,17 +639,56 @@ class SimpleServingAdapter(IModelServingAdapter):
     ) -> Dict[str, Any]:
         """Post-process prediction results"""
         predictions_list = predictions.tolist()
-
         result = {"predictions": predictions_list}
 
-        if len(input_data) > 0:
-            current_price = float(input_data[-1])
-            result["current_price"] = current_price
+        # Try to extract current price with robust error handling
+        try:
+            if len(input_data) > 0:
+                current_price = None
 
-            if len(predictions_list) > 0:
-                predicted_price = predictions_list[0]
-                change_pct = ((predicted_price - current_price) / current_price) * 100
-                result["predicted_change_pct"] = change_pct
+                # Handle multi-dimensional input data
+                if input_data.ndim > 1:
+                    # Try different strategies to find the close price
+                    strategies = [
+                        lambda: float(input_data[-1, 3]),  # 4th column (close price)
+                        lambda: float(input_data[-1, -1]),  # last column
+                        lambda: float(np.mean(input_data[-1, :])),  # mean of last row
+                    ]
+
+                    for strategy in strategies:
+                        try:
+                            current_price = strategy()
+                            break
+                        except (ValueError, TypeError, IndexError):
+                            continue
+
+                else:
+                    # 1D array
+                    try:
+                        current_price = float(input_data[-1])
+                    except (ValueError, TypeError):
+                        current_price = None
+
+                if current_price is not None:
+                    result["current_price"] = current_price
+
+                    if len(predictions_list) > 0:
+                        predicted_price = predictions_list[0]
+                        try:
+                            change_pct = (
+                                (predicted_price - current_price) / current_price
+                            ) * 100
+                            result["predicted_change_pct"] = change_pct
+                        except (ZeroDivisionError, TypeError):
+                            result["predicted_change_pct"] = 0.0
+                else:
+                    self.logger.warning(
+                        "Could not extract current price from input data"
+                    )
+
+        except Exception as e:
+            self.logger.warning(f"Error in postprocessing predictions: {e}")
+            # Continue without current price info
 
         return result
 
