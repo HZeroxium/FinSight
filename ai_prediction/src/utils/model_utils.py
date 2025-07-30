@@ -48,19 +48,30 @@ class ModelUtils:
         symbol: str,
         timeframe: TimeFrame,
         model_type: ModelType,
+        adapter_type: str = "simple",
     ) -> Path:
-        """Generate standardized model directory path"""
+        """
+        Generate standardized model directory path with adapter-specific structure.
+
+        The model storage is organized as:
+        /models/{adapter_type}/{model_identifier}/
+
+        Where adapter_type can be: simple, torchscript, torchserve, triton
+        """
         model_id = self.generate_model_identifier(symbol, timeframe, model_type)
-        return self.settings.models_dir / model_id
+        return self.settings.models_dir / adapter_type / model_id
 
     def get_checkpoint_path(
         self,
         symbol: str,
         timeframe: TimeFrame,
         model_type: ModelType,
+        adapter_type: str = "simple",
     ) -> Path:
         """Get model checkpoint file path - check for multiple possible file names"""
-        model_dir = self.generate_model_path(symbol, timeframe, model_type)
+        model_dir = self.generate_model_path(
+            symbol, timeframe, model_type, adapter_type
+        )
 
         # Check for different possible model file names in order of preference
         possible_files = [
@@ -82,9 +93,12 @@ class ModelUtils:
         symbol: str,
         timeframe: TimeFrame,
         model_type: ModelType,
+        adapter_type: str = "simple",
     ) -> Path:
         """Get model metadata file path"""
-        model_dir = self.generate_model_path(symbol, timeframe, model_type)
+        model_dir = self.generate_model_path(
+            symbol, timeframe, model_type, adapter_type
+        )
         return model_dir / self.settings.metadata_filename
 
     def get_config_path(
@@ -92,9 +106,12 @@ class ModelUtils:
         symbol: str,
         timeframe: TimeFrame,
         model_type: ModelType,
+        adapter_type: str = "simple",
     ) -> Path:
         """Get model config file path"""
-        model_dir = self.generate_model_path(symbol, timeframe, model_type)
+        model_dir = self.generate_model_path(
+            symbol, timeframe, model_type, adapter_type
+        )
         return model_dir / self.settings.config_filename
 
     def ensure_model_directory(
@@ -102,11 +119,203 @@ class ModelUtils:
         symbol: str,
         timeframe: TimeFrame,
         model_type: ModelType,
+        adapter_type: str = "simple",
     ) -> Path:
         """Ensure model directory exists and return its path"""
-        model_dir = self.generate_model_path(symbol, timeframe, model_type)
+        model_dir = self.generate_model_path(
+            symbol, timeframe, model_type, adapter_type
+        )
         model_dir.mkdir(parents=True, exist_ok=True)
         return model_dir
+
+    def get_model_path(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+        adapter_type: str = "simple",
+    ) -> Path:
+        """Alias for generate_model_path for backward compatibility"""
+        return self.generate_model_path(symbol, timeframe, model_type, adapter_type)
+
+    def get_simple_model_path(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+    ) -> Path:
+        """Get path for simple adapter model storage."""
+        return self.generate_model_path(symbol, timeframe, model_type, "simple")
+
+    def get_torchscript_model_path(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+    ) -> Path:
+        """Get path for TorchScript adapter model storage."""
+        return self.generate_model_path(symbol, timeframe, model_type, "torchscript")
+
+    def get_torchserve_model_path(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+    ) -> Path:
+        """Get path for TorchServe adapter model storage."""
+        return self.generate_model_path(symbol, timeframe, model_type, "torchserve")
+
+    def get_triton_model_path(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+    ) -> Path:
+        """Get path for Triton adapter model storage."""
+        return self.generate_model_path(symbol, timeframe, model_type, "triton")
+
+    def save_json(self, data: Dict[str, Any], file_path: str) -> None:
+        """
+        Save data as JSON file
+
+        Args:
+            data: Data to save
+            file_path: Path to save the JSON file
+        """
+        import json
+        from pathlib import Path
+
+        file_path = Path(file_path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(file_path, "w") as f:
+            json.dump(data, f, indent=2, default=str)
+
+    def load_json(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """
+        Load data from JSON file
+
+        Args:
+            file_path: Path to the JSON file
+
+        Returns:
+            Loaded data or None if file doesn't exist
+        """
+        import json
+        from pathlib import Path
+
+        file_path = Path(file_path)
+        if not file_path.exists():
+            return None
+
+        try:
+            with open(file_path, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            self.logger.error(f"Failed to load JSON from {file_path}: {e}")
+            return None
+
+    def model_exists(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+        adapter_type: str = "simple",
+    ) -> bool:
+        """Check if a model exists (instance method)"""
+        checkpoint_path = self.get_checkpoint_path(
+            symbol, timeframe, model_type, adapter_type
+        )
+        return checkpoint_path.exists()
+
+    def copy_model_for_adapter(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+        source_adapter: str = "simple",
+        target_adapter: str = "torchscript",
+    ) -> bool:
+        """
+        Copy a model from one adapter directory to another for compatibility.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Data timeframe
+            model_type: Model type
+            source_adapter: Source adapter type
+            target_adapter: Target adapter type
+
+        Returns:
+            True if copy successful, False otherwise
+        """
+        try:
+            import shutil
+
+            source_dir = self.generate_model_path(
+                symbol, timeframe, model_type, source_adapter
+            )
+            target_dir = self.generate_model_path(
+                symbol, timeframe, model_type, target_adapter
+            )
+
+            if not source_dir.exists():
+                self.logger.warning(
+                    f"Source model directory does not exist: {source_dir}"
+                )
+                return False
+
+            # Create target directory
+            target_dir.parent.mkdir(parents=True, exist_ok=True)
+
+            # Copy the entire model directory
+            if target_dir.exists():
+                shutil.rmtree(target_dir)
+            shutil.copytree(source_dir, target_dir)
+
+            self.logger.info(
+                f"Copied model from {source_adapter} to {target_adapter}: {target_dir}"
+            )
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to copy model for adapter: {e}")
+            return False
+
+    def ensure_adapter_compatibility(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+        target_adapters: List[str] = None,
+    ) -> None:
+        """
+        Ensure model is available for multiple adapters by copying from simple adapter.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Data timeframe
+            model_type: Model type
+            target_adapters: List of target adapter types
+        """
+        if target_adapters is None:
+            target_adapters = ["simple", "torchscript", "torchserve", "triton"]
+
+        # Check if model exists in simple adapter (training default)
+        simple_exists = self.model_exists(symbol, timeframe, model_type, "simple")
+        if not simple_exists:
+            self.logger.warning(
+                f"No model found in simple adapter for {symbol}_{timeframe}_{model_type}"
+            )
+            return
+
+        # Copy to other adapters if they don't exist
+        for adapter in target_adapters:
+            if adapter != "simple":
+                if not self.model_exists(symbol, timeframe, model_type, adapter):
+                    self.copy_model_for_adapter(
+                        symbol, timeframe, model_type, "simple", adapter
+                    )
 
     @staticmethod
     def save_model_metadata(
@@ -114,6 +323,7 @@ class ModelUtils:
         timeframe: TimeFrame,
         model_type: ModelType,
         metadata: Dict[str, Any],
+        adapter_type: str = "simple",
     ) -> Path:
         """
         Save model metadata
@@ -123,12 +333,15 @@ class ModelUtils:
             timeframe: Data timeframe
             model_type: Model type
             metadata: Metadata dictionary to save
+            adapter_type: Adapter type for storage location
 
         Returns:
             Path to saved metadata file
         """
         utils = ModelUtils()  # Create instance to access instance methods
-        model_dir = utils.generate_model_path(symbol, timeframe, model_type)
+        model_dir = utils.generate_model_path(
+            symbol, timeframe, model_type, adapter_type
+        )
         model_dir.mkdir(parents=True, exist_ok=True)
 
         # Ensure symbol is string
@@ -141,6 +354,7 @@ class ModelUtils:
                 "symbol": symbol,
                 "timeframe": timeframe.value,
                 "model_type": model_type.value,
+                "adapter_type": adapter_type,
                 "saved_at": datetime.now().isoformat(),
                 "model_identifier": utils.generate_model_identifier(
                     symbol, timeframe, model_type
@@ -159,6 +373,7 @@ class ModelUtils:
         symbol: str,
         timeframe: TimeFrame,
         model_type: ModelType,
+        adapter_type: str = "simple",
     ) -> Optional[Dict[str, Any]]:
         """
         Load model metadata
@@ -167,12 +382,15 @@ class ModelUtils:
             symbol: Trading symbol
             timeframe: Data timeframe
             model_type: Model type
+            adapter_type: Adapter type for storage location
 
         Returns:
             Metadata dictionary or None if not found
         """
         utils = ModelUtils()  # Create instance to access instance methods
-        model_dir = utils.generate_model_path(symbol, timeframe, model_type)
+        model_dir = utils.generate_model_path(
+            symbol, timeframe, model_type, adapter_type
+        )
         metadata_path = model_dir / "metadata.json"
 
         if not metadata_path.exists():
@@ -189,6 +407,7 @@ class ModelUtils:
         symbol: str,
         timeframe: TimeFrame,
         model_type: ModelType,
+        adapter_type: str = "simple",
     ) -> bool:
         """
         Check if model exists
@@ -197,12 +416,15 @@ class ModelUtils:
             symbol: Trading symbol
             timeframe: Data timeframe
             model_type: Model type
+            adapter_type: Adapter type for storage location
 
         Returns:
             True if model exists, False otherwise
         """
         utils = ModelUtils()  # Create instance to access instance methods
-        checkpoint_path = utils.get_checkpoint_path(symbol, timeframe, model_type)
+        checkpoint_path = utils.get_checkpoint_path(
+            symbol, timeframe, model_type, adapter_type
+        )
         return checkpoint_path.exists()
 
     @staticmethod

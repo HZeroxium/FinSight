@@ -7,8 +7,9 @@ from datetime import datetime
 import uvicorn
 
 from .core.config import get_settings
-from .routers import training_router, prediction_router
+from .routers import prediction_router, training_router
 from .routers.models import router as models_router
+from .routers.serving import router as serving_router
 from .schemas.base_schemas import HealthResponse
 from common.logger import LoggerFactory
 
@@ -24,10 +25,46 @@ async def lifespan(app: FastAPI):
     logger.info(f"Models directory: {settings.models_dir}")
     logger.info(f"Logs directory: {settings.logs_dir}")
 
+    # Initialize async services
+    try:
+        logger.info("Initializing async training services...")
+        from .routers.training import get_training_service
+
+        training_service = get_training_service()
+        await training_service.initialize()
+
+        logger.info("✅ Async training services initialized successfully")
+
+        # Initialize serving adapter
+        logger.info("Initializing serving adapter...")
+        from .models.model_facade import ModelFacade
+
+        facade = ModelFacade()
+        await facade.initialize_serving()
+        logger.info("✅ Serving adapter initialized successfully")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize async services: {e}")
+        # Don't raise - let the service start in degraded mode
+        logger.warning("🔧 Starting API in degraded mode due to initialization errors")
+
     yield
 
     # Shutdown
     logger.info("Shutting down FinSight Model Builder API")
+
+    # Cleanup async services
+    try:
+        logger.info("Cleaning up async services...")
+        from .routers.training import get_training_service
+
+        training_service = get_training_service()
+        await training_service.shutdown()
+
+        logger.info("✅ Async services cleaned up successfully")
+
+    except Exception as e:
+        logger.error(f"❌ Error during async services cleanup: {e}")
 
 
 # Create FastAPI app
@@ -52,9 +89,12 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(training_router)
+app.include_router(
+    training_router
+)  # Consolidated training endpoints (both legacy and async)
 app.include_router(prediction_router)
 app.include_router(models_router)
+app.include_router(serving_router)  # Model serving management endpoints
 
 
 @app.get("/", response_model=dict)
@@ -66,9 +106,10 @@ async def root():
         "status": "running",
         "docs": "/docs",
         "endpoints": {
-            "training": "/training",
+            "training": "/training",  # Consolidated training endpoints
             "prediction": "/prediction",
             "models": "/models",
+            "serving": "/serving",  # Model serving management
             "health": "/health",
         },
     }

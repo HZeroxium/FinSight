@@ -1,4 +1,4 @@
-# repositories/training_job_repository.py
+# repositories/file_training_job_repository.py
 
 """
 JSON file-based repository implementation for managing training job persistence and retrieval

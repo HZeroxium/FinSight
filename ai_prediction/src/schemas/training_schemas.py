@@ -5,6 +5,7 @@ Enhanced training schemas with async support
 """
 
 from typing import Optional, Dict, Any, List
+from pathlib import Path
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from enum import Enum
@@ -150,6 +151,12 @@ class TrainingJobInfo(BaseModel):
     # Additional metadata
     tags: Optional[Dict[str, str]] = Field(None, description="Custom job tags")
     worker_id: Optional[str] = Field(None, description="Worker that processed the job")
+
+    @field_validator("model_path", mode="before")
+    def convert_path_to_str(cls, v):
+        if isinstance(v, Path):
+            return str(v)
+        return v
 
 
 class AsyncTrainingResponse(BaseResponse):
