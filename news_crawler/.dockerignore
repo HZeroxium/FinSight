@@ -97,6 +97,11 @@ data/
 *.json
 !*config*.json
 
+# Exclude config files
+!news_crawler_config.json
+!news_crawler_config.dev.json
+!news_crawler_config.prod.json
+
 # Environment and secrets
 .env*
 !.env.example
