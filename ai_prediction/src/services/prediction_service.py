@@ -107,9 +107,7 @@ class PredictionService:
                 return PredictionResponse(
                     success=True,
                     message="Prediction completed successfully",
-                    predictions=prediction_result.get("predictions", {}).get(
-                        "predictions", []
-                    ),
+                    predictions=prediction_result.get("predictions", []),
                     prediction_timestamps=prediction_timestamps,
                     current_price=prediction_result.get("current_price"),
                     predicted_change_pct=prediction_result.get("predicted_change_pct"),

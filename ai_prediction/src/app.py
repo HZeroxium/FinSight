@@ -126,11 +126,23 @@ async def health_check():
     """Health check endpoint"""
     settings = get_settings()
 
-    dependencies = {
-        "data_dir": "available" if settings.data_dir.exists() else "missing",
-        "models_dir": "available" if settings.models_dir.exists() else "missing",
-        "logs_dir": "available" if settings.logs_dir.exists() else "missing",
-    }
+    # Check directory availability (handle case where settings might not have these directories)
+    dependencies = {}
+    
+    if hasattr(settings, 'data_dir') and settings.data_dir:
+        dependencies["data_dir"] = "available" if settings.data_dir.exists() else "missing"
+    else:
+        dependencies["data_dir"] = "not_configured"
+        
+    if hasattr(settings, 'models_dir') and settings.models_dir:
+        dependencies["models_dir"] = "available" if settings.models_dir.exists() else "missing"
+    else:
+        dependencies["models_dir"] = "not_configured"
+        
+    if hasattr(settings, 'logs_dir') and settings.logs_dir:
+        dependencies["logs_dir"] = "available" if settings.logs_dir.exists() else "missing"
+    else:
+        dependencies["logs_dir"] = "not_configured"
 
     return HealthResponse(
         status="healthy",

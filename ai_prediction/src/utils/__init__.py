@@ -5,7 +5,11 @@ Utility modules for the FinSight Model Builder system.
 """
 
 from .backtest_strategy_utils import BacktestEngine, HyperparameterTuner, SignalType, Trade
-from .visualization_utils import VisualizationUtils
+# Conditional import for visualization utils due to matplotlib dependency
+try:
+    from .visualization_utils import VisualizationUtils
+except ImportError:
+    VisualizationUtils = None
 
 __all__ = [
     "BacktestEngine",
