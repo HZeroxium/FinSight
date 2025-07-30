@@ -3,7 +3,7 @@
 import json
 from typing import Dict, Any, List, Optional
 
-from ..models.model_facade import ModelFacade
+from ..facades import get_unified_facade
 from ..schemas.enums import ModelType, TimeFrame
 from ..schemas.base_schemas import ModelInfoResponse
 from common.logger.logger_factory import LoggerFactory
@@ -16,7 +16,7 @@ class ModelService:
     def __init__(self):
         self.logger = LoggerFactory.get_logger("ModelService")
         self.settings = get_settings()
-        self.model_facade = ModelFacade()
+        self.model_facade = get_unified_facade()
 
     def get_model_info(self) -> ModelInfoResponse:
         """Get comprehensive information about models"""

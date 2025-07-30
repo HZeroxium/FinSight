@@ -4,7 +4,7 @@ import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
-from ..models.model_facade import ModelFacade
+from ..facades import get_serving_facade, get_unified_facade
 from ..services.data_service import DataService
 from ..schemas.model_schemas import PredictionRequest, PredictionResponse
 from ..schemas.enums import ModelType, TimeFrame
@@ -18,7 +18,7 @@ class PredictionService:
     def __init__(self):
         self.logger = LoggerFactory.get_logger("PredictionService")
         self.settings = get_settings()
-        self.model_facade = ModelFacade()
+        self.model_facade = get_serving_facade()
         self.data_service = DataService()
 
     def predict(self, request: PredictionRequest) -> PredictionResponse:
@@ -107,7 +107,9 @@ class PredictionService:
                 return PredictionResponse(
                     success=True,
                     message="Prediction completed successfully",
-                    predictions=prediction_result.get("predictions", []),
+                    predictions=prediction_result.get("predictions", {}).get(
+                        "predictions", []
+                    ),
                     prediction_timestamps=prediction_timestamps,
                     current_price=prediction_result.get("current_price"),
                     predicted_change_pct=prediction_result.get("predicted_change_pct"),

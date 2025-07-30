@@ -10,7 +10,7 @@ import asyncio
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 
-from ..models.model_facade import ModelFacade
+from ..facades import get_training_facade, get_unified_facade
 from ..services.data_service import DataService
 from ..services.background_task_manager import BackgroundTaskManager
 from ..repositories.training_job_facade import (
@@ -43,7 +43,7 @@ class TrainingService:
     def __init__(self):
         self.logger = LoggerFactory.get_logger("TrainingService")
         self.settings = get_settings()
-        self.model_facade = ModelFacade()
+        self.model_facade = get_training_facade()
         self.data_service = DataService()
 
         # Initialize async components (but don't start them yet)
