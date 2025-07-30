@@ -1,0 +1,273 @@
+---
+alwaysApply: true
+---
+
+# DevOps, MLOps & Deployment Guidelines for FinSight
+
+## Containerization Standards
+- **Docker Best Practices**: Implement efficient containerization
+  - Use multi-stage builds for optimized image sizes
+  - Pin base image versions for reproducible builds
+  - Create `.dockerignore` files to exclude unnecessary files
+  - Implement proper health checks and signal handling
+  - Use non-root users for security
+
+- **Docker Compose**: Orchestrate development environments
+  - Define complete service stacks with dependencies
+  - Use environment-specific override files
+  - Include volume mounts for development iteration
+  - Implement proper service networking and communication
+  - Support both development and production configurations
+
+## CI/CD Pipeline Standards
+- **GitHub Actions**: Implement comprehensive CI/CD workflows
+  - Run automated tests on all pull requests
+  - Include code quality checks (black, isort, mypy, flake8)
+  - Implement security scanning and dependency checks
+  - Build and push Docker images to registries
+  - Deploy to staging and production environments
+
+- **Build Automation**: Ensure reproducible builds
+  - Pin all dependency versions in requirements files
+  - Use virtual environments for isolation
+  - Include build verification and smoke tests
+  - Generate and archive build artifacts
+  - Implement build caching for faster iterations
+
+## Infrastructure as Code
+- **Configuration Management**: Manage infrastructure declaratively
+  - Use Docker Compose for local development
+  - Support Kubernetes manifests for production deployment
+  - Implement environment-specific configuration
+  - Use secrets management for sensitive data
+  - Include monitoring and logging configuration
+
+- **Environment Management**: Support multiple deployment environments
+  - Development: Local Docker Compose setup
+  - Staging: Production-like environment for testing
+  - Production: Highly available, scalable deployment
+  - Include environment-specific configuration validation
+
+## MLOps and Model Management
+- **Model Training Pipelines**: Automate ML workflows
+  - Implement scheduled training jobs with configurable parameters
+  - Use version control for training data and model artifacts
+  - Include model validation and performance monitoring
+  - Support distributed training for large datasets
+  - Implement automatic model deployment upon validation
+
+- **Model Serving Infrastructure**: Deploy models efficiently
+  - Support multiple serving backends (simple, Triton, TorchServe)
+  - Implement A/B testing for model comparisons
+  - Use blue-green deployment for zero-downtime updates
+  - Include model performance monitoring and alerting
+  - Support model rollback and versioning
+
+## Data Pipeline Management
+- **Data Collection**: Automate financial data ingestion
+  - Implement scheduled data collection jobs (APScheduler)
+  - Use robust error handling and retry mechanisms
+  - Include data validation and quality checks
+  - Support incremental and full data refresh patterns
+  - Monitor data freshness and completeness
+
+- **Data Processing**: Efficient batch and stream processing
+  - Use message queues for reliable data processing
+  - Implement data transformation pipelines
+  - Include data lineage tracking and auditing
+  - Support both batch and real-time processing
+  - Implement data backup and recovery procedures
+
+## Monitoring and Observability
+- **Service Monitoring**: Comprehensive system monitoring
+  - Implement health check endpoints for all services
+  - Monitor service dependencies (databases, message queues)
+  - Include application metrics (response times, error rates)
+  - Support distributed tracing for request correlation
+  - Implement alerting for critical system events
+
+- **Log Management**: Centralized logging and analysis
+  - Use structured logging with consistent formats
+  - Implement log aggregation and centralized storage
+  - Include log rotation and retention policies
+  - Support log searching and analysis tools
+  - Implement security event monitoring and alerting
+
+## Deployment Strategies
+- **Rolling Deployments**: Minimize downtime during updates
+  - Use rolling update strategies for service deployments
+  - Implement readiness and liveness probes
+  - Support automated rollback on deployment failures
+  - Include deployment validation and smoke tests
+  - Monitor deployment progress and success metrics
+
+- **Feature Flags**: Safe feature rollout and testing
+  - Use feature flags for gradual feature rollout
+  - Support A/B testing for new functionality
+  - Implement feature flag management and monitoring
+  - Include feature flag cleanup and lifecycle management
+  - Support emergency feature disabling
+
+## Security and Compliance
+- **Secret Management**: Secure handling of sensitive data
+  - Use environment variables for all secrets
+  - Implement secret rotation without service restart
+  - Include secret scanning in CI/CD pipelines
+  - Use external secret management systems
+  - Audit secret access and usage
+
+- **Security Scanning**: Automated security validation
+  - Scan container images for vulnerabilities
+  - Include dependency vulnerability scanning
+  - Implement static code analysis for security issues
+  - Monitor runtime security events
+  - Include compliance reporting and documentation
+
+## Backup and Disaster Recovery
+- **Data Backup**: Comprehensive backup strategies
+  - Implement automated database backups
+  - Include model artifact and configuration backups
+  - Test backup restoration procedures regularly
+  - Support cross-region backup replication
+  - Monitor backup success and integrity
+
+- **Disaster Recovery**: Business continuity planning
+  - Implement service redundancy and failover
+  - Support multi-region deployment strategies
+  - Include disaster recovery testing and validation
+  - Document recovery procedures and timelines
+  - Monitor system resilience and availability# DevOps, MLOps & Deployment Guidelines for FinSight
+
+## Containerization Standards
+- **Docker Best Practices**: Implement efficient containerization
+  - Use multi-stage builds for optimized image sizes
+  - Pin base image versions for reproducible builds
+  - Create `.dockerignore` files to exclude unnecessary files
+  - Implement proper health checks and signal handling
+  - Use non-root users for security
+
+- **Docker Compose**: Orchestrate development environments
+  - Define complete service stacks with dependencies
+  - Use environment-specific override files
+  - Include volume mounts for development iteration
+  - Implement proper service networking and communication
+  - Support both development and production configurations
+
+## CI/CD Pipeline Standards
+- **GitHub Actions**: Implement comprehensive CI/CD workflows
+  - Run automated tests on all pull requests
+  - Include code quality checks (black, isort, mypy, flake8)
+  - Implement security scanning and dependency checks
+  - Build and push Docker images to registries
+  - Deploy to staging and production environments
+
+- **Build Automation**: Ensure reproducible builds
+  - Pin all dependency versions in requirements files
+  - Use virtual environments for isolation
+  - Include build verification and smoke tests
+  - Generate and archive build artifacts
+  - Implement build caching for faster iterations
+
+## Infrastructure as Code
+- **Configuration Management**: Manage infrastructure declaratively
+  - Use Docker Compose for local development
+  - Support Kubernetes manifests for production deployment
+  - Implement environment-specific configuration
+  - Use secrets management for sensitive data
+  - Include monitoring and logging configuration
+
+- **Environment Management**: Support multiple deployment environments
+  - Development: Local Docker Compose setup
+  - Staging: Production-like environment for testing
+  - Production: Highly available, scalable deployment
+  - Include environment-specific configuration validation
+
+## MLOps and Model Management
+- **Model Training Pipelines**: Automate ML workflows
+  - Implement scheduled training jobs with configurable parameters
+  - Use version control for training data and model artifacts
+  - Include model validation and performance monitoring
+  - Support distributed training for large datasets
+  - Implement automatic model deployment upon validation
+
+- **Model Serving Infrastructure**: Deploy models efficiently
+  - Support multiple serving backends (simple, Triton, TorchServe)
+  - Implement A/B testing for model comparisons
+  - Use blue-green deployment for zero-downtime updates
+  - Include model performance monitoring and alerting
+  - Support model rollback and versioning
+
+## Data Pipeline Management
+- **Data Collection**: Automate financial data ingestion
+  - Implement scheduled data collection jobs (APScheduler)
+  - Use robust error handling and retry mechanisms
+  - Include data validation and quality checks
+  - Support incremental and full data refresh patterns
+  - Monitor data freshness and completeness
+
+- **Data Processing**: Efficient batch and stream processing
+  - Use message queues for reliable data processing
+  - Implement data transformation pipelines
+  - Include data lineage tracking and auditing
+  - Support both batch and real-time processing
+  - Implement data backup and recovery procedures
+
+## Monitoring and Observability
+- **Service Monitoring**: Comprehensive system monitoring
+  - Implement health check endpoints for all services
+  - Monitor service dependencies (databases, message queues)
+  - Include application metrics (response times, error rates)
+  - Support distributed tracing for request correlation
+  - Implement alerting for critical system events
+
+- **Log Management**: Centralized logging and analysis
+  - Use structured logging with consistent formats
+  - Implement log aggregation and centralized storage
+  - Include log rotation and retention policies
+  - Support log searching and analysis tools
+  - Implement security event monitoring and alerting
+
+## Deployment Strategies
+- **Rolling Deployments**: Minimize downtime during updates
+  - Use rolling update strategies for service deployments
+  - Implement readiness and liveness probes
+  - Support automated rollback on deployment failures
+  - Include deployment validation and smoke tests
+  - Monitor deployment progress and success metrics
+
+- **Feature Flags**: Safe feature rollout and testing
+  - Use feature flags for gradual feature rollout
+  - Support A/B testing for new functionality
+  - Implement feature flag management and monitoring
+  - Include feature flag cleanup and lifecycle management
+  - Support emergency feature disabling
+
+## Security and Compliance
+- **Secret Management**: Secure handling of sensitive data
+  - Use environment variables for all secrets
+  - Implement secret rotation without service restart
+  - Include secret scanning in CI/CD pipelines
+  - Use external secret management systems
+  - Audit secret access and usage
+
+- **Security Scanning**: Automated security validation
+  - Scan container images for vulnerabilities
+  - Include dependency vulnerability scanning
+  - Implement static code analysis for security issues
+  - Monitor runtime security events
+  - Include compliance reporting and documentation
+
+## Backup and Disaster Recovery
+- **Data Backup**: Comprehensive backup strategies
+  - Implement automated database backups
+  - Include model artifact and configuration backups
+  - Test backup restoration procedures regularly
+  - Support cross-region backup replication
+  - Monitor backup success and integrity
+
+- **Disaster Recovery**: Business continuity planning
+  - Implement service redundancy and failover
+  - Support multi-region deployment strategies
+  - Include disaster recovery testing and validation
+  - Document recovery procedures and timelines
+  - Monitor system resilience and availability

@@ -1,0 +1,222 @@
+---
+alwaysApply: true
+---
+# Security, Error Handling & Validation for FinSight
+
+## Input Validation and Security
+- **Pydantic Validation**: Use comprehensive Pydantic models for all input validation
+  - Define strict field types, constraints, and validators
+  - Implement custom validators for financial data formats
+  - Use `Field()` with proper descriptions and constraints
+  - Validate date ranges, numerical bounds, and string formats
+
+- **API Security**: Implement robust API security measures
+  - Use API key authentication for admin endpoints
+  - Implement rate limiting to prevent abuse
+  - Validate all request headers and parameters
+  - Include CORS configuration for production deployments
+  - Log security events and failed authentication attempts
+
+## Error Handling Patterns
+- **Structured Exception Hierarchy**: Create domain-specific exception classes
+  ```python
+  class FinSightError(Exception):
+      """Base exception for FinSight services"""
+  
+  class ValidationError(FinSightError):
+      """Data validation errors"""
+  
+  class ModelTrainingError(FinSightError):
+      """Model training specific errors"""
+  ```
+
+- **Global Exception Handlers**: Implement FastAPI exception handlers
+  - Handle validation errors with detailed response messages
+  - Include correlation IDs in error responses
+  - Log errors with appropriate severity levels
+  - Return consistent error response schemas
+
+- **Graceful Degradation**: Design for failure scenarios
+  - Implement circuit breaker patterns for external services
+  - Use fallback mechanisms for critical operations
+  - Include retry logic with exponential backoff
+  - Support partial functionality during service degradation
+
+## Data Validation Standards
+- **Financial Data Validation**: Implement domain-specific validation
+  - Validate OHLCV data consistency (high >= open/close, low <= open/close)
+  - Check timestamp chronological order and completeness
+  - Validate numerical ranges for prices and volumes
+  - Implement data gap detection and reporting
+
+- **Configuration Validation**: Validate all settings at startup
+  - Check required environment variables
+  - Validate API keys and connection strings
+  - Ensure file paths and directories exist
+  - Validate numerical configuration bounds
+
+## Logging and Monitoring Security
+- **Structured Logging**: Use LoggerFactory for consistent security logging
+  - Log authentication attempts and failures
+  - Include user context and request correlation IDs
+  - Sanitize sensitive data from logs (API keys, personal data)
+  - Implement log level configuration for different environments
+
+- **Security Event Monitoring**: Track security-relevant events
+  - Failed authentication attempts
+  - Unusual API usage patterns
+  - Data access violations
+  - System configuration changes
+
+## API Key and Credential Management
+- **Environment Variables**: Store all sensitive data in environment variables
+  - Never commit API keys or credentials to version control
+  - Use `.env.example` files for development setup
+  - Implement validation for required credentials
+
+- **Secret Rotation**: Support secret rotation without service restart
+  - Use configuration management for secret updates
+  - Implement health checks that validate credential status
+  - Log credential expiration warnings
+
+## Rate Limiting and Throttling
+- **API Rate Limiting**: Implement comprehensive rate limiting
+  - Different limits for public vs authenticated endpoints
+  - Respect external API rate limits (Binance, OpenAI, Tavily)
+  - Implement request queuing for high-volume operations
+  - Include rate limit headers in responses
+
+## Data Privacy and Compliance
+- **Data Sanitization**: Clean sensitive data appropriately
+  - Remove or hash personal identifiers
+  - Implement data retention policies
+  - Support data deletion requests
+  - Validate data processing consent
+
+- **Audit Logging**: Maintain comprehensive audit trails
+  - Log all data access and modification events
+  - Include user context and timestamps
+  - Support audit log querying and reporting
+  - Implement log integrity validation
+
+## Threat Modeling and Risk Assessment
+- **OWASP Guidelines**: Follow OWASP Top Ten mitigations
+  - Prevent injection attacks through input validation
+  - Implement proper authentication and session management
+  - Use HTTPS for all external communications
+  - Validate and sanitize all user inputs
+
+- **Financial Data Security**: Implement financial-specific security measures
+  - Encrypt sensitive financial data at rest and in transit
+  - Implement data integrity checks for market data
+  - Use secure communication channels for inter-service communication
+  - Monitor for unusual trading patterns or data anomalies# Security, Error Handling & Validation for FinSight
+
+## Input Validation and Security
+- **Pydantic Validation**: Use comprehensive Pydantic models for all input validation
+  - Define strict field types, constraints, and validators
+  - Implement custom validators for financial data formats
+  - Use `Field()` with proper descriptions and constraints
+  - Validate date ranges, numerical bounds, and string formats
+
+- **API Security**: Implement robust API security measures
+  - Use API key authentication for admin endpoints
+  - Implement rate limiting to prevent abuse
+  - Validate all request headers and parameters
+  - Include CORS configuration for production deployments
+  - Log security events and failed authentication attempts
+
+## Error Handling Patterns
+- **Structured Exception Hierarchy**: Create domain-specific exception classes
+  ```python
+  class FinSightError(Exception):
+      """Base exception for FinSight services"""
+  
+  class ValidationError(FinSightError):
+      """Data validation errors"""
+  
+  class ModelTrainingError(FinSightError):
+      """Model training specific errors"""
+  ```
+
+- **Global Exception Handlers**: Implement FastAPI exception handlers
+  - Handle validation errors with detailed response messages
+  - Include correlation IDs in error responses
+  - Log errors with appropriate severity levels
+  - Return consistent error response schemas
+
+- **Graceful Degradation**: Design for failure scenarios
+  - Implement circuit breaker patterns for external services
+  - Use fallback mechanisms for critical operations
+  - Include retry logic with exponential backoff
+  - Support partial functionality during service degradation
+
+## Data Validation Standards
+- **Financial Data Validation**: Implement domain-specific validation
+  - Validate OHLCV data consistency (high >= open/close, low <= open/close)
+  - Check timestamp chronological order and completeness
+  - Validate numerical ranges for prices and volumes
+  - Implement data gap detection and reporting
+
+- **Configuration Validation**: Validate all settings at startup
+  - Check required environment variables
+  - Validate API keys and connection strings
+  - Ensure file paths and directories exist
+  - Validate numerical configuration bounds
+
+## Logging and Monitoring Security
+- **Structured Logging**: Use LoggerFactory for consistent security logging
+  - Log authentication attempts and failures
+  - Include user context and request correlation IDs
+  - Sanitize sensitive data from logs (API keys, personal data)
+  - Implement log level configuration for different environments
+
+- **Security Event Monitoring**: Track security-relevant events
+  - Failed authentication attempts
+  - Unusual API usage patterns
+  - Data access violations
+  - System configuration changes
+
+## API Key and Credential Management
+- **Environment Variables**: Store all sensitive data in environment variables
+  - Never commit API keys or credentials to version control
+  - Use `.env.example` files for development setup
+  - Implement validation for required credentials
+
+- **Secret Rotation**: Support secret rotation without service restart
+  - Use configuration management for secret updates
+  - Implement health checks that validate credential status
+  - Log credential expiration warnings
+
+## Rate Limiting and Throttling
+- **API Rate Limiting**: Implement comprehensive rate limiting
+  - Different limits for public vs authenticated endpoints
+  - Respect external API rate limits (Binance, OpenAI, Tavily)
+  - Implement request queuing for high-volume operations
+  - Include rate limit headers in responses
+
+## Data Privacy and Compliance
+- **Data Sanitization**: Clean sensitive data appropriately
+  - Remove or hash personal identifiers
+  - Implement data retention policies
+  - Support data deletion requests
+  - Validate data processing consent
+
+- **Audit Logging**: Maintain comprehensive audit trails
+  - Log all data access and modification events
+  - Include user context and timestamps
+  - Support audit log querying and reporting
+  - Implement log integrity validation
+
+## Threat Modeling and Risk Assessment
+- **OWASP Guidelines**: Follow OWASP Top Ten mitigations
+  - Prevent injection attacks through input validation
+  - Implement proper authentication and session management
+  - Use HTTPS for all external communications
+  - Validate and sanitize all user inputs
+
+- **Financial Data Security**: Implement financial-specific security measures
+  - Encrypt sensitive financial data at rest and in transit
+  - Implement data integrity checks for market data
+  - Use secure communication channels for inter-service communication
+  - Monitor for unusual trading patterns or data anomalies

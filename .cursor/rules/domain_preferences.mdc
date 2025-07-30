@@ -1,0 +1,192 @@
+---
+alwaysApply: true
+---
+# Domain & Framework Preferences for FinSight
+
+## Python Framework Preferences
+- **FastAPI**: Primary framework for all REST API development
+  - Leverage automatic OpenAPI generation and validation
+  - Use dependency injection system for service management
+  - Implement async request handling for better performance
+  - Include comprehensive error handling middleware
+
+## Database and Storage Technologies
+- **MongoDB**: Primary database for document storage (news, sentiment, job data)
+  - Use Motor for async MongoDB operations
+  - Implement proper indexing for query performance
+  - Support both local and cloud MongoDB configurations
+  - Include connection pooling and health monitoring
+
+- **Redis**: Caching and session management
+  - Use for training job repositories and caching
+  - Implement proper key expiration and memory management
+  - Support clustered Redis for production deployments
+
+- **InfluxDB**: Time-series data storage for market data
+  - Optimize for high-throughput financial data ingestion
+  - Implement proper retention policies for historical data
+
+## Message Queue and Communication
+- **RabbitMQ**: Inter-service message broker
+  - Use `aio-pika` for async message handling
+  - Implement proper message acknowledgment and error handling
+  - Support message routing with exchanges and queues
+  - Include dead letter queue management
+
+## AI/ML Framework Preferences
+- **Hugging Face Transformers**: Time series modeling (PatchTST, PatchTSMixer)
+  - Prefer official Microsoft PatchTST implementations
+  - Use PyTorch Lightning for training orchestration
+  - Implement proper model versioning and checkpointing
+  - Support multiple serving backends (simple, Triton, TorchServe)
+
+- **LangChain**: LLM integration and orchestration
+  - Use for sentiment analysis and news processing
+  - Implement proper prompt engineering and chain management
+  - Support multiple LLM providers (OpenAI, Google)
+
+- **OpenAI/Google AI**: LLM providers for sentiment analysis
+  - Implement rate limiting and retry logic
+  - Use structured outputs for consistent parsing
+  - Include cost monitoring and usage tracking
+
+## Data Processing Libraries
+- **Pandas**: Data manipulation and analysis
+- **NumPy**: Numerical computations
+- **ccxt/python-binance**: Cryptocurrency exchange APIs
+- **Motor**: Async MongoDB driver
+- **aiofiles**: Async file operations
+
+## Development and Deployment Tools
+- **Docker**: Containerization for all services
+  - Use multi-stage builds for optimization
+  - Implement proper health checks and monitoring
+  - Support both development and production configurations
+
+- **Poetry/pip**: Dependency management
+  - Prefer `requirements.txt` for consistency
+  - Pin versions for reproducible builds
+  - Separate dev and production dependencies
+
+## Financial Data Sources
+- **Binance API**: Primary cryptocurrency exchange
+  - Implement proper rate limiting and error handling
+  - Support both REST and WebSocket connections
+  - Include comprehensive market data validation
+
+- **Tavily API**: News search and collection
+  - Implement caching to reduce API calls
+  - Support batch processing for efficiency
+  - Include source credibility validation
+
+## Monitoring and Observability
+- **Custom LoggerFactory**: Structured logging across services
+  - Use consistent log formats and levels
+  - Include correlation IDs for request tracing
+  - Support both console and file logging
+
+- **Health Checks**: Comprehensive service monitoring
+  - Include dependency health checks (database, message queue)
+  - Implement graceful degradation strategies
+  - Support monitoring dashboard integration
+
+## Testing Frameworks
+- **pytest**: Primary testing framework
+  - Use async test support for async code
+  - Implement proper test fixtures and mocking
+  - Include integration tests for critical paths
+  - Maintain high coverage standards (minimum 80%)# Domain & Framework Preferences for FinSight
+
+## Python Framework Preferences
+- **FastAPI**: Primary framework for all REST API development
+  - Leverage automatic OpenAPI generation and validation
+  - Use dependency injection system for service management
+  - Implement async request handling for better performance
+  - Include comprehensive error handling middleware
+
+## Database and Storage Technologies
+- **MongoDB**: Primary database for document storage (news, sentiment, job data)
+  - Use Motor for async MongoDB operations
+  - Implement proper indexing for query performance
+  - Support both local and cloud MongoDB configurations
+  - Include connection pooling and health monitoring
+
+- **Redis**: Caching and session management
+  - Use for training job repositories and caching
+  - Implement proper key expiration and memory management
+  - Support clustered Redis for production deployments
+
+- **InfluxDB**: Time-series data storage for market data
+  - Optimize for high-throughput financial data ingestion
+  - Implement proper retention policies for historical data
+
+## Message Queue and Communication
+- **RabbitMQ**: Inter-service message broker
+  - Use `aio-pika` for async message handling
+  - Implement proper message acknowledgment and error handling
+  - Support message routing with exchanges and queues
+  - Include dead letter queue management
+
+## AI/ML Framework Preferences
+- **Hugging Face Transformers**: Time series modeling (PatchTST, PatchTSMixer)
+  - Prefer official Microsoft PatchTST implementations
+  - Use PyTorch Lightning for training orchestration
+  - Implement proper model versioning and checkpointing
+  - Support multiple serving backends (simple, Triton, TorchServe)
+
+- **LangChain**: LLM integration and orchestration
+  - Use for sentiment analysis and news processing
+  - Implement proper prompt engineering and chain management
+  - Support multiple LLM providers (OpenAI, Google)
+
+- **OpenAI/Google AI**: LLM providers for sentiment analysis
+  - Implement rate limiting and retry logic
+  - Use structured outputs for consistent parsing
+  - Include cost monitoring and usage tracking
+
+## Data Processing Libraries
+- **Pandas**: Data manipulation and analysis
+- **NumPy**: Numerical computations
+- **ccxt/python-binance**: Cryptocurrency exchange APIs
+- **Motor**: Async MongoDB driver
+- **aiofiles**: Async file operations
+
+## Development and Deployment Tools
+- **Docker**: Containerization for all services
+  - Use multi-stage builds for optimization
+  - Implement proper health checks and monitoring
+  - Support both development and production configurations
+
+- **Poetry/pip**: Dependency management
+  - Prefer `requirements.txt` for consistency
+  - Pin versions for reproducible builds
+  - Separate dev and production dependencies
+
+## Financial Data Sources
+- **Binance API**: Primary cryptocurrency exchange
+  - Implement proper rate limiting and error handling
+  - Support both REST and WebSocket connections
+  - Include comprehensive market data validation
+
+- **Tavily API**: News search and collection
+  - Implement caching to reduce API calls
+  - Support batch processing for efficiency
+  - Include source credibility validation
+
+## Monitoring and Observability
+- **Custom LoggerFactory**: Structured logging across services
+  - Use consistent log formats and levels
+  - Include correlation IDs for request tracing
+  - Support both console and file logging
+
+- **Health Checks**: Comprehensive service monitoring
+  - Include dependency health checks (database, message queue)
+  - Implement graceful degradation strategies
+  - Support monitoring dashboard integration
+
+## Testing Frameworks
+- **pytest**: Primary testing framework
+  - Use async test support for async code
+  - Implement proper test fixtures and mocking
+  - Include integration tests for critical paths
+  - Maintain high coverage standards (minimum 80%)

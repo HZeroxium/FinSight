@@ -1,0 +1,248 @@
+---
+alwaysApply: true
+---
+# Testing & Documentation Standards for FinSight
+
+## Testing Framework and Strategy
+- **pytest**: Use pytest as the primary testing framework
+  - Include `pytest-asyncio` for async test support
+  - Use fixtures for test data setup and teardown
+  - Implement proper test isolation and cleanup
+  - Support parallel test execution for faster CI/CD
+
+- **Test Coverage Requirements**: Maintain high coverage standards
+  - Minimum 80% code coverage for all services
+  - Focus on critical business logic and error paths
+  - Include edge cases and boundary conditions
+  - Monitor coverage trends and enforce coverage gates
+
+## Test Types and Organization
+- **Unit Tests**: Test individual components in isolation
+  - Mock external dependencies (databases, APIs, message queues)
+  - Test business logic without infrastructure dependencies
+  - Validate error handling and edge cases
+  - Use descriptive test names that explain the scenario
+
+- **Integration Tests**: Test service interactions
+  - Test repository implementations with real databases
+  - Validate message queue producers and consumers
+  - Test API endpoints end-to-end
+  - Include service health check validation
+
+- **Performance Tests**: Validate system performance
+  - Load test critical endpoints and operations
+  - Validate memory usage for large datasets
+  - Test concurrent request handling
+  - Monitor response times under load
+
+## Mocking and Test Doubles
+- **External Service Mocking**: Mock all external dependencies
+  - Mock API clients (Binance, OpenAI, Tavily)
+  - Mock database connections and operations
+  - Mock message queue interactions
+  - Use `unittest.mock` or `pytest-mock` for mocking
+
+- **Test Data Management**: Create realistic test datasets
+  - Use representative financial data for testing
+  - Create test fixtures for common scenarios
+  - Support test data versioning and updates
+  - Include both valid and invalid data scenarios
+
+## Documentation Standards
+- **Docstring Requirements**: Comprehensive documentation for all public APIs
+  ```python
+  async def train_model(symbol: str, config: TrainingConfig) -> TrainingResult:
+      """
+      Train a time series prediction model for the specified symbol.
+      
+      Args:
+          symbol: The trading symbol (e.g., 'BTCUSDT')
+          config: Training configuration parameters
+          
+      Returns:
+          TrainingResult containing model path and performance metrics
+          
+      Raises:
+          ModelTrainingError: If training fails due to data or configuration issues
+          ValidationError: If input parameters are invalid
+          
+      Example:
+          >>> config = TrainingConfig(epochs=100, learning_rate=0.001)
+          >>> result = await train_model('BTCUSDT', config)
+          >>> print(f"Model saved to: {result.model_path}")
+      """
+  ```
+
+- **API Documentation**: Comprehensive OpenAPI/Swagger documentation
+  - Include detailed endpoint descriptions and examples
+  - Document all request/response schemas with examples
+  - Include error responses and status codes
+  - Provide authentication and authorization requirements
+
+- **Architecture Documentation**: Maintain system documentation
+  - Document service interactions and data flows
+  - Include deployment and configuration guides
+  - Maintain troubleshooting and FAQ documentation
+  - Document design decisions and trade-offs
+
+## Code Review Standards
+- **Review Checklist**: Enforce comprehensive code review
+  - Verify test coverage for new functionality
+  - Validate error handling and edge cases
+  - Check for security vulnerabilities
+  - Ensure documentation is complete and accurate
+  - Validate performance implications
+
+- **Review Process**: Implement structured review process
+  - Require at least one senior developer approval
+  - Include automated checks (tests, linting, security)
+  - Document review feedback and resolution
+  - Support reviewer rotation for knowledge sharing
+
+## Continuous Integration Standards
+- **Automated Testing**: Run comprehensive test suites in CI
+  - Execute unit, integration, and performance tests
+  - Include code quality checks (black, isort, mypy, flake8)
+  - Run security scanning and dependency checks
+  - Generate and publish coverage reports
+
+- **Test Reporting**: Provide detailed test results
+  - Generate test reports with failure details
+  - Include performance benchmarking results
+  - Track test execution time trends
+  - Support test result visualization and analysis
+
+## Documentation Automation
+- **API Documentation Generation**: Automatically generate API docs
+  - Use FastAPI's built-in OpenAPI generation
+  - Include examples and validation rules
+  - Generate client SDKs from OpenAPI specs
+  - Keep documentation synchronized with code changes
+
+- **Architecture Diagrams**: Maintain system architecture documentation
+  - Use tools like Mermaid for diagram generation
+  - Include service dependency diagrams
+  - Document data flow and message patterns
+  - Keep diagrams updated with system changes# Testing & Documentation Standards for FinSight
+
+## Testing Framework and Strategy
+- **pytest**: Use pytest as the primary testing framework
+  - Include `pytest-asyncio` for async test support
+  - Use fixtures for test data setup and teardown
+  - Implement proper test isolation and cleanup
+  - Support parallel test execution for faster CI/CD
+
+- **Test Coverage Requirements**: Maintain high coverage standards
+  - Minimum 80% code coverage for all services
+  - Focus on critical business logic and error paths
+  - Include edge cases and boundary conditions
+  - Monitor coverage trends and enforce coverage gates
+
+## Test Types and Organization
+- **Unit Tests**: Test individual components in isolation
+  - Mock external dependencies (databases, APIs, message queues)
+  - Test business logic without infrastructure dependencies
+  - Validate error handling and edge cases
+  - Use descriptive test names that explain the scenario
+
+- **Integration Tests**: Test service interactions
+  - Test repository implementations with real databases
+  - Validate message queue producers and consumers
+  - Test API endpoints end-to-end
+  - Include service health check validation
+
+- **Performance Tests**: Validate system performance
+  - Load test critical endpoints and operations
+  - Validate memory usage for large datasets
+  - Test concurrent request handling
+  - Monitor response times under load
+
+## Mocking and Test Doubles
+- **External Service Mocking**: Mock all external dependencies
+  - Mock API clients (Binance, OpenAI, Tavily)
+  - Mock database connections and operations
+  - Mock message queue interactions
+  - Use `unittest.mock` or `pytest-mock` for mocking
+
+- **Test Data Management**: Create realistic test datasets
+  - Use representative financial data for testing
+  - Create test fixtures for common scenarios
+  - Support test data versioning and updates
+  - Include both valid and invalid data scenarios
+
+## Documentation Standards
+- **Docstring Requirements**: Comprehensive documentation for all public APIs
+  ```python
+  async def train_model(symbol: str, config: TrainingConfig) -> TrainingResult:
+      """
+      Train a time series prediction model for the specified symbol.
+      
+      Args:
+          symbol: The trading symbol (e.g., 'BTCUSDT')
+          config: Training configuration parameters
+          
+      Returns:
+          TrainingResult containing model path and performance metrics
+          
+      Raises:
+          ModelTrainingError: If training fails due to data or configuration issues
+          ValidationError: If input parameters are invalid
+          
+      Example:
+          >>> config = TrainingConfig(epochs=100, learning_rate=0.001)
+          >>> result = await train_model('BTCUSDT', config)
+          >>> print(f"Model saved to: {result.model_path}")
+      """
+  ```
+
+- **API Documentation**: Comprehensive OpenAPI/Swagger documentation
+  - Include detailed endpoint descriptions and examples
+  - Document all request/response schemas with examples
+  - Include error responses and status codes
+  - Provide authentication and authorization requirements
+
+- **Architecture Documentation**: Maintain system documentation
+  - Document service interactions and data flows
+  - Include deployment and configuration guides
+  - Maintain troubleshooting and FAQ documentation
+  - Document design decisions and trade-offs
+
+## Code Review Standards
+- **Review Checklist**: Enforce comprehensive code review
+  - Verify test coverage for new functionality
+  - Validate error handling and edge cases
+  - Check for security vulnerabilities
+  - Ensure documentation is complete and accurate
+  - Validate performance implications
+
+- **Review Process**: Implement structured review process
+  - Require at least one senior developer approval
+  - Include automated checks (tests, linting, security)
+  - Document review feedback and resolution
+  - Support reviewer rotation for knowledge sharing
+
+## Continuous Integration Standards
+- **Automated Testing**: Run comprehensive test suites in CI
+  - Execute unit, integration, and performance tests
+  - Include code quality checks (black, isort, mypy, flake8)
+  - Run security scanning and dependency checks
+  - Generate and publish coverage reports
+
+- **Test Reporting**: Provide detailed test results
+  - Generate test reports with failure details
+  - Include performance benchmarking results
+  - Track test execution time trends
+  - Support test result visualization and analysis
+
+## Documentation Automation
+- **API Documentation Generation**: Automatically generate API docs
+  - Use FastAPI's built-in OpenAPI generation
+  - Include examples and validation rules
+  - Generate client SDKs from OpenAPI specs
+  - Keep documentation synchronized with code changes
+
+- **Architecture Diagrams**: Maintain system architecture documentation
+  - Use tools like Mermaid for diagram generation
+  - Include service dependency diagrams
+  - Document data flow and message patterns
+  - Keep diagrams updated with system changes

@@ -1,0 +1,148 @@
+---
+alwaysApply: true
+---
+# Architecture & Design Patterns for FinSight
+
+## Architectural Principles
+- Enforce Hexagonal Architecture (Ports & Adapters) for maximum flexibility
+- Implement clear separation of concerns: core business logic, adapters, infrastructure
+- Design for testability with dependency injection and interface abstractions
+- Create modular, layered architectures with well-defined boundaries
+- Follow Domain-Driven Design principles for financial domain modeling
+
+## Core Design Patterns
+
+### Repository Pattern
+- Abstract data access behind repository interfaces
+- Implement multiple storage backends (MongoDB, Redis, CSV, InfluxDB)
+- Use repository facades for automatic fallback and switching between implementations
+- Support both synchronous and asynchronous operations
+- Include health monitoring and connection management
+
+### Dependency Injection
+- Use `dependency-injector` library for container-based DI
+- Create factory functions for service instantiation
+- Implement singleton patterns for shared resources (database connections, caches)
+- Support configuration-based service selection (file vs Redis repositories)
+- Enable easy testing through mock injection
+
+### Factory Pattern
+- Create factories for complex object instantiation (models, adapters, services)
+- Support multiple implementations through configuration
+- Enable runtime switching of implementations
+- Include validation and error handling in factory methods
+- Provide clear interfaces for factory consumers
+
+### Facade Pattern
+- Implement unified facades for complex subsystems (model training, serving, data collection)
+- Provide simplified interfaces hiding implementation complexity
+- Support initialization, health checking, and graceful shutdown
+- Enable seamless switching between underlying implementations
+- Include comprehensive error handling and logging
+
+## Service Layer Architecture
+- Separate business logic into dedicated service classes
+- Keep services focused on single responsibilities
+- Implement async service methods for I/O operations
+- Use services to orchestrate repository and adapter interactions
+- Include comprehensive error handling and transaction management
+
+## API Design Standards
+- Follow RESTful conventions with proper HTTP methods and status codes
+- Implement API versioning strategy (URL path versioning: `/api/v1/`)
+- Use consistent error response formats across all endpoints
+- Include comprehensive OpenAPI documentation with examples
+- Implement proper authentication and authorization patterns
+
+## Data Flow Patterns
+- Use message queues (RabbitMQ) for inter-service communication
+- Implement event-driven architecture for asynchronous processing
+- Create clear data transformation pipelines with validation
+- Support batch and streaming data processing patterns
+- Include proper error handling and dead letter queues
+
+## Configuration Management
+- Use Pydantic Settings for environment-based configuration
+- Support multiple environments (development, staging, production)
+- Implement configuration validation at startup
+- Store sensitive data in environment variables
+- Support dynamic configuration reloading where appropriate
+
+## Interface Segregation
+- Define clear interfaces for each adapter and service
+- Keep interfaces focused and cohesive
+- Use abstract base classes for interface definition
+- Implement comprehensive interface contracts
+- Support multiple implementations per interface# Architecture & Design Patterns for FinSight
+
+## Architectural Principles
+- Enforce Hexagonal Architecture (Ports & Adapters) for maximum flexibility
+- Implement clear separation of concerns: core business logic, adapters, infrastructure
+- Design for testability with dependency injection and interface abstractions
+- Create modular, layered architectures with well-defined boundaries
+- Follow Domain-Driven Design principles for financial domain modeling
+
+## Core Design Patterns
+
+### Repository Pattern
+- Abstract data access behind repository interfaces
+- Implement multiple storage backends (MongoDB, Redis, CSV, InfluxDB)
+- Use repository facades for automatic fallback and switching between implementations
+- Support both synchronous and asynchronous operations
+- Include health monitoring and connection management
+
+### Dependency Injection
+- Use `dependency-injector` library for container-based DI
+- Create factory functions for service instantiation
+- Implement singleton patterns for shared resources (database connections, caches)
+- Support configuration-based service selection (file vs Redis repositories)
+- Enable easy testing through mock injection
+
+### Factory Pattern
+- Create factories for complex object instantiation (models, adapters, services)
+- Support multiple implementations through configuration
+- Enable runtime switching of implementations
+- Include validation and error handling in factory methods
+- Provide clear interfaces for factory consumers
+
+### Facade Pattern
+- Implement unified facades for complex subsystems (model training, serving, data collection)
+- Provide simplified interfaces hiding implementation complexity
+- Support initialization, health checking, and graceful shutdown
+- Enable seamless switching between underlying implementations
+- Include comprehensive error handling and logging
+
+## Service Layer Architecture
+- Separate business logic into dedicated service classes
+- Keep services focused on single responsibilities
+- Implement async service methods for I/O operations
+- Use services to orchestrate repository and adapter interactions
+- Include comprehensive error handling and transaction management
+
+## API Design Standards
+- Follow RESTful conventions with proper HTTP methods and status codes
+- Implement API versioning strategy (URL path versioning: `/api/v1/`)
+- Use consistent error response formats across all endpoints
+- Include comprehensive OpenAPI documentation with examples
+- Implement proper authentication and authorization patterns
+
+## Data Flow Patterns
+- Use message queues (RabbitMQ) for inter-service communication
+- Implement event-driven architecture for asynchronous processing
+- Create clear data transformation pipelines with validation
+- Support batch and streaming data processing patterns
+- Include proper error handling and dead letter queues
+
+## Configuration Management
+- Use Pydantic Settings for environment-based configuration
+- Support multiple environments (development, staging, production)
+- Implement configuration validation at startup
+- Store sensitive data in environment variables
+- Support dynamic configuration reloading where appropriate
+
+## Interface Segregation
+- Define clear interfaces for each adapter and service
+- Keep interfaces focused and cohesive
+- Use abstract base classes for interface definition
+- Implement comprehensive interface contracts
+- Support multiple implementations per interface

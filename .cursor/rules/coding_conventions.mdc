@@ -1,0 +1,116 @@
+---
+alwaysApply: true
+---
+# Coding Conventions for FinSight
+
+## Python Code Style
+- Follow PEP 8 strictly with 4-space indentation
+- Use 88-character line length (Black formatter standard)
+- Apply snake_case for variables, functions, and module names
+- Use UPPER_CASE for constants and class-level configuration
+- Implement descriptive variable names that reflect financial domain concepts
+
+## Type Annotations and Documentation
+- Include comprehensive type hints for all function signatures and class attributes
+- Use `typing` module imports: `List`, `Dict`, `Optional`, `Union`, `Any`
+- Implement detailed docstrings using Google style for all public methods and classes
+- Include parameter descriptions, return types, and raised exceptions in docstrings
+- Document complex business logic with inline comments explaining financial concepts
+
+## Async/Await Patterns
+- Use `async`/`await` for ALL I/O operations (database, API calls, file operations)
+- Implement proper error handling in async contexts with try/except blocks
+- Use `asyncio.gather()` for concurrent operations when appropriate
+- Handle asyncio timeouts and cancellation gracefully
+- Prefer `aiofiles` for file operations and `motor` for MongoDB operations
+
+## FastAPI Best Practices
+- Structure applications with clear separation: routers, services, repositories
+- Use dependency injection through FastAPI's `Depends()` system
+- Implement comprehensive input validation with Pydantic models
+- Create detailed OpenAPI documentation with descriptions and examples
+- Use proper HTTP status codes and error responses
+
+## Pydantic Integration
+- Define all data models using Pydantic `BaseModel` classes
+- Use `BaseSettings` for configuration with environment variable support
+- Implement field validation using `@field_validator` decorators
+- Include comprehensive `Field()` descriptions for API documentation
+- Create separate schemas for requests, responses, and internal models
+
+## Import Organization
+- Use `isort` with Black profile for consistent import sorting
+- Group imports: standard library, third-party, local application
+- Use absolute imports for better clarity and maintainability
+- Avoid wildcard imports (`from module import *`)
+- Group related imports and separate with blank lines
+
+## Error Handling Patterns
+- Create custom exception hierarchies inheriting from base domain exceptions
+- Use specific exception types rather than generic `Exception`
+- Implement proper exception logging with context information
+- Include correlation IDs and request tracking in error messages
+- Return structured error responses with consistent formats
+
+## Code Quality Standards
+- Maintain high code coverage (minimum 80%) with meaningful tests
+- Use `mypy` for static type checking with strict configuration
+- Apply `black` for automatic code formatting
+- Run `flake8` for additional linting and code quality checks
+- Implement pre-commit hooks for automated code quality enforcement# Coding Conventions for FinSight
+
+## Python Code Style
+- Follow PEP 8 strictly with 4-space indentation
+- Use 88-character line length (Black formatter standard)
+- Apply snake_case for variables, functions, and module names
+- Use UPPER_CASE for constants and class-level configuration
+- Implement descriptive variable names that reflect financial domain concepts
+
+## Type Annotations and Documentation
+- Include comprehensive type hints for all function signatures and class attributes
+- Use `typing` module imports: `List`, `Dict`, `Optional`, `Union`, `Any`
+- Implement detailed docstrings using Google style for all public methods and classes
+- Include parameter descriptions, return types, and raised exceptions in docstrings
+- Document complex business logic with inline comments explaining financial concepts
+
+## Async/Await Patterns
+- Use `async`/`await` for ALL I/O operations (database, API calls, file operations)
+- Implement proper error handling in async contexts with try/except blocks
+- Use `asyncio.gather()` for concurrent operations when appropriate
+- Handle asyncio timeouts and cancellation gracefully
+- Prefer `aiofiles` for file operations and `motor` for MongoDB operations
+
+## FastAPI Best Practices
+- Structure applications with clear separation: routers, services, repositories
+- Use dependency injection through FastAPI's `Depends()` system
+- Implement comprehensive input validation with Pydantic models
+- Create detailed OpenAPI documentation with descriptions and examples
+- Use proper HTTP status codes and error responses
+
+## Pydantic Integration
+- Define all data models using Pydantic `BaseModel` classes
+- Use `BaseSettings` for configuration with environment variable support
+- Implement field validation using `@field_validator` decorators
+- Include comprehensive `Field()` descriptions for API documentation
+- Create separate schemas for requests, responses, and internal models
+
+## Import Organization
+- Use `isort` with Black profile for consistent import sorting
+- Group imports: standard library, third-party, local application
+- Use absolute imports for better clarity and maintainability
+- Avoid wildcard imports (`from module import *`)
+- Group related imports and separate with blank lines
+
+## Error Handling Patterns
+- Create custom exception hierarchies inheriting from base domain exceptions
+- Use specific exception types rather than generic `Exception`
+- Implement proper exception logging with context information
+- Include correlation IDs and request tracking in error messages
+- Return structured error responses with consistent formats
+
+## Code Quality Standards
+- Maintain high code coverage (minimum 80%) with meaningful tests
+- Use `mypy` for static type checking with strict configuration
+- Apply `black` for automatic code formatting
+- Run `flake8` for additional linting and code quality checks
+- Implement pre-commit hooks for automated code quality enforcement

@@ -1,0 +1,225 @@
+---
+alwaysApply: true
+---
+
+# Performance & Scalability Guidelines for FinSight
+
+## Performance Optimization Strategies
+- **Async Operations**: Maximize concurrent processing capabilities
+  - Use `asyncio.gather()` for parallel I/O operations
+  - Implement connection pooling for databases and external APIs
+  - Use async context managers for resource management
+  - Avoid blocking operations in async contexts
+
+- **Caching Strategies**: Implement multi-level caching
+  - Redis for distributed caching across services
+  - In-memory caching for frequently accessed data
+  - File-based caching for large datasets and models
+  - Implement cache invalidation strategies and TTL policies
+
+- **Database Optimization**: Optimize data access patterns
+  - Create appropriate indexes for MongoDB queries
+  - Use aggregation pipelines for complex data transformations
+  - Implement pagination for large result sets
+  - Use batch operations for bulk data processing
+
+## Memory Management
+- **Large Dataset Handling**: Optimize memory usage for financial data
+  - Use generators and iterators for large data processing
+  - Implement streaming for continuous data ingestion
+  - Use chunked processing for batch operations
+  - Monitor memory usage and implement limits
+
+- **Model Serving Optimization**: Efficient ML model deployment
+  - Use model quantization for reduced memory footprint
+  - Implement model caching and preloading
+  - Support multiple serving backends (simple, Triton, TorchServe)
+  - Use batch prediction for better throughput
+
+## Scalability Patterns
+- **Horizontal Scaling**: Design for distributed deployment
+  - Use stateless service design for easy scaling
+  - Implement proper session management with external stores
+  - Support load balancing across multiple instances
+  - Use message queues for decoupled service communication
+
+- **Service Decomposition**: Optimize service boundaries
+  - Keep services focused on single responsibilities
+  - Minimize inter-service communication overhead
+  - Use event-driven architecture for loose coupling
+  - Implement service discovery and health checking
+
+## Connection Management
+- **Database Connections**: Optimize database connectivity
+  - Use connection pooling with appropriate pool sizes
+  - Implement connection health checks and automatic recovery
+  - Monitor connection usage and performance metrics
+  - Support connection failover and retry logic
+
+- **External API Management**: Efficiently handle external services
+  - Implement rate limiting to respect API quotas
+  - Use connection reuse and HTTP/2 where possible
+  - Implement circuit breaker patterns for failing services
+  - Cache API responses when appropriate
+
+## Monitoring and Metrics
+- **Performance Metrics**: Track key performance indicators
+  - Monitor response times and throughput
+  - Track database query performance
+  - Monitor memory and CPU usage
+  - Include business metrics (prediction accuracy, data completeness)
+
+- **Bottleneck Identification**: Proactively identify performance issues
+  - Use profiling tools for performance analysis
+  - Monitor slow queries and expensive operations
+  - Track resource utilization trends
+  - Implement alerting for performance degradation
+
+## Load Testing and Benchmarking
+- **Load Testing Strategy**: Validate system performance under load
+  - Test individual services and end-to-end workflows
+  - Simulate realistic user behavior and data volumes
+  - Include stress testing for failure scenario validation
+  - Test auto-scaling behavior and resource limits
+
+- **Performance Benchmarking**: Establish performance baselines
+  - Benchmark critical operations and algorithms
+  - Compare performance across different implementations
+  - Track performance trends over time
+  - Include regression testing for performance changes
+
+## Resource Optimization
+- **CPU Optimization**: Maximize computational efficiency
+  - Use vectorized operations for numerical computations
+  - Implement parallel processing for CPU-intensive tasks
+  - Optimize algorithm complexity and data structures
+  - Use appropriate threading models for different workloads
+
+- **I/O Optimization**: Minimize I/O overhead
+  - Batch database operations where possible
+  - Use efficient serialization formats (JSON, MessagePack)
+  - Implement read replicas for read-heavy workloads
+  - Optimize file I/O with appropriate buffer sizes
+
+## Capacity Planning
+- **Growth Planning**: Design for future scale
+  - Monitor usage trends and growth patterns
+  - Plan for peak loads and seasonal variations
+  - Implement auto-scaling policies and thresholds
+  - Design storage strategies for data growth
+
+- **Resource Allocation**: Optimize resource utilization
+  - Right-size service instances for workload requirements
+  - Implement resource quotas and limits
+  - Monitor resource utilization and costs
+  - Support dynamic resource allocation based on demand# Performance & Scalability Guidelines for FinSight
+
+## Performance Optimization Strategies
+- **Async Operations**: Maximize concurrent processing capabilities
+  - Use `asyncio.gather()` for parallel I/O operations
+  - Implement connection pooling for databases and external APIs
+  - Use async context managers for resource management
+  - Avoid blocking operations in async contexts
+
+- **Caching Strategies**: Implement multi-level caching
+  - Redis for distributed caching across services
+  - In-memory caching for frequently accessed data
+  - File-based caching for large datasets and models
+  - Implement cache invalidation strategies and TTL policies
+
+- **Database Optimization**: Optimize data access patterns
+  - Create appropriate indexes for MongoDB queries
+  - Use aggregation pipelines for complex data transformations
+  - Implement pagination for large result sets
+  - Use batch operations for bulk data processing
+
+## Memory Management
+- **Large Dataset Handling**: Optimize memory usage for financial data
+  - Use generators and iterators for large data processing
+  - Implement streaming for continuous data ingestion
+  - Use chunked processing for batch operations
+  - Monitor memory usage and implement limits
+
+- **Model Serving Optimization**: Efficient ML model deployment
+  - Use model quantization for reduced memory footprint
+  - Implement model caching and preloading
+  - Support multiple serving backends (simple, Triton, TorchServe)
+  - Use batch prediction for better throughput
+
+## Scalability Patterns
+- **Horizontal Scaling**: Design for distributed deployment
+  - Use stateless service design for easy scaling
+  - Implement proper session management with external stores
+  - Support load balancing across multiple instances
+  - Use message queues for decoupled service communication
+
+- **Service Decomposition**: Optimize service boundaries
+  - Keep services focused on single responsibilities
+  - Minimize inter-service communication overhead
+  - Use event-driven architecture for loose coupling
+  - Implement service discovery and health checking
+
+## Connection Management
+- **Database Connections**: Optimize database connectivity
+  - Use connection pooling with appropriate pool sizes
+  - Implement connection health checks and automatic recovery
+  - Monitor connection usage and performance metrics
+  - Support connection failover and retry logic
+
+- **External API Management**: Efficiently handle external services
+  - Implement rate limiting to respect API quotas
+  - Use connection reuse and HTTP/2 where possible
+  - Implement circuit breaker patterns for failing services
+  - Cache API responses when appropriate
+
+## Monitoring and Metrics
+- **Performance Metrics**: Track key performance indicators
+  - Monitor response times and throughput
+  - Track database query performance
+  - Monitor memory and CPU usage
+  - Include business metrics (prediction accuracy, data completeness)
+
+- **Bottleneck Identification**: Proactively identify performance issues
+  - Use profiling tools for performance analysis
+  - Monitor slow queries and expensive operations
+  - Track resource utilization trends
+  - Implement alerting for performance degradation
+
+## Load Testing and Benchmarking
+- **Load Testing Strategy**: Validate system performance under load
+  - Test individual services and end-to-end workflows
+  - Simulate realistic user behavior and data volumes
+  - Include stress testing for failure scenario validation
+  - Test auto-scaling behavior and resource limits
+
+- **Performance Benchmarking**: Establish performance baselines
+  - Benchmark critical operations and algorithms
+  - Compare performance across different implementations
+  - Track performance trends over time
+  - Include regression testing for performance changes
+
+## Resource Optimization
+- **CPU Optimization**: Maximize computational efficiency
+  - Use vectorized operations for numerical computations
+  - Implement parallel processing for CPU-intensive tasks
+  - Optimize algorithm complexity and data structures
+  - Use appropriate threading models for different workloads
+
+- **I/O Optimization**: Minimize I/O overhead
+  - Batch database operations where possible
+  - Use efficient serialization formats (JSON, MessagePack)
+  - Implement read replicas for read-heavy workloads
+  - Optimize file I/O with appropriate buffer sizes
+
+## Capacity Planning
+- **Growth Planning**: Design for future scale
+  - Monitor usage trends and growth patterns
+  - Plan for peak loads and seasonal variations
+  - Implement auto-scaling policies and thresholds
+  - Design storage strategies for data growth
+
+- **Resource Allocation**: Optimize resource utilization
+  - Right-size service instances for workload requirements
+  - Implement resource quotas and limits
+  - Monitor resource utilization and costs
+  - Support dynamic resource allocation based on demand
