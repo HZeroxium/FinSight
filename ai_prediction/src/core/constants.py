@@ -186,7 +186,9 @@ class LoggingConstants:
         "BackgroundTaskManager": "INFO",
         "JobRepository": "DEBUG",
         "TaskRunner": "INFO",
-        "ModelFacade": "INFO",
+        "UnifiedModelFacade": "INFO",
+        "ModelTrainingFacade": "INFO",
+        "ModelServingFacade": "INFO",
     }
 
     # Log format patterns
@@ -197,6 +199,41 @@ class LoggingConstants:
     TRAINING_LOG_FILE = "logs/training_{job_id}.log"
     BACKGROUND_LOG_FILE = "logs/background_tasks.log"
     JOB_MANAGER_LOG_FILE = "logs/job_manager.log"
+
+
+# Facade Constants
+class FacadeConstants:
+    """Facade-related constants and configuration"""
+
+    # Facade types
+    TRAINING_FACADE = "training"
+    SERVING_FACADE = "serving"
+    UNIFIED_FACADE = "unified"
+
+    # Model cache settings
+    DEFAULT_MODEL_CACHE_SIZE = 10
+    MODEL_CACHE_TTL_SECONDS = 1800  # 30 minutes
+
+    # Serving adapter settings
+    DEFAULT_SERVING_TIMEOUT = 30.0
+    MAX_SERVING_RETRIES = 3
+    SERVING_HEALTH_CHECK_INTERVAL = 60.0
+
+    # Training settings
+    DEFAULT_TRAINING_TIMEOUT = 3600.0  # 1 hour
+    TRAINING_PROGRESS_UPDATE_INTERVAL = 10.0  # 10 seconds
+
+    # File extensions and patterns
+    MODEL_METADATA_SUFFIX = "_metadata.json"
+    MODEL_CHECKPOINT_PATTERN = "checkpoint-*"
+
+    # Error handling
+    MAX_RETRY_ATTEMPTS = 3
+    RETRY_DELAY_SECONDS = 1.0
+
+    # Performance monitoring
+    METRICS_COLLECTION_ENABLED = True
+    PERFORMANCE_LOG_INTERVAL = 300.0  # 5 minutes
 
 
 # Background Task Configuration
