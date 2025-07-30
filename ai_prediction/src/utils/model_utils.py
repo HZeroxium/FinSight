@@ -290,7 +290,10 @@ class ModelUtils:
         target_adapters: List[str] = None,
     ) -> None:
         """
-        Ensure model is available for multiple adapters by copying from simple adapter.
+        Ensure model is available for multiple adapters.
+        
+        This method is deprecated and kept for backward compatibility.
+        New training should use ModelFormatConverter for proper format conversion.
 
         Args:
             symbol: Trading symbol
@@ -298,24 +301,33 @@ class ModelUtils:
             model_type: Model type
             target_adapters: List of target adapter types
         """
+        from ..core.constants import FacadeConstants
+        
         if target_adapters is None:
-            target_adapters = ["simple", "torchscript", "torchserve", "triton"]
+            target_adapters = FacadeConstants.SUPPORTED_ADAPTERS
 
         # Check if model exists in simple adapter (training default)
-        simple_exists = self.model_exists(symbol, timeframe, model_type, "simple")
+        simple_exists = self.model_exists(symbol, timeframe, model_type, 
+                                        FacadeConstants.ADAPTER_SIMPLE)
         if not simple_exists:
             self.logger.warning(
                 f"No model found in simple adapter for {symbol}_{timeframe}_{model_type}"
             )
             return
 
-        # Copy to other adapters if they don't exist
+        # Copy to other adapters if they don't exist (fallback behavior)
         for adapter in target_adapters:
-            if adapter != "simple":
+            if adapter != FacadeConstants.ADAPTER_SIMPLE:
                 if not self.model_exists(symbol, timeframe, model_type, adapter):
                     self.copy_model_for_adapter(
-                        symbol, timeframe, model_type, "simple", adapter
+                        symbol, timeframe, model_type, 
+                        FacadeConstants.ADAPTER_SIMPLE, adapter
                     )
+                    
+        self.logger.warning(
+            "ensure_adapter_compatibility uses basic file copying. "
+            "For proper format conversion, use ModelFormatConverter."
+        )
 
     @staticmethod
     def save_model_metadata(
