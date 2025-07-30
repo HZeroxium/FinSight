@@ -170,7 +170,7 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
             )
 
             model = PatchTSMixerForPrediction(config)
-            self.logger.info(f"Created PatchTSMixer model with config: {config}")
+            # self.logger.info(f"Created PatchTSMixer model with config: {config}")
 
             return model
 

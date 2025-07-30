@@ -210,6 +210,20 @@ class FacadeConstants:
     SERVING_FACADE = "serving"
     UNIFIED_FACADE = "unified"
 
+    # Serving adapter types
+    ADAPTER_SIMPLE = "simple"
+    ADAPTER_TORCHSCRIPT = "torchscript"
+    ADAPTER_TORCHSERVE = "torchserve"
+    ADAPTER_TRITON = "triton"
+    
+    # All supported adapter types
+    SUPPORTED_ADAPTERS = [
+        ADAPTER_SIMPLE,
+        ADAPTER_TORCHSCRIPT, 
+        ADAPTER_TORCHSERVE,
+        ADAPTER_TRITON
+    ]
+
     # Model cache settings
     DEFAULT_MODEL_CACHE_SIZE = 10
     MODEL_CACHE_TTL_SECONDS = 1800  # 30 minutes

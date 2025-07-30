@@ -1,7 +1,7 @@
 # core/config.py
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -89,6 +89,13 @@ class Settings(BaseSettings):
     redis_url: str = Field("redis://localhost:6379/0", env="REDIS_URL")
     training_job_repository_type: str = Field(
         "file", env="TRAINING_JOB_REPOSITORY_TYPE"
+    )
+    
+    # Model saving configuration
+    save_multiple_formats: bool = Field(True, env="SAVE_MULTIPLE_FORMATS")
+    enabled_adapters: List[str] = Field(
+        default_factory=lambda: ["simple", "torchscript", "torchserve", "triton"],
+        env="ENABLED_ADAPTERS"
     )
 
     class Config:

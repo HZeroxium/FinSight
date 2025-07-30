@@ -18,15 +18,14 @@ import asyncio
 from ..interfaces.model_interface import ITimeSeriesModel
 from ..interfaces.serving_interface import (
     IModelServingAdapter,
-    ModelInfo as ServingModelInfo,
     PredictionResult,
 )
 from ..models.model_factory import ModelFactory
 from ..adapters.adapter_factory import ServingAdapterFactory
 from ..schemas.enums import ModelType, TimeFrame
-from ..schemas.model_schemas import ModelConfig, ModelInfo
+from ..schemas.model_schemas import ModelInfo
 from ..utils.model_utils import ModelUtils
-from ..core.constants import FacadeConstants, LoggingConstants
+from ..core.constants import FacadeConstants
 from ..core.config import get_settings
 from ..core.serving_config import get_serving_config, get_adapter_config
 from common.logger.logger_factory import LoggerFactory, LogLevel
@@ -126,7 +125,7 @@ class ModelServingFacade:
         use_serving_adapter: bool = True,
     ) -> Dict[str, Any]:
         """
-        Make asynchronous predictions using the serving adapter or legacy model.
+        Make asynchronous predictions using the serving adapter or fallback to SimpleServingAdapter.
 
         Args:
             symbol: Trading symbol
@@ -156,7 +155,6 @@ class ModelServingFacade:
                 and self._adapter_initialized
                 and self.serving_adapter is not None
             ):
-
                 try:
                     self.logger.debug(
                         f"Using serving adapter for prediction: {symbol} {timeframe.value} {model_type.value}"
@@ -166,16 +164,59 @@ class ModelServingFacade:
                     )
                 except Exception as e:
                     self.logger.warning(f"Serving adapter prediction failed: {e}")
-                    self.logger.info("Falling back to legacy prediction")
+                    self.logger.info(
+                        "Falling back to simple serving adapter prediction"
+                    )
 
-            # Fallback to legacy prediction
-            self.logger.debug(
-                f"Using legacy model loading for prediction: {symbol} {timeframe.value} {model_type.value}"
-            )
-            return await self._predict_legacy(
-                symbol, timeframe, model_type, recent_data, n_steps
-            )
+            # Fallback to SimpleServingAdapter
+            try:
+                from ..adapters.simple_serving import SimpleServingAdapter
+                from ..core.serving_config import get_adapter_config
 
+                simple_config = get_adapter_config("simple")
+                simple_adapter = SimpleServingAdapter(simple_config)
+                await simple_adapter.initialize()
+                self.logger.info(
+                    "Using SimpleServingAdapter as fallback for prediction"
+                )
+                # Use the same prediction interface as serving adapter
+                model_id = f"{symbol}_{timeframe.value}_{model_type.value}"
+                # Ensure model is loaded
+                model_path = self.model_utils.get_model_path(
+                    symbol, timeframe, model_type, adapter_type="simple"
+                )
+                if not model_path.exists():
+                    raise RuntimeError(f"Model not found for fallback at {model_path}")
+                await simple_adapter.load_model(
+                    model_path=str(model_path),
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    model_type=model_type,
+                    model_config={},
+                )
+                prediction_result = await simple_adapter.predict(
+                    model_id=model_id,
+                    input_data=recent_data,
+                    n_steps=n_steps,
+                )
+                # Convert to legacy format for API compatibility
+                return self._convert_serving_result_to_legacy(
+                    prediction_result, symbol, timeframe, model_type
+                )
+            except Exception as e:
+                self.logger.error(
+                    f"SimpleServingAdapter fallback prediction failed: {e}"
+                )
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "predictions": [],
+                    "model_info": {
+                        "symbol": symbol,
+                        "timeframe": timeframe.value,
+                        "model_type": model_type.value,
+                    },
+                }
         except Exception as e:
             self.logger.error(f"Async prediction failed: {e}")
             return {
@@ -602,51 +643,7 @@ class ModelServingFacade:
             prediction_result, symbol, timeframe, model_type
         )
 
-    async def _predict_legacy(
-        self,
-        symbol: str,
-        timeframe: TimeFrame,
-        model_type: ModelType,
-        recent_data: Union[pd.DataFrame, dict],
-        n_steps: int,
-    ) -> Dict[str, Any]:
-        """Make predictions using legacy model loading."""
-        try:
-            # Load model
-            model = self._load_model(symbol, timeframe, model_type)
-            if model is None:
-                return {
-                    "success": False,
-                    "error": "Model not found or failed to load",
-                    "predictions": [],
-                }
-
-            # Convert dict to DataFrame if needed
-            if isinstance(recent_data, dict):
-                recent_data = pd.DataFrame(recent_data)
-
-            # Make prediction
-            predictions = model.forecast(recent_data, n_steps=n_steps)
-
-            return {
-                "success": True,
-                "predictions": predictions,
-                "model_info": {
-                    "symbol": symbol,
-                    "timeframe": timeframe.value,
-                    "model_type": model_type.value,
-                },
-                "method": "legacy",
-                "timestamp": datetime.now().isoformat(),
-            }
-
-        except Exception as e:
-            self.logger.error(f"Legacy prediction failed: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "predictions": [],
-            }
+    # Legacy prediction method removed. All fallback logic now uses SimpleServingAdapter.
 
     def _convert_serving_result_to_legacy(
         self,

@@ -451,21 +451,71 @@ class ModelTrainingFacade:
         config: ModelConfig,
         training_result: Dict[str, Any],
     ) -> str:
-        """Save trained model and metadata."""
-        # Ensure model directory exists
-        model_path = self.model_utils.ensure_model_directory(
-            symbol, timeframe, model_type
+        """Save trained model and metadata in multiple formats for all adapters."""
+        from ..utils.model_format_converter import ModelFormatConverter
+        from ..core.constants import FacadeConstants
+        
+        # Save model in simple format first (default behavior)
+        simple_model_path = self.model_utils.ensure_model_directory(
+            symbol, timeframe, model_type, FacadeConstants.ADAPTER_SIMPLE
         )
 
-        # Save model
-        model.save_model(model_path)
+        # Save model in simple format
+        model.save_model(simple_model_path)
 
-        # Save metadata
+        # Save metadata for simple format
         self._save_model_metadata(
-            symbol, timeframe, model_type, config, training_result, model_path
+            symbol, timeframe, model_type, config, training_result, simple_model_path
         )
 
-        return model_path
+        # Convert and save model for all other supported adapters
+        try:
+            # Check if multi-format saving is enabled
+            settings = self.model_utils.settings
+            if getattr(settings, 'save_multiple_formats', True):
+                converter = ModelFormatConverter()
+                enabled_adapters = getattr(settings, 'enabled_adapters', FacadeConstants.SUPPORTED_ADAPTERS)
+                conversion_results = converter.convert_model_for_all_adapters(
+                    model=model,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    model_type=model_type,
+                    source_path=simple_model_path,
+                    target_adapters=enabled_adapters
+                )
+            else:
+                # Only save simple format
+                conversion_results = {FacadeConstants.ADAPTER_SIMPLE: True}
+            
+            # Log conversion results
+            successful_adapters = [
+                adapter for adapter, success in conversion_results.items() if success
+            ]
+            failed_adapters = [
+                adapter for adapter, success in conversion_results.items() if not success
+            ]
+            
+            if successful_adapters:
+                self.logger.info(
+                    f"Model successfully converted for adapters: {successful_adapters}"
+                )
+            
+            if failed_adapters:
+                self.logger.warning(
+                    f"Model conversion failed for adapters: {failed_adapters}"
+                )
+                
+            # Save conversion results in metadata
+            training_result["adapter_conversions"] = conversion_results
+            
+        except Exception as e:
+            self.logger.error(f"Failed to convert model for multiple adapters: {e}")
+            # Continue execution - at least we have the simple format
+            training_result["adapter_conversions"] = {
+                FacadeConstants.ADAPTER_SIMPLE: True
+            }
+
+        return simple_model_path
 
     def _save_model_metadata(
         self,
@@ -494,14 +544,8 @@ class ModelTrainingFacade:
         metadata_path = Path(model_path) / FacadeConstants.MODEL_METADATA_SUFFIX
         self.model_utils.save_json(metadata, str(metadata_path))
 
-        # Ensure the model is available for all adapters
-        try:
-            self.model_utils.ensure_adapter_compatibility(symbol, timeframe, model_type)
-            self.logger.info(
-                f"Ensured adapter compatibility for model: {symbol}_{timeframe}_{model_type}"
-            )
-        except Exception as e:
-            self.logger.warning(f"Failed to ensure adapter compatibility: {e}")
+        # Note: Adapter compatibility is now handled by ModelFormatConverter
+        # in _save_trained_model method, so this legacy call is no longer needed
 
     def _load_model(
         self, symbol: str, timeframe: TimeFrame, model_type: ModelType
