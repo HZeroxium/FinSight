@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
 
         # Initialize serving adapter
         logger.info("Initializing serving adapter...")
-        from .models.model_facade import ModelFacade
+        from .facades import ModelFacade
 
         facade = ModelFacade()
         await facade.initialize_serving()
