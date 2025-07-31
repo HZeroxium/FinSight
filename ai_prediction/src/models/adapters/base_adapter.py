@@ -5,8 +5,8 @@ Base adapter for time series models with common functionality
 Implements the Template Method pattern for shared operations
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Tuple, Union
+from abc import abstractmethod
+from typing import Dict, Any, List, Optional, Tuple
 import torch
 import numpy as np
 import pandas as pd

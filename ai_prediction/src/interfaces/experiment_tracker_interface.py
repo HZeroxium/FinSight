@@ -4,8 +4,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
 from datetime import datetime
-from dataclasses import dataclass
 from enum import Enum
+from pydantic import BaseModel, Field
 
 from ..schemas.enums import TimeFrame, ModelType
 
@@ -28,59 +28,59 @@ class RunStatus(Enum):
     KILLED = "KILLED"
 
 
-@dataclass
-class ModelRegistryInfo:
+class ModelRegistryInfo(BaseModel):
     """Model registry information"""
 
-    name: str
-    version: str
-    stage: ModelStage
-    description: Optional[str] = None
-    tags: Optional[Dict[str, str]] = None
-    source: Optional[str] = None
-    run_id: Optional[str] = None
-    model_uri: Optional[str] = None
-    creation_timestamp: Optional[datetime] = None
-    last_updated_timestamp: Optional[datetime] = None
+    name: str = Field(..., description="Model name")
+    version: str = Field(..., description="Model version")
+    stage: ModelStage = Field(..., description="Model stage")
+    description: Optional[str] = Field(None, description="Model description")
+    tags: Optional[Dict[str, str]] = Field(None, description="Model tags")
+    source: Optional[str] = Field(None, description="Model source")
+    run_id: Optional[str] = Field(None, description="Run ID")
+    model_uri: Optional[str] = Field(None, description="Model URI")
+    creation_timestamp: Optional[datetime] = Field(
+        None, description="Creation timestamp"
+    )
+    last_updated_timestamp: Optional[datetime] = Field(
+        None, description="Last updated timestamp"
+    )
 
 
-@dataclass
-class ExperimentInfo:
+class ExperimentInfo(BaseModel):
     """Experiment information"""
 
-    experiment_id: str
-    name: str
-    artifact_location: str
-    lifecycle_stage: str
-    creation_time: Optional[datetime] = None
-    last_update_time: Optional[datetime] = None
-    tags: Optional[Dict[str, str]] = None
+    experiment_id: str = Field(..., description="Experiment ID")
+    name: str = Field(..., description="Experiment name")
+    artifact_location: str = Field(..., description="Artifact location")
+    lifecycle_stage: str = Field(..., description="Lifecycle stage")
+    creation_time: Optional[datetime] = Field(None, description="Creation time")
+    last_update_time: Optional[datetime] = Field(None, description="Last update time")
+    tags: Optional[Dict[str, str]] = Field(None, description="Tags")
 
 
-@dataclass
-class RunInfo:
+class RunInfo(BaseModel):
     """Experiment run information"""
 
-    run_id: str
-    experiment_id: str
-    run_name: Optional[str] = None
-    status: RunStatus = RunStatus.RUNNING
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    artifact_uri: Optional[str] = None
-    lifecycle_stage: str = "active"
-    user_id: Optional[str] = None
-    tags: Optional[Dict[str, str]] = None
+    run_id: str = Field(..., description="Run ID")
+    experiment_id: str = Field(..., description="Experiment ID")
+    run_name: Optional[str] = Field(None, description="Run name")
+    status: RunStatus = Field(..., description="Run status")
+    start_time: Optional[datetime] = Field(None, description="Start time")
+    end_time: Optional[datetime] = Field(None, description="End time")
+    artifact_uri: Optional[str] = Field(None, description="Artifact URI")
+    lifecycle_stage: str = Field(..., description="Lifecycle stage")
+    user_id: Optional[str] = Field(None, description="User ID")
+    tags: Optional[Dict[str, str]] = Field(None, description="Tags")
 
 
-@dataclass
-class ModelArtifact:
+class ModelArtifact(BaseModel):
     """Model artifact information"""
 
-    path: str
-    is_dir: bool
-    file_size: Optional[int] = None
-    tags: Optional[Dict[str, str]] = None
+    path: str = Field(..., description="Path")
+    is_dir: bool = Field(..., description="Is directory")
+    file_size: Optional[int] = Field(None, description="File size")
+    tags: Optional[Dict[str, str]] = Field(None, description="Tags")
 
 
 class IExperimentTracker(ABC):
