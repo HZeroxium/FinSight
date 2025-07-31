@@ -4,11 +4,13 @@
 Model utilities for centralized model path management and operations.
 
 This module provides utilities for model path generation, model metadata handling,
-and consistent model saving/loading operations across the system.
+and consistent model saving/loading operations across both local and cloud storage.
+Integrates with experiment tracker for comprehensive artifact management.
 """
 import json
+import asyncio
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 from datetime import datetime
 
 from ..schemas.enums import ModelType, TimeFrame
@@ -17,11 +19,34 @@ from common.logger.logger_factory import LoggerFactory
 
 
 class ModelUtils:
-    """Utilities for model path management and operations"""
+    """Utilities for model path management and operations with cloud storage support"""
 
     def __init__(self):
         self.logger = LoggerFactory.get_logger("ModelUtils")
         self.settings = get_settings()
+        self._storage_client = None
+        self._experiment_tracker = None
+
+    @property
+    def storage_client(self):
+        """Lazy-loaded storage client instance"""
+        if self._storage_client is None and self.settings.enable_cloud_storage:
+            from .storage_client import StorageClient
+
+            try:
+                self._storage_client = StorageClient()
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize storage client: {e}")
+        return self._storage_client
+
+    @property
+    def experiment_tracker(self):
+        """Lazy-loaded experiment tracker instance"""
+        if self._experiment_tracker is None:
+            from .dependencies import get_experiment_tracker
+
+            self._experiment_tracker = get_experiment_tracker()
+        return self._experiment_tracker
 
     def generate_model_identifier(
         self,
@@ -42,6 +67,36 @@ class ModelUtils:
             timeframe=timeframe.value,
             model_type=clean_model_type,
         )
+
+    def generate_cloud_object_key(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+        adapter_type: str = "simple",
+        file_name: Optional[str] = None,
+    ) -> str:
+        """
+        Generate cloud storage object key for model artifacts.
+
+        Structure: models/{adapter_type}/{symbol}_{timeframe}_{model_type}/{file_name}
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Data timeframe
+            model_type: Model type
+            adapter_type: Adapter type for storage location
+            file_name: Optional specific file name
+
+        Returns:
+            Cloud storage object key
+        """
+        model_id = self.generate_model_identifier(symbol, timeframe, model_type)
+        base_key = f"models/{adapter_type}/{model_id}"
+
+        if file_name:
+            return f"{base_key}/{file_name}"
+        return base_key
 
     def generate_model_path(
         self,
@@ -291,7 +346,7 @@ class ModelUtils:
     ) -> None:
         """
         Ensure model is available for multiple adapters.
-        
+
         This method is deprecated and kept for backward compatibility.
         New training should use ModelFormatConverter for proper format conversion.
 
@@ -302,13 +357,14 @@ class ModelUtils:
             target_adapters: List of target adapter types
         """
         from ..core.constants import FacadeConstants
-        
+
         if target_adapters is None:
             target_adapters = FacadeConstants.SUPPORTED_ADAPTERS
 
         # Check if model exists in simple adapter (training default)
-        simple_exists = self.model_exists(symbol, timeframe, model_type, 
-                                        FacadeConstants.ADAPTER_SIMPLE)
+        simple_exists = self.model_exists(
+            symbol, timeframe, model_type, FacadeConstants.ADAPTER_SIMPLE
+        )
         if not simple_exists:
             self.logger.warning(
                 f"No model found in simple adapter for {symbol}_{timeframe}_{model_type}"
@@ -320,10 +376,13 @@ class ModelUtils:
             if adapter != FacadeConstants.ADAPTER_SIMPLE:
                 if not self.model_exists(symbol, timeframe, model_type, adapter):
                     self.copy_model_for_adapter(
-                        symbol, timeframe, model_type, 
-                        FacadeConstants.ADAPTER_SIMPLE, adapter
+                        symbol,
+                        timeframe,
+                        model_type,
+                        FacadeConstants.ADAPTER_SIMPLE,
+                        adapter,
                     )
-                    
+
         self.logger.warning(
             "ensure_adapter_compatibility uses basic file copying. "
             "For proper format conversion, use ModelFormatConverter."
@@ -476,21 +535,26 @@ class ModelUtils:
         symbol: str,
         timeframe: TimeFrame,
         model_type: ModelType,
+        adapter_type: str = "simple",
     ) -> bool:
         """
-        Delete model and all associated files
+        Delete model and all associated files from local storage
 
         Args:
             symbol: Trading symbol
             timeframe: Data timeframe
             model_type: Model type
+            adapter_type: Adapter type for storage location
 
         Returns:
             True if deletion successful, False otherwise
         """
         import shutil
 
-        model_dir = ModelUtils.generate_model_path(symbol, timeframe, model_type)
+        utils = ModelUtils()
+        model_dir = utils.generate_model_path(
+            symbol, timeframe, model_type, adapter_type
+        )
 
         if not model_dir.exists():
             return False
@@ -506,20 +570,23 @@ class ModelUtils:
         symbol: str,
         timeframe: TimeFrame,
         model_type: ModelType,
+        adapter_type: str = "simple",
     ) -> Optional[int]:
         """
-        Get model size in bytes
+        Get local model size in bytes
 
         Args:
             symbol: Trading symbol
             timeframe: Data timeframe
             model_type: Model type
+            adapter_type: Adapter type
 
         Returns:
             Model size in bytes or None if model doesn't exist
         """
-        checkpoint_path = ModelUtils.generate_checkpoint_path(
-            symbol, timeframe, model_type
+        utils = ModelUtils()
+        checkpoint_path = utils.get_checkpoint_path(
+            symbol, timeframe, model_type, adapter_type
         )
 
         if not checkpoint_path.exists():
@@ -532,15 +599,17 @@ class ModelUtils:
         symbol: str,
         timeframe: TimeFrame,
         model_type: ModelType,
+        adapter_type: str = "simple",
         backup_dir: Optional[Path] = None,
     ) -> Optional[Path]:
         """
-        Create backup of model
+        Create backup of model in local storage
 
         Args:
             symbol: Trading symbol
             timeframe: Data timeframe
             model_type: Model type
+            adapter_type: Adapter type
             backup_dir: Backup directory (if None, creates in models directory)
 
         Returns:
@@ -548,7 +617,10 @@ class ModelUtils:
         """
         import shutil
 
-        model_dir = ModelUtils.generate_model_path(symbol, timeframe, model_type)
+        utils = ModelUtils()
+        model_dir = utils.generate_model_path(
+            symbol, timeframe, model_type, adapter_type
+        )
 
         if not model_dir.exists():
             return None
@@ -560,7 +632,7 @@ class ModelUtils:
         backup_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        model_id = ModelUtils.generate_model_identifier(symbol, timeframe, model_type)
+        model_id = utils.generate_model_identifier(symbol, timeframe, model_type)
         backup_path = backup_dir / f"{model_id}_{timestamp}"
 
         try:
@@ -568,3 +640,129 @@ class ModelUtils:
             return backup_path
         except Exception:
             return None
+
+    async def sync_model_to_cloud(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+        adapter_type: str = "simple",
+        run_id: Optional[str] = None,
+        force_upload: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Synchronize local model to cloud storage with experiment tracking.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Data timeframe
+            model_type: Model type
+            adapter_type: Adapter type
+            run_id: Optional experiment run ID for tracking
+            force_upload: Whether to force upload even if cloud version exists
+
+        Returns:
+            Synchronization result dictionary
+        """
+        try:
+            # Check if local model exists
+            if not self.model_exists(symbol, timeframe, model_type, adapter_type):
+                return {"success": False, "error": "Local model does not exist"}
+
+            # Check if cloud model exists (unless force upload)
+            if not force_upload:
+                cloud_exists = await self.model_exists_in_cloud(
+                    symbol, timeframe, model_type, adapter_type
+                )
+                if cloud_exists:
+                    return {
+                        "success": True,
+                        "message": "Model already exists in cloud",
+                        "action": "skipped",
+                    }
+
+            # Upload model to cloud
+            upload_result = await self.upload_model_to_cloud(
+                symbol, timeframe, model_type, adapter_type, run_id
+            )
+
+            if upload_result["success"]:
+                # Upload metadata to cloud
+                local_metadata = self.load_model_metadata(
+                    symbol, timeframe, model_type, adapter_type
+                )
+
+                if local_metadata:
+                    metadata_result = await self.save_model_metadata_to_cloud(
+                        symbol,
+                        timeframe,
+                        model_type,
+                        local_metadata,
+                        adapter_type,
+                        run_id,
+                    )
+                    upload_result["metadata_uploaded"] = metadata_result["success"]
+
+                upload_result["action"] = "uploaded"
+
+            return upload_result
+
+        except Exception as e:
+            self.logger.error(f"Failed to sync model to cloud: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def sync_model_from_cloud(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        model_type: ModelType,
+        adapter_type: str = "simple",
+        force_download: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Synchronize cloud model to local storage.
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Data timeframe
+            model_type: Model type
+            adapter_type: Adapter type
+            force_download: Whether to force download even if local version exists
+
+        Returns:
+            Synchronization result dictionary
+        """
+        try:
+            # Check if cloud model exists
+            cloud_exists = await self.model_exists_in_cloud(
+                symbol, timeframe, model_type, adapter_type
+            )
+
+            if not cloud_exists:
+                return {"success": False, "error": "Model does not exist in cloud"}
+
+            # Check if local model exists (unless force download)
+            if not force_download:
+                local_exists = self.model_exists(
+                    symbol, timeframe, model_type, adapter_type
+                )
+                if local_exists:
+                    return {
+                        "success": True,
+                        "message": "Model already exists locally",
+                        "action": "skipped",
+                    }
+
+            # Download model from cloud
+            download_result = await self.download_model_from_cloud(
+                symbol, timeframe, model_type, adapter_type, force_download
+            )
+
+            if download_result["success"]:
+                download_result["action"] = "downloaded"
+
+            return download_result
+
+        except Exception as e:
+            self.logger.error(f"Failed to sync model from cloud: {e}")
+            return {"success": False, "error": str(e)}

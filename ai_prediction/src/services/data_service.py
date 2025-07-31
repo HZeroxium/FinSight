@@ -8,11 +8,12 @@ from typing import Dict, Any, Optional, Tuple, List
 import pandas as pd
 from pathlib import Path
 
-from ..data.data_loader import CSVDataLoader
+from ..data.data_loader import FileDataLoader
 from ..data.feature_engineering import BasicFeatureEngineering
 from ..schemas.enums import TimeFrame
 from ..schemas.model_schemas import ModelConfig
 from ..core.config import get_settings
+from ..utils.dependencies import get_data_loader
 from common.logger.logger_factory import LoggerFactory
 
 
@@ -22,10 +23,12 @@ class DataService:
     def __init__(self):
         self.logger = LoggerFactory.get_logger("DataService")
         self.settings = get_settings()
-        self.data_loader = CSVDataLoader()
+        self.data_loader = (
+            get_data_loader()
+        )  # Use dependency injection for cloud-first loading
         self._feature_engineering_cache: Dict[str, BasicFeatureEngineering] = {}
 
-    def load_and_prepare_data(
+    async def load_and_prepare_data(
         self,
         symbol: str,
         timeframe: TimeFrame,
@@ -46,7 +49,7 @@ class DataService:
             self.logger.info(f"Loading and preparing data for {symbol} {timeframe}")
 
             # Load raw data
-            raw_data = self.data_loader.load_data(symbol, timeframe)
+            raw_data = await self.data_loader.load_data(symbol, timeframe)
 
             if raw_data.empty:
                 raise ValueError(f"No data found for {symbol} {timeframe}")
@@ -114,7 +117,7 @@ class DataService:
             self.logger.error(f"Failed to load and prepare data: {e}")
             raise
 
-    def load_data_for_prediction(
+    async def load_data_for_prediction(
         self,
         symbol: str,
         timeframe: TimeFrame,
@@ -135,7 +138,7 @@ class DataService:
             self.logger.info(f"Loading data for prediction: {symbol} {timeframe}")
 
             # Load raw data
-            raw_data = self.data_loader.load_data(symbol, timeframe)
+            raw_data = await self.data_loader.load_data(symbol, timeframe)
 
             if raw_data.empty:
                 raise ValueError(f"No data found for {symbol} {timeframe}")
@@ -153,7 +156,7 @@ class DataService:
             self.logger.error(f"Failed to load data for prediction: {e}")
             raise
 
-    def check_data_availability(
+    async def check_data_availability(
         self, symbol: str, timeframe: TimeFrame
     ) -> Dict[str, Any]:
         """
@@ -167,11 +170,11 @@ class DataService:
             Dictionary with availability information
         """
         try:
-            exists = self.data_loader.check_data_exists(symbol, timeframe)
+            exists = await self.data_loader.check_data_exists(symbol, timeframe)
 
             if exists:
                 # Load basic info
-                data = self.data_loader.load_data(symbol, timeframe)
+                data = await self.data_loader.load_data(symbol, timeframe)
                 info = {
                     "exists": True,
                     "sample_count": len(data),
