@@ -43,6 +43,23 @@ from .admin_schemas import (
     APIKeyValidationRequest,
     APIKeyValidationResponse,
 )
+from .job_schemas import (
+    JobStatus,
+    JobPriority,
+    NotificationLevel,
+    MarketDataJobConfigModel,
+    JobStatsModel,
+    JobStatusResponse,
+    JobStartRequest,
+    JobStopRequest,
+    ManualJobRequest,
+    ManualJobResponse,
+    JobConfigUpdateRequest,
+    JobOperationResponse,
+    DataCollectionJobRequest,
+    DataCollectionJobResponse,
+    HealthCheckResponse,
+)
 
 __all__ = [
     # OHLCV schemas
@@ -80,4 +97,20 @@ __all__ = [
     "TimeFrame",
     "MarketDataType",
     "TimeFrameMultiplier",
+    # Job schemas
+    "JobStatus",
+    "JobPriority",
+    "NotificationLevel",
+    "MarketDataJobConfigModel",
+    "JobStatsModel",
+    "JobStatusResponse",
+    "JobStartRequest",
+    "JobStopRequest",
+    "ManualJobRequest",
+    "ManualJobResponse",
+    "JobConfigUpdateRequest",
+    "JobOperationResponse",
+    "DataCollectionJobRequest",
+    "DataCollectionJobResponse",
+    "HealthCheckResponse",
 ]
