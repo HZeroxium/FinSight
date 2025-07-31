@@ -595,7 +595,3 @@ if __name__ == "__main__":
     print("- Automatic updates: Keep data current")
     print("- Batch operations: Efficient bulk processing")
 
-
-if __name__ == "__main__":
-    asyncio.run(main())
-    asyncio.run(main())
