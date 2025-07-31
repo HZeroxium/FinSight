@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # Tavily API configuration
     tavily_api_key: Optional[str] = Field(default=None)
 
+    # Admin API configuration
+    secret_api_key: Optional[str] = Field(
+        default=None, description="Secret API key for admin endpoints (job management)"
+    )
+
     # Database Environment Configuration
     database_environment: str = Field(
         default="local", description="Database environment: 'local' or 'cloud'"

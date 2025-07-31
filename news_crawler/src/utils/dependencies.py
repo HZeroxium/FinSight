@@ -5,6 +5,8 @@ Dependency injection utilities for news crawler service.
 """
 
 from typing import Dict, Any, Optional
+from fastapi import HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dependency_injector import containers, providers
 from dependency_injector.wiring import Provide, inject
 
@@ -12,6 +14,7 @@ from ..repositories.mongo_news_repository import MongoNewsRepository
 from ..services.news_service import NewsService
 from ..services.search_service import SearchService
 from ..services.news_collector_service import NewsCollectorService
+from ..services.job_service import JobManagementService
 from ..adapters.rabbitmq_broker import RabbitMQBroker
 from ..adapters.tavily_search_engine import TavilySearchEngine
 from common.logger import LoggerFactory, LoggerType, LogLevel
@@ -69,6 +72,13 @@ class Container(containers.DeclarativeContainer):
         SearchService,
         search_engine=search_engine,
         message_broker=message_broker,
+    )
+
+    # Job Management Service
+    job_service = providers.Singleton(
+        JobManagementService,
+        mongo_url=config.mongo_url.as_(str),
+        database_name=config.database_name.as_(str),
     )
 
 
@@ -199,6 +209,10 @@ class ServiceContext:
         """Get message broker"""
         return container.message_broker()
 
+    def get_job_service(self) -> JobManagementService:
+        """Get job management service"""
+        return container.job_service()
+
 
 # Dependency injection functions for FastAPI
 def get_news_collector_service() -> NewsCollectorService:
@@ -259,6 +273,66 @@ def get_search_engine() -> TavilySearchEngine:
         TavilySearchEngine: Configured Tavily search engine
     """
     return container.search_engine()
+
+
+def get_job_service() -> JobManagementService:
+    """
+    Get job management service (for FastAPI dependency injection)
+
+    Returns:
+        JobManagementService: Configured job management service
+    """
+    return container.job_service()
+
+
+# Security dependencies
+security = HTTPBearer()
+
+
+def verify_api_key(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> bool:
+    """
+    Verify API key for admin endpoints.
+
+    Args:
+        credentials: HTTP Bearer credentials from request header
+
+    Returns:
+        bool: True if API key is valid
+
+    Raises:
+        HTTPException: If API key is missing or invalid
+    """
+    if not settings.secret_api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="Server configuration error: SECRET_API_KEY not configured",
+        )
+
+    if not credentials or not credentials.credentials:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing API key. Please provide Authorization: Bearer <api_key>",
+        )
+
+    if credentials.credentials != settings.secret_api_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    return True
+
+
+def require_admin_access(api_key_verified: bool = Depends(verify_api_key)) -> bool:
+    """
+    Dependency that requires admin access via API key.
+
+    Args:
+        api_key_verified: Result from API key verification
+
+    Returns:
+        bool: True if admin access is granted
+    """
+    return api_key_verified
 
 
 # Convenience functions with async support
@@ -373,6 +447,7 @@ def get_container_info() -> Dict[str, Any]:
         "message_broker",
         "search_engine",
         "search_service",
+        "job_service",
     ]
 
     for service_name in services:
