@@ -11,7 +11,7 @@ class IDataLoader(ABC):
     """Interface for data loading strategies"""
 
     @abstractmethod
-    def load_data(
+    async def load_data(
         self, symbol: str, timeframe: TimeFrame, data_path: Optional[Path] = None
     ) -> pd.DataFrame:
         """
@@ -28,7 +28,7 @@ class IDataLoader(ABC):
         pass
 
     @abstractmethod
-    def check_data_exists(self, symbol: str, timeframe: TimeFrame) -> bool:
+    async def check_data_exists(self, symbol: str, timeframe: TimeFrame) -> bool:
         """
         Check if data exists for given symbol and timeframe
 
