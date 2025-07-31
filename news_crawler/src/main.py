@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .core.config import settings
-from .routers import news_router, search
+from .routers import news_router, job_router
 from .services.sentiment_consumer import SentimentConsumerService
 from .grpc_services import create_grpc_server, GrpcServer
 from .utils.dependencies import (
@@ -196,6 +196,7 @@ app.add_middleware(
 # Include routers
 # app.include_router(search.router)
 app.include_router(news_router.router)
+app.include_router(job_router.router)
 
 
 @app.get("/")
