@@ -10,16 +10,6 @@ from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import SettingsConfigDict, BaseSettings
 
 
-"""
-Configuration management for the backtesting system.
-Centralized configuration using Pydantic settings with environment variable support.
-"""
-
-from typing import Dict, Any, List
-from pydantic import BaseModel, Field, field_validator
-from pydantic_settings import SettingsConfigDict, BaseSettings
-
-
 class Settings(BaseSettings):
     """Main configuration class for the backtesting system"""
 
@@ -88,6 +78,9 @@ class Settings(BaseSettings):
     # Admin API configuration
     admin_api_key: str = Field(
         default="admin-default-key-change-in-production", env="ADMIN_API_KEY"
+    )
+    secret_api_key: str = Field(
+        default="secret-admin-key-change-in-production", env="SECRET_API_KEY"
     )
 
     # Cron job configuration

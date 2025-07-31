@@ -21,6 +21,7 @@ import time
 
 from .routers import admin_router
 from .routers import market_data_router, backtesting_router
+from .routers import market_data_storage_router, market_data_job_router
 from .core.config import settings
 from common.logger import LoggerFactory
 from .interfaces.errors import (
@@ -265,6 +266,18 @@ app.include_router(
     backtesting_router.router,
     prefix="/api/v1",
     tags=["backtesting"],
+)
+
+app.include_router(
+    market_data_storage_router.router,
+    prefix="/api/v1",
+    tags=["market-data-storage"],
+)
+
+app.include_router(
+    market_data_job_router.router,
+    prefix="/api/v1",
+    tags=["market-data-job-management"],
 )
 
 

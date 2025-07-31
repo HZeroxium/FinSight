@@ -9,15 +9,21 @@ to provide clean separation of concerns and enable easy testing and configuratio
 
 from dependency_injector import containers, providers
 from typing import Optional, Dict, Any
+from fastapi import HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from ..core.config import settings
 from ..interfaces.market_data_repository import MarketDataRepository
 from ..interfaces.market_data_collector import MarketDataCollector
 from ..services.market_data_service import MarketDataService
 from ..services.market_data_collector_service import MarketDataCollectorService
+from ..services.market_data_storage_service import MarketDataStorageService
+from ..services.market_data_job_service import MarketDataJobManagementService
 from ..adapters.csv_market_data_repository import CSVMarketDataRepository
 from ..adapters.mongodb_market_data_repository import MongoDBMarketDataRepository
+from ..adapters.parquet_market_data_repository import ParquetMarketDataRepository
 from ..adapters.binance_market_data_collector import BinanceMarketDataCollector
+from ..utils.storage_client import StorageClient
 from ..converters.ohlcv_converter import OHLCVConverter
 from ..converters.timeframe_converter import TimeFrameConverter
 from .timeframe_utils import TimeFrameUtils
@@ -85,6 +91,20 @@ class Container(containers.DeclarativeContainer):
         collection_prefix="ohlcv",
     )
 
+    parquet_repository = providers.Singleton(
+        ParquetMarketDataRepository,
+        base_path=settings.storage_base_directory,
+        use_object_storage=False,  # Can be configured later
+    )
+
+    # Storage client for object storage
+    storage_client = providers.Singleton(
+        StorageClient,
+        endpoint_url="http://localhost:9000",  # Default MinIO
+        bucket_name="market-data",
+        use_ssl=False,
+    )
+
     # Repository factory
     repository = providers.Factory(
         _create_repository,
@@ -119,6 +139,22 @@ class Container(containers.DeclarativeContainer):
         collector=collector,
         data_service=market_data_service,
         collection_interval_seconds=3600,  # Default 1 hour
+    )
+
+    # Storage service for object storage operations
+    market_data_storage_service = providers.Factory(
+        MarketDataStorageService,
+        storage_client=storage_client,
+        csv_repository=csv_repository,
+        parquet_repository=parquet_repository,
+    )
+
+    # Job management service for market data collection jobs
+    market_data_job_service = providers.Factory(
+        MarketDataJobManagementService,
+        config_file="market_data_job_config.json",
+        pid_file="market_data_job.pid",
+        log_file="logs/market_data_job.log",
     )
 
 
@@ -158,6 +194,22 @@ class DependencyManager:
     def get_collector(self) -> MarketDataCollector:
         """Get configured collector"""
         return self.container.collector()
+
+    def get_storage_service(self) -> MarketDataStorageService:
+        """Get configured storage service"""
+        return self.container.market_data_storage_service()
+
+    def get_job_management_service(self) -> MarketDataJobManagementService:
+        """Get configured job management service"""
+        return self.container.market_data_job_service()
+
+    def get_storage_client(self) -> StorageClient:
+        """Get configured storage client"""
+        return self.container.storage_client()
+
+    def get_parquet_repository(self) -> ParquetMarketDataRepository:
+        """Get configured parquet repository"""
+        return self.container.parquet_repository()
 
     def configure_csv_storage(self, base_directory: str = None) -> None:
         """Configure CSV storage"""
@@ -230,3 +282,73 @@ def get_timeframe_converter() -> TimeFrameConverter:
 def get_timeframe_utils() -> TimeFrameUtils:
     """Get timeframe utilities (convenience function)"""
     return dependency_manager.get_timeframe_utils()
+
+
+def get_storage_service() -> MarketDataStorageService:
+    """Get configured storage service (convenience function)"""
+    return dependency_manager.get_storage_service()
+
+
+def get_market_data_job_service() -> MarketDataJobManagementService:
+    """Get configured job management service (convenience function)"""
+    return dependency_manager.get_job_management_service()
+
+
+def get_storage_client() -> StorageClient:
+    """Get configured storage client (convenience function)"""
+    return dependency_manager.get_storage_client()
+
+
+def get_parquet_repository() -> ParquetMarketDataRepository:
+    """Get configured parquet repository (convenience function)"""
+    return dependency_manager.get_parquet_repository()
+
+
+# Security dependencies
+security = HTTPBearer()
+
+
+def verify_api_key(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> bool:
+    """
+    Verify API key for admin endpoints.
+
+    Args:
+        credentials: HTTP Bearer credentials from request header
+
+    Returns:
+        bool: True if API key is valid
+
+    Raises:
+        HTTPException: If API key is missing or invalid
+    """
+    if not settings.secret_api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="Server configuration error: SECRET_API_KEY not configured",
+        )
+
+    if not credentials or not credentials.credentials:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing API key. Please provide Authorization: Bearer <api_key>",
+        )
+
+    if credentials.credentials != settings.secret_api_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    return True
+
+
+def require_admin_access(api_key_verified: bool = Depends(verify_api_key)) -> bool:
+    """
+    Dependency that requires admin access via API key.
+
+    Args:
+        api_key_verified: Result from API key verification
+
+    Returns:
+        bool: True if admin access is granted
+    """
+    return True
