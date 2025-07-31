@@ -26,7 +26,7 @@ async def predict(request: PredictionRequest) -> PredictionResponse:
             f"Received prediction request for {request.symbol} {request.timeframe} ({request.n_steps} steps)"
         )
 
-        response = prediction_service.predict(request)
+        response = await prediction_service.predict(request)
 
         if response.success:
             logger.info(f"Prediction completed successfully")

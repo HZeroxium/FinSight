@@ -87,7 +87,7 @@ class UnifiedModelFacade:
 
     # Training Operations (delegated to training facade)
 
-    def train_model(
+    async def train_model(
         self,
         symbol: str,
         timeframe: TimeFrame,
@@ -96,6 +96,7 @@ class UnifiedModelFacade:
         val_data: pd.DataFrame,
         feature_engineering: Any,
         config: ModelConfig,
+        run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Train a model (delegates to training facade).
@@ -108,11 +109,12 @@ class UnifiedModelFacade:
             val_data: Validation dataset
             feature_engineering: Feature engineering instance
             config: Model configuration
+            run_id: Optional experiment run ID for tracking
 
         Returns:
             Dict containing training results
         """
-        return self.training.train_model(
+        return await self.training.train_model(
             symbol,
             timeframe,
             model_type,
@@ -120,6 +122,7 @@ class UnifiedModelFacade:
             val_data,
             feature_engineering,
             config,
+            run_id,
         )
 
     def evaluate_model(

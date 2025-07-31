@@ -16,7 +16,7 @@ import json
 from sklearn.preprocessing import StandardScaler
 
 from ...interfaces.model_interface import ITimeSeriesModel
-from common.logger import LoggerFactory
+from common.logger.logger_factory import LoggerFactory
 from ...utils.metrics_utils import MetricUtils
 
 
@@ -70,6 +70,10 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
         # Feature engineering strategy (injected)
         self.feature_engineering = None
 
+        # Experiment tracker (lazy-loaded)
+        self._experiment_tracker = None
+        self._current_run_id = None
+
         self.logger = LoggerFactory.get_logger(f"{self.__class__.__name__}")
 
         # Log initialization details
@@ -81,6 +85,54 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
             f"  feature_columns: {self.feature_columns} (count: {len(self.feature_columns)})"
         )
         self.logger.debug(f"  device: {self.device}")
+
+    # ================================
+    # Experiment Tracking Support
+    # ================================
+
+    @property
+    def experiment_tracker(self):
+        """Lazy-loaded experiment tracker instance"""
+        if self._experiment_tracker is None:
+            try:
+                from ...utils.dependencies import get_experiment_tracker
+
+                self._experiment_tracker = get_experiment_tracker()
+            except Exception as e:
+                self.logger.warning(f"Failed to load experiment tracker: {e}")
+        return self._experiment_tracker
+
+    def set_run_id(self, run_id: str) -> None:
+        """Set the current experiment run ID for tracking"""
+        self._current_run_id = run_id
+
+    async def log_training_params(self, **params) -> None:
+        """Log training parameters to experiment tracker"""
+        if self._current_run_id and self.experiment_tracker:
+            try:
+                await self.experiment_tracker.log_params(self._current_run_id, params)
+            except Exception as e:
+                self.logger.warning(f"Failed to log training params: {e}")
+
+    async def log_training_metrics(self, metrics: Dict[str, float]) -> None:
+        """Log training metrics to experiment tracker"""
+        if self._current_run_id and self.experiment_tracker:
+            try:
+                await self.experiment_tracker.log_metrics(self._current_run_id, metrics)
+            except Exception as e:
+                self.logger.warning(f"Failed to log training metrics: {e}")
+
+    async def log_model_artifact(
+        self, model_path: Path, artifact_path: str = "model"
+    ) -> None:
+        """Log model as artifact to experiment tracker"""
+        if self._current_run_id and self.experiment_tracker:
+            try:
+                await self.experiment_tracker.log_artifact(
+                    self._current_run_id, model_path, artifact_path
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to log model artifact: {e}")
 
     # ================================
     # Abstract methods for subclasses
@@ -269,14 +321,44 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
         train_data: pd.DataFrame,
         val_data: pd.DataFrame,
         feature_engineering: Optional[Any] = None,
+        run_id: Optional[str] = None,
         **kwargs,
     ) -> Dict[str, Any]:
-        """Train the model with proper scaler fitting"""
+        """Train the model with proper scaler fitting and experiment tracking"""
         try:
             self.logger.info(f"Starting training for {self.__class__.__name__}")
 
+            # Set run ID for experiment tracking
+            if run_id:
+                self.set_run_id(run_id)
+
             # Store feature engineering strategy
             self.feature_engineering = feature_engineering
+
+            # Log training configuration if experiment tracking is available
+            training_config = {
+                "model_class": self.__class__.__name__,
+                "context_length": self.context_length,
+                "prediction_length": self.prediction_length,
+                "target_column": self.target_column,
+                "feature_columns_count": len(self.feature_columns),
+                "device": str(self.device),
+                **kwargs,
+            }
+
+            # Use asyncio to run the async method (fire and forget for now)
+            try:
+                import asyncio
+
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Create a task without awaiting (fire and forget)
+                    asyncio.create_task(self.log_training_params(**training_config))
+                else:
+                    # Run in new event loop if no loop is running
+                    asyncio.run(self.log_training_params(**training_config))
+            except Exception as e:
+                self.logger.debug(f"Could not log training params: {e}")
 
             # Fit scalers on training data only
             self._fit_scalers(train_data)
@@ -296,6 +378,25 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
             self.logger.info(f"Created {len(train_sequences)} training sequences")
             self.logger.info(f"Created {len(val_sequences)} validation sequences")
 
+            # Log data statistics
+            data_stats = {
+                "train_sequences": len(train_sequences),
+                "val_sequences": len(val_sequences),
+                "train_data_shape": list(train_data.shape),
+                "val_data_shape": list(val_data.shape),
+            }
+
+            try:
+                import asyncio
+
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.log_training_metrics(data_stats))
+                else:
+                    asyncio.run(self.log_training_metrics(data_stats))
+            except Exception as e:
+                self.logger.debug(f"Could not log data stats: {e}")
+
             # Create model if not exists
             if self.model is None:
                 self.logger.info("Creating model...")
@@ -314,6 +415,33 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
             training_result = self._train_model(
                 (train_sequences, train_targets), (val_sequences, val_targets), **kwargs
             )
+
+            # Log training metrics if available
+            if training_result.get("success", False) and isinstance(
+                training_result, dict
+            ):
+                metrics_to_log = {}
+
+                # Extract numeric metrics from training result
+                for key, value in training_result.items():
+                    if key not in ["success", "error", "model_path"] and isinstance(
+                        value, (int, float)
+                    ):
+                        metrics_to_log[key] = float(value)
+
+                if metrics_to_log:
+                    try:
+                        import asyncio
+
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            asyncio.create_task(
+                                self.log_training_metrics(metrics_to_log)
+                            )
+                        else:
+                            asyncio.run(self.log_training_metrics(metrics_to_log))
+                    except Exception as e:
+                        self.logger.debug(f"Could not log training metrics: {e}")
 
             # Ensure success flag is set if not already present
             if "success" not in training_result:
@@ -554,7 +682,7 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
     # ================================
 
     def save_model(self, path: Path) -> None:
-        """Save complete model state"""
+        """Save complete model state with experiment tracking"""
         try:
             path = Path(path)
             path.mkdir(parents=True, exist_ok=True)
@@ -621,6 +749,18 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
             self._save_model_specific(path)
 
             self.logger.info(f"Model saved to {path}")
+
+            # Log model artifacts to experiment tracker if available
+            try:
+                import asyncio
+
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.log_model_artifact(path, "model"))
+                else:
+                    asyncio.run(self.log_model_artifact(path, "model"))
+            except Exception as e:
+                self.logger.debug(f"Could not log model artifacts: {e}")
 
         except Exception as e:
             self.logger.error(f"Error saving model: {e}")

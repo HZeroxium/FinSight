@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     base_dir: Path = Field(
         default_factory=lambda: Path(__file__).parent.parent.parent.parent
     )
-    data_dir: Path = Field(None, env="DATA_DIR")
-    models_dir: Path = Field(None, env="MODELS_DIR")
-    logs_dir: Path = Field(None, env="LOGS_DIR")
+    data_dir: Path = Field(default=None, env="DATA_DIR")
+    models_dir: Path = Field(default=None, env="MODELS_DIR")
+    logs_dir: Path = Field(default=None, env="LOGS_DIR")
 
     # Model management settings
     model_name_pattern: str = Field(
@@ -90,12 +90,53 @@ class Settings(BaseSettings):
     training_job_repository_type: str = Field(
         "file", env="TRAINING_JOB_REPOSITORY_TYPE"
     )
-    
+
+    # Cloud Storage settings
+    enable_cloud_storage: bool = Field(False, env="ENABLE_CLOUD_STORAGE")
+    cloud_storage_type: str = Field("s3", env="CLOUD_STORAGE_TYPE")  # s3, gcs, azure
+    cloud_storage_bucket: str = Field("finsight-ml-data", env="CLOUD_STORAGE_BUCKET")
+    cloud_storage_region: str = Field("us-east-1", env="CLOUD_STORAGE_REGION")
+    cloud_storage_endpoint: Optional[str] = Field(None, env="CLOUD_STORAGE_ENDPOINT")
+    cloud_storage_access_key: Optional[str] = Field(
+        None, env="CLOUD_STORAGE_ACCESS_KEY"
+    )
+    cloud_storage_secret_key: Optional[str] = Field(
+        None, env="CLOUD_STORAGE_SECRET_KEY"
+    )
+
+    # Data loading settings
+    data_loader_type: str = Field(
+        "hybrid", env="DATA_LOADER_TYPE"
+    )  # local, cloud, hybrid
+    cloud_data_cache_dir: Path = Field(
+        default_factory=lambda: Path(__file__).parent.parent.parent
+        / "tmp"
+        / "cloud_cache",
+        env="CLOUD_DATA_CACHE_DIR",
+    )
+    cloud_data_cache_ttl_hours: int = Field(24, env="CLOUD_DATA_CACHE_TTL_HOURS")
+
+    # Experiment Tracker settings
+    experiment_tracker_type: str = Field(
+        "simple", env="EXPERIMENT_TRACKER_TYPE"
+    )  # simple, mlflow
+    experiment_tracker_fallback: str = Field(
+        "simple", env="EXPERIMENT_TRACKER_FALLBACK"
+    )
+
+    # MLflow settings
+    mlflow_tracking_uri: Optional[str] = Field(None, env="MLFLOW_TRACKING_URI")
+    mlflow_experiment_name: str = Field("finsight-ml", env="MLFLOW_EXPERIMENT_NAME")
+    mlflow_artifact_root: Optional[str] = Field(None, env="MLFLOW_ARTIFACT_ROOT")
+    mlflow_default_artifact_root: Optional[str] = Field(
+        None, env="MLFLOW_DEFAULT_ARTIFACT_ROOT"
+    )
+
     # Model saving configuration
     save_multiple_formats: bool = Field(True, env="SAVE_MULTIPLE_FORMATS")
     enabled_adapters: List[str] = Field(
         default_factory=lambda: ["simple", "torchscript", "torchserve", "triton"],
-        env="ENABLED_ADAPTERS"
+        env="ENABLED_ADAPTERS",
     )
 
     class Config:
@@ -117,8 +158,15 @@ class Settings(BaseSettings):
         if self.logs_dir is None:
             self.logs_dir = self.base_dir / "logs"
 
+        # cloud_data_cache_dir now has a default factory, so no need to check for None
+
         # Create directories if they don't exist
-        for directory in [self.data_dir, self.models_dir, self.logs_dir]:
+        for directory in [
+            self.data_dir,
+            self.models_dir,
+            self.logs_dir,
+            self.cloud_data_cache_dir,
+        ]:
             directory.mkdir(parents=True, exist_ok=True)
 
     @property
