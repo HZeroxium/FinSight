@@ -129,7 +129,7 @@ class StorageClient:
         try:
             # Check if bucket exists
             await asyncio.get_event_loop().run_in_executor(
-                None, self.s3_client.head_bucket, {"Bucket": bucket}
+                None, lambda: self.s3_client.head_bucket(Bucket=bucket)
             )
             self.logger.info(f"Bucket '{bucket}' already exists")
             return True
@@ -426,10 +426,14 @@ class StorageClient:
         bucket = bucket_name or self.bucket_name
 
         try:
+            # Prepare parameters for list_objects_v2
+            params = {"Bucket": bucket, "MaxKeys": max_keys}
+            if prefix and prefix.strip():  # Only add Prefix if it's not empty
+                params["Prefix"] = prefix
+
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                self.s3_client.list_objects_v2,
-                {"Bucket": bucket, "Prefix": prefix, "MaxKeys": max_keys},
+                lambda: self.s3_client.list_objects_v2(**params),
             )
 
             objects = []
@@ -451,7 +455,7 @@ class StorageClient:
 
         except Exception as e:
             self.logger.error(f"Failed to list objects in '{bucket}': {e}")
-            raise StorageClientError(f"List failed: {e}")
+            raise StorageClientError(f"StorageClient: List failed: {e}")
 
     async def object_exists(
         self,
@@ -473,8 +477,7 @@ class StorageClient:
         try:
             await asyncio.get_event_loop().run_in_executor(
                 None,
-                self.s3_client.head_object,
-                {"Bucket": bucket, "Key": object_key},
+                lambda: self.s3_client.head_object(Bucket=bucket, Key=object_key),
             )
             return True
 
@@ -505,8 +508,7 @@ class StorageClient:
         try:
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                self.s3_client.head_object,
-                {"Bucket": bucket, "Key": object_key},
+                lambda: self.s3_client.head_object(Bucket=bucket, Key=object_key),
             )
 
             return {
@@ -581,8 +583,7 @@ class StorageClient:
             try:
                 response = await asyncio.get_event_loop().run_in_executor(
                     None,
-                    self.s3_client.head_bucket,
-                    {"Bucket": self.bucket_name},
+                    lambda: self.s3_client.head_bucket(Bucket=self.bucket_name),
                 )
                 bucket_info["exists"] = True
                 bucket_info["region"] = (

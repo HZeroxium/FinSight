@@ -10,6 +10,7 @@ class RepositoryType(str, Enum):
     MONGODB = "mongodb"
     INFLUXDB = "influxdb"
     TIMESCALEDB = "timescaledb"
+    PARQUET = "parquet"
 
 
 class Exchange(str, Enum):

@@ -8,7 +8,6 @@ to provide clean separation of concerns and enable easy testing and configuratio
 """
 
 from dependency_injector import containers, providers
-from typing import Optional, Dict, Any
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -26,6 +25,7 @@ from ..adapters.binance_market_data_collector import BinanceMarketDataCollector
 from ..utils.storage_client import StorageClient
 from ..converters.ohlcv_converter import OHLCVConverter
 from ..converters.timeframe_converter import TimeFrameConverter
+from ..misc.timeframe_load_convert_save import CrossRepositoryTimeFramePipeline
 from .timeframe_utils import TimeFrameUtils
 from .datetime_utils import DateTimeUtils
 from common.logger import LoggerFactory
@@ -36,15 +36,27 @@ def _create_repository(
     repository_type: str,
     csv_repo: CSVMarketDataRepository,
     mongodb_repo: MongoDBMarketDataRepository,
+    parquet_repo: ParquetMarketDataRepository,
 ) -> MarketDataRepository:
     """Factory function to create repository based on type"""
 
+    logger = LoggerFactory.get_logger("repository_factory_dependency")
+    logger.info(f"Creating repository with type: {repository_type}")
+
     if repository_type.lower() == RepositoryType.CSV.value:
+        logger.info("Selected CSV repository")
         return csv_repo
     elif repository_type.lower() == RepositoryType.MONGODB.value:
+        logger.info("Selected MongoDB repository")
         return mongodb_repo
+    elif repository_type.lower() == RepositoryType.PARQUET.value:
+        logger.info("Selected Parquet repository")
+        return parquet_repo
     else:
         # Default to CSV repository
+        logger.warning(
+            f"Unknown repository type '{repository_type}', defaulting to CSV"
+        )
         return csv_repo
 
 
@@ -88,7 +100,7 @@ class Container(containers.DeclarativeContainer):
         MongoDBMarketDataRepository,
         connection_string=settings.mongodb_url,
         database_name=settings.mongodb_database,
-        collection_prefix="ohlcv",
+        ohlcv_collection="ohlcv",
     )
 
     parquet_repository = providers.Singleton(
@@ -97,20 +109,19 @@ class Container(containers.DeclarativeContainer):
         use_object_storage=False,  # Can be configured later
     )
 
-    # Storage client for object storage
+    # Storage client for object storage - using configuration from settings
     storage_client = providers.Singleton(
         StorageClient,
-        endpoint_url="http://localhost:9000",  # Default MinIO
-        bucket_name="market-data",
-        use_ssl=False,
+        **settings.get_storage_config(),
     )
 
     # Repository factory
     repository = providers.Factory(
         _create_repository,
-        repository_type="csv",  # Default to CSV, can be overridden
+        repository_type=settings.repository_type,  # Use general repository type
         csv_repo=csv_repository,
         mongodb_repo=mongodb_repository,
+        parquet_repo=parquet_repository,
     )
 
     # Market data collectors
@@ -128,13 +139,13 @@ class Container(containers.DeclarativeContainer):
         binance_collector=binance_collector,
     )
 
-    # Services
-    market_data_service = providers.Factory(
+    # Services - Using Singleton to prevent repeated initialization
+    market_data_service = providers.Singleton(
         MarketDataService,
         repository=repository,
     )
 
-    market_data_collector_service = providers.Factory(
+    market_data_collector_service = providers.Singleton(
         MarketDataCollectorService,
         collector=collector,
         data_service=market_data_service,
@@ -142,15 +153,22 @@ class Container(containers.DeclarativeContainer):
     )
 
     # Storage service for object storage operations
-    market_data_storage_service = providers.Factory(
+    market_data_storage_service = providers.Singleton(
         MarketDataStorageService,
         storage_client=storage_client,
         csv_repository=csv_repository,
         parquet_repository=parquet_repository,
     )
 
+    # Cross-repository timeframe conversion pipeline
+    cross_repository_pipeline = providers.Singleton(
+        CrossRepositoryTimeFramePipeline,
+        source_repository=csv_repository,
+        target_repository=parquet_repository,
+    )
+
     # Job management service for market data collection jobs
-    market_data_job_service = providers.Factory(
+    market_data_job_service = providers.Singleton(
         MarketDataJobManagementService,
         config_file="market_data_job_config.json",
         pid_file="market_data_job.pid",
@@ -211,6 +229,10 @@ class DependencyManager:
         """Get configured parquet repository"""
         return self.container.parquet_repository()
 
+    def get_cross_repository_pipeline(self) -> CrossRepositoryTimeFramePipeline:
+        """Get configured cross-repository timeframe conversion pipeline"""
+        return self.container.cross_repository_pipeline()
+
     def configure_csv_storage(self, base_directory: str = None) -> None:
         """Configure CSV storage"""
         if base_directory:
@@ -231,9 +253,6 @@ class DependencyManager:
 
     def configure_binance_exchange(
         self,
-        api_key: Optional[str] = None,
-        api_secret: Optional[str] = None,
-        testnet: bool = False,
     ) -> None:
         """Configure Binance exchange"""
         # This would require updating the settings instance,
@@ -304,6 +323,11 @@ def get_parquet_repository() -> ParquetMarketDataRepository:
     return dependency_manager.get_parquet_repository()
 
 
+def get_cross_repository_pipeline() -> CrossRepositoryTimeFramePipeline:
+    """Get configured cross-repository timeframe conversion pipeline (convenience function)"""
+    return dependency_manager.get_cross_repository_pipeline()
+
+
 # Security dependencies
 security = HTTPBearer()
 
@@ -323,10 +347,10 @@ def verify_api_key(
     Raises:
         HTTPException: If API key is missing or invalid
     """
-    if not settings.secret_api_key:
+    if not settings.admin_api_key:
         raise HTTPException(
             status_code=500,
-            detail="Server configuration error: SECRET_API_KEY not configured",
+            detail="Server configuration error: ADMIN_API_KEY not configured",
         )
 
     if not credentials or not credentials.credentials:
@@ -335,8 +359,11 @@ def verify_api_key(
             detail="Missing API key. Please provide Authorization: Bearer <api_key>",
         )
 
-    if credentials.credentials != settings.secret_api_key:
-        raise HTTPException(status_code=403, detail="Invalid API key")
+    if credentials.credentials != settings.admin_api_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid API key. Check ADMIN_API_KEY environment variable.",
+        )
 
     return True
 

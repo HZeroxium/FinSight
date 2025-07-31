@@ -334,6 +334,8 @@ class MarketDataStorageService:
         source_format: str,
         target_format: str,
         upload_result: bool = True,
+        target_timeframes: Optional[List[str]] = None,
+        overwrite_existing: bool = False,
     ) -> Dict[str, Any]:
         """
         Convert dataset between different formats.
@@ -347,6 +349,8 @@ class MarketDataStorageService:
             source_format: Source format ('csv' or 'parquet')
             target_format: Target format ('csv' or 'parquet')
             upload_result: Whether to upload converted dataset
+            target_timeframes: List of target timeframes for conversion (optional)
+            overwrite_existing: Whether to overwrite existing data
 
         Returns:
             Conversion result dictionary
@@ -374,11 +378,14 @@ class MarketDataStorageService:
                 }
 
             # Use cross-repository pipeline for conversion
+            conversion_timeframes = (
+                target_timeframes if target_timeframes else [timeframe]
+            )
             pipeline = CrossRepositoryTimeFramePipeline(
                 source_repository=source_repo,
                 target_repository=target_repo,
                 source_timeframe=timeframe,
-                target_timeframes=[timeframe],
+                target_timeframes=conversion_timeframes,
             )
 
             result = await pipeline.process_symbol_cross_repository(
@@ -386,7 +393,7 @@ class MarketDataStorageService:
                 exchange=exchange,
                 start_date=start_date,
                 end_date=end_date,
-                overwrite_existing=True,
+                overwrite_existing=overwrite_existing,
             )
 
             conversion_result = {
@@ -555,6 +562,7 @@ class MarketDataStorageService:
         symbol_filter: Optional[str] = None,
         timeframe_filter: Optional[str] = None,
         prefix: str = "datasets/",
+        limit: int = 1000,
     ) -> Dict[str, Any]:
         """
         List available datasets in object storage.
@@ -564,6 +572,7 @@ class MarketDataStorageService:
             symbol_filter: Filter by symbol
             timeframe_filter: Filter by timeframe
             prefix: Object key prefix to search
+            limit: Maximum number of objects to return
 
         Returns:
             Dataset listing result
@@ -572,8 +581,10 @@ class MarketDataStorageService:
             self.logger.info("Listing available datasets")
 
             # List objects from storage
+            # Ensure prefix is not None
+            safe_prefix = prefix if prefix is not None else "datasets/"
             objects = await self.storage_client.list_objects(
-                prefix=prefix, max_keys=10000
+                prefix=safe_prefix, max_keys=limit
             )
 
             # Parse and filter datasets
