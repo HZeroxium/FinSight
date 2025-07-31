@@ -21,7 +21,7 @@ class PredictionService:
         self.model_facade = get_serving_facade()
         self.data_service = DataService()
 
-    def predict(self, request: PredictionRequest) -> PredictionResponse:
+    async def predict(self, request: PredictionRequest) -> PredictionResponse:
         """
         Make predictions using trained model
 
@@ -76,7 +76,9 @@ class PredictionService:
                 )
 
             # Load recent data for prediction
-            recent_data = self.data_service.data_loader.load_data(symbol, timeframe)
+            recent_data = await self.data_service.data_loader.load_data(
+                symbol, timeframe
+            )
 
             if recent_data.empty:
                 return PredictionResponse(

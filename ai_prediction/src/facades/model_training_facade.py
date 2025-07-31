@@ -18,9 +18,9 @@ from pathlib import Path
 from ..interfaces.model_interface import ITimeSeriesModel
 from ..models.model_factory import ModelFactory
 from ..schemas.enums import ModelType, TimeFrame
-from ..schemas.model_schemas import ModelConfig, ModelInfo
+from ..schemas.model_schemas import ModelConfig
 from ..utils.model_utils import ModelUtils
-from ..core.constants import FacadeConstants, LoggingConstants
+from ..core.constants import FacadeConstants
 from ..core.config import get_settings
 from common.logger.logger_factory import LoggerFactory, LogLevel
 
@@ -55,7 +55,7 @@ class ModelTrainingFacade:
 
         self.logger.info("Model training facade initialized")
 
-    def train_model(
+    async def train_model(
         self,
         symbol: str,
         timeframe: TimeFrame,
@@ -64,6 +64,7 @@ class ModelTrainingFacade:
         val_data: pd.DataFrame,
         feature_engineering: Any,
         config: ModelConfig,
+        run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Train a model with comprehensive configuration and monitoring.
@@ -120,13 +121,14 @@ class ModelTrainingFacade:
             self._training_sessions[training_id]["progress"] = 0.1
 
             # Execute training
-            training_result = self._execute_training(
+            training_result = await self._execute_training(
                 model,
                 train_data,
                 val_data,
                 feature_engineering,
                 adapter_config,
                 training_id,
+                run_id,
             )
 
             if training_result.get("success", False):
@@ -417,7 +419,7 @@ class ModelTrainingFacade:
             raise RuntimeError(f"Failed to create model of type {model_type}")
         return model
 
-    def _execute_training(
+    async def _execute_training(
         self,
         model: ITimeSeriesModel,
         train_data: pd.DataFrame,
@@ -425,14 +427,16 @@ class ModelTrainingFacade:
         feature_engineering: Any,
         adapter_config: Dict[str, Any],
         training_id: str,
+        run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Execute the actual model training."""
+        """Execute the actual model training with experiment tracking."""
         try:
-            # Train model with progress tracking
+            # Train model with progress tracking and experiment run ID
             training_result = model.train(
                 train_data=train_data,
                 val_data=val_data,
                 feature_engineering=feature_engineering,
+                run_id=run_id,
                 **adapter_config,
             )
 
@@ -454,7 +458,7 @@ class ModelTrainingFacade:
         """Save trained model and metadata in multiple formats for all adapters."""
         from ..utils.model_format_converter import ModelFormatConverter
         from ..core.constants import FacadeConstants
-        
+
         # Save model in simple format first (default behavior)
         simple_model_path = self.model_utils.ensure_model_directory(
             symbol, timeframe, model_type, FacadeConstants.ADAPTER_SIMPLE
@@ -472,42 +476,46 @@ class ModelTrainingFacade:
         try:
             # Check if multi-format saving is enabled
             settings = self.model_utils.settings
-            if getattr(settings, 'save_multiple_formats', True):
+            if getattr(settings, "save_multiple_formats", True):
                 converter = ModelFormatConverter()
-                enabled_adapters = getattr(settings, 'enabled_adapters', FacadeConstants.SUPPORTED_ADAPTERS)
+                enabled_adapters = getattr(
+                    settings, "enabled_adapters", FacadeConstants.SUPPORTED_ADAPTERS
+                )
                 conversion_results = converter.convert_model_for_all_adapters(
                     model=model,
                     symbol=symbol,
                     timeframe=timeframe,
                     model_type=model_type,
                     source_path=simple_model_path,
-                    target_adapters=enabled_adapters
+                    target_adapters=enabled_adapters,
                 )
             else:
                 # Only save simple format
                 conversion_results = {FacadeConstants.ADAPTER_SIMPLE: True}
-            
+
             # Log conversion results
             successful_adapters = [
                 adapter for adapter, success in conversion_results.items() if success
             ]
             failed_adapters = [
-                adapter for adapter, success in conversion_results.items() if not success
+                adapter
+                for adapter, success in conversion_results.items()
+                if not success
             ]
-            
+
             if successful_adapters:
                 self.logger.info(
                     f"Model successfully converted for adapters: {successful_adapters}"
                 )
-            
+
             if failed_adapters:
                 self.logger.warning(
                     f"Model conversion failed for adapters: {failed_adapters}"
                 )
-                
+
             # Save conversion results in metadata
             training_result["adapter_conversions"] = conversion_results
-            
+
         except Exception as e:
             self.logger.error(f"Failed to convert model for multiple adapters: {e}")
             # Continue execution - at least we have the simple format
