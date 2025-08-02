@@ -81,7 +81,7 @@ class MarketDataRepositoryFactory:
         self,
         connection_string: str = "mongodb://localhost:27017/",
         database_name: str = "finsight_market_data",
-        collection_prefix: str = "ohlcv",
+        ohlcv_collection: str = "ohlcv",
     ) -> MarketDataRepository:
         """
         Create a MongoDB repository with specific configuration.
@@ -89,7 +89,7 @@ class MarketDataRepositoryFactory:
         Args:
             connection_string: MongoDB connection string
             database_name: Database name
-            collection_prefix: Prefix for collection names
+            ohlcv_collection: Collection name for OHLCV data
 
         Returns:
             MongoDB MarketDataRepository instance
@@ -97,7 +97,7 @@ class MarketDataRepositoryFactory:
         config = {
             "connection_string": connection_string,
             "database_name": database_name,
-            "collection_prefix": collection_prefix,
+            "ohlcv_collection": ohlcv_collection,
         }
         return self.create_repository(RepositoryType.MONGODB, config)
 
@@ -290,19 +290,6 @@ def get_market_data_service():
     Returns:
         MarketDataService instance configured with default repository
     """
-    from ..services.market_data_service import MarketDataService
-    from ..core.config import settings
+    from ..utils.dependencies import dependency_manager
 
-    # Create repository with default configuration from settings
-    repository = repository_factory.create_from_config(
-        {
-            "type": "mongodb",  # Default to MongoDB
-            "mongodb": {
-                "connection_string": settings.mongodb_url,
-                "database_name": settings.mongodb_database,
-            },
-        }
-    )
-
-    # Create and return service
-    return MarketDataService(repository=repository)
+    return dependency_manager.get_market_data_service()

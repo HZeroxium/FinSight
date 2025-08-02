@@ -47,7 +47,7 @@ class JobConfig:
     max_concurrent_symbols: int = 5
 
     # Repository configuration
-    repository_type: str = "mongodb"
+    repository_type: str = "csv"  # Will be overridden by settings
     repository_config: Optional[Dict[str, Any]] = None
 
     # Limits and filtering
@@ -166,14 +166,19 @@ class MarketDataJobService:
 
     def _get_default_repository_config(self) -> Dict[str, Any]:
         """Get default repository configuration"""
-        if self.config.repository_type == "csv":
+        # Use settings repository type if not explicitly set in config
+        repo_type = self.config.repository_type
+        if repo_type == "csv" and self.settings.repository_type != "csv":
+            repo_type = self.settings.repository_type
+
+        if repo_type == "csv":
             return {"base_directory": self.settings.storage_base_directory}
-        elif self.config.repository_type == "mongodb":
+        elif repo_type == "mongodb":
             return {
                 "connection_string": self.settings.mongodb_url,
                 "database_name": self.settings.mongodb_database,
             }
-        elif self.config.repository_type == "influxdb":
+        elif repo_type == "influxdb":
             return {
                 "url": "http://localhost:8086",
                 "token": "your-token",
@@ -441,7 +446,7 @@ class MarketDataJobService:
             "is_running": self.is_running,
             "current_job_id": self.current_job_id,
             "scheduler_state": (
-                self.scheduler.state.name
+                str(self.scheduler.state)
                 if hasattr(self.scheduler, "state")
                 else "unknown"
             ),

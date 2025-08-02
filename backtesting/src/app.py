@@ -59,21 +59,21 @@ app = FastAPI(
     title="FinSight Backtesting API",
     description="""
     Advanced backtesting system for cryptocurrency trading strategies.
-    
+
     ## Features
-    
+
     * **Administrative Operations**: Data management, system statistics, maintenance
     * **Market Data Management**: Fetch, store, and convert OHLCV data across timeframes
     * **Strategy Backtesting**: Run and analyze trading strategies with multiple engines
     * **Cross-Repository Support**: MongoDB, CSV, InfluxDB storage adapters
-    
+
     ## Authentication
-    
+
     Admin endpoints require API key authentication via Bearer token.
     Set the `ADMIN_API_KEY` environment variable or use the default key.
-    
+
     ## Architecture
-    
+
     Built with Ports & Adapters (Hexagonal Architecture) for maximum flexibility:
     - **Service Layer**: Business logic and orchestration
     - **Repository Layer**: Pluggable storage adapters  
@@ -253,6 +253,7 @@ async def health_check():
 # Include routers
 app.include_router(
     admin_router.router,
+    prefix="/api/v1/admin",
     tags=["admin"],
 )
 

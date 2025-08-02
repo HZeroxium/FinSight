@@ -298,6 +298,11 @@ async def get_admin_info(
                 "response": "CleanupResponse",
                 "warning": "Destructive operation - requires confirmation",
             },
+            "GET /config": {
+                "description": "Get current system configuration",
+                "authentication": "API key required",
+                "response": "Configuration object with masked sensitive values",
+            },
         },
         "authentication": {
             "type": "Bearer token",
@@ -311,6 +316,197 @@ async def get_admin_info(
             "Data cleanup",
             "System monitoring",
             "Storage statistics",
+            "Configuration viewing",
         ],
         "server_timestamp": DateTimeUtils.now_iso(),
     }
+
+
+@router.get("/config")
+async def get_current_configuration(
+    _: bool = Depends(verify_api_key),
+) -> Dict[str, Any]:
+    """
+    Get current system configuration.
+
+    Returns the current configuration settings, with sensitive values masked
+    for security. This helps administrators understand the current system
+    configuration and troubleshoot issues.
+    """
+    try:
+        logger.info("Configuration requested")
+
+        def mask_sensitive_value(value: str, show_chars: int = 4) -> str:
+            """Mask sensitive values while showing a few characters for identification"""
+            if not value:
+                return "[NOT_SET]"
+            if len(value) <= show_chars:
+                return "*" * len(value)
+            return value[:show_chars] + "*" * (len(value) - show_chars)
+
+        # Get current settings
+        config = {
+            "service": {
+                "app_name": settings.app_name,
+                "environment": settings.environment,
+                "debug": settings.debug,
+                "host": settings.host,
+                "port": settings.port,
+            },
+            "storage": {
+                "base_directory": settings.storage_base_directory,
+                "provider": settings.storage_provider,
+                "s3_compatible": {
+                    "endpoint_url": settings.s3_endpoint_url,
+                    "region_name": settings.s3_region_name,
+                    "bucket_name": settings.s3_bucket_name,
+                    "use_ssl": settings.s3_use_ssl,
+                    "verify_ssl": settings.s3_verify_ssl,
+                    "signature_version": settings.s3_signature_version,
+                    "max_pool_connections": settings.s3_max_pool_connections,
+                },
+                "digitalocean_spaces": {
+                    "endpoint_url": settings.spaces_endpoint_url,
+                    "region_name": settings.spaces_region_name,
+                    "bucket_name": settings.spaces_bucket_name,
+                },
+                "aws_s3": {
+                    "region_name": settings.aws_region_name,
+                    "bucket_name": settings.aws_bucket_name,
+                },
+            },
+            "database": {
+                "mongodb_url": mask_sensitive_value(settings.mongodb_url, 10),
+                "mongodb_database": settings.mongodb_database,
+            },
+            "data_collection": {
+                "default_symbols": settings.default_symbols,
+                "default_timeframes": settings.default_timeframes,
+                "max_ohlcv_limit": settings.max_ohlcv_limit,
+                "max_trades_limit": settings.max_trades_limit,
+                "max_orderbook_limit": settings.max_orderbook_limit,
+            },
+            "exchange_binance": {
+                "api_key": mask_sensitive_value(settings.binance_api_key),
+                "secret_key": mask_sensitive_value(settings.binance_secret_key),
+                "requests_per_minute": settings.binance_requests_per_minute,
+                "orders_per_second": settings.binance_orders_per_second,
+                "orders_per_day": settings.binance_orders_per_day,
+            },
+            "cross_repository": {
+                "source_repository_type": settings.source_repository_type,
+                "source_timeframe": settings.source_timeframe,
+                "target_repository_type": settings.target_repository_type,
+                "target_timeframes": settings.target_timeframes,
+                "enable_parallel_conversion": settings.enable_parallel_conversion,
+                "max_concurrent_conversions": settings.max_concurrent_conversions,
+                "conversion_batch_size": settings.conversion_batch_size,
+            },
+            "logging": {
+                "log_level": settings.log_level,
+                "log_file_path": settings.log_file_path,
+                "enable_structured_logging": settings.enable_structured_logging,
+            },
+            "caching": {
+                "enable_caching": settings.enable_caching,
+                "cache_ttl_seconds": settings.cache_ttl_seconds,
+                "cache_max_size": settings.cache_max_size,
+            },
+            "admin": {
+                "api_key": mask_sensitive_value(settings.admin_api_key),
+                "secret_api_key": mask_sensitive_value(settings.secret_api_key),
+            },
+            "cron_job": {
+                "enabled": settings.cron_job_enabled,
+                "schedule": settings.cron_job_schedule,
+                "max_symbols_per_run": settings.cron_job_max_symbols_per_run,
+                "log_file": settings.cron_job_log_file,
+                "pid_file": settings.cron_job_pid_file,
+            },
+            "demo": {
+                "max_symbols": settings.demo_max_symbols,
+                "days_back": settings.demo_days_back,
+            },
+        }
+
+        # Get repository information
+        from ..utils.dependencies import get_dependency_manager
+
+        dep_manager = get_dependency_manager()
+
+        try:
+            current_repository = dep_manager.get_repository()
+            repository_info = {
+                "type": type(current_repository).__name__,
+                "class": current_repository.__class__.__name__,
+                "module": current_repository.__class__.__module__,
+                "repository_type": settings.repository_type,
+                "source_repository_type": settings.source_repository_type,
+                "target_repository_type": settings.target_repository_type,
+            }
+        except Exception as e:
+            repository_info = {"error": str(e)}
+
+        # Get environment variable information
+        import os
+
+        env_vars = {
+            "SOURCE_REPOSITORY_TYPE": os.getenv("SOURCE_REPOSITORY_TYPE", "[NOT_SET]"),
+            "MONGODB_URL": mask_sensitive_value(os.getenv("MONGODB_URL", "")),
+            "STORAGE_BASE_DIRECTORY": os.getenv("STORAGE_BASE_DIRECTORY", "[NOT_SET]"),
+            "ADMIN_API_KEY": mask_sensitive_value(os.getenv("ADMIN_API_KEY", "")),
+            "STORAGE_PROVIDER": os.getenv("STORAGE_PROVIDER", "[NOT_SET]"),
+            "S3_ENDPOINT_URL": os.getenv("S3_ENDPOINT_URL", "[NOT_SET]"),
+            "S3_ACCESS_KEY": mask_sensitive_value(os.getenv("S3_ACCESS_KEY", "")),
+            "S3_SECRET_KEY": mask_sensitive_value(os.getenv("S3_SECRET_KEY", "")),
+            "S3_BUCKET_NAME": os.getenv("S3_BUCKET_NAME", "[NOT_SET]"),
+            "SPACES_ACCESS_KEY": mask_sensitive_value(
+                os.getenv("SPACES_ACCESS_KEY", "")
+            ),
+            "SPACES_SECRET_KEY": mask_sensitive_value(
+                os.getenv("SPACES_SECRET_KEY", "")
+            ),
+            "AWS_ACCESS_KEY_ID": mask_sensitive_value(
+                os.getenv("AWS_ACCESS_KEY_ID", "")
+            ),
+            "AWS_SECRET_ACCESS_KEY": mask_sensitive_value(
+                os.getenv("AWS_SECRET_ACCESS_KEY", "")
+            ),
+        }
+
+        repository_types = {
+            "available_types": [
+                "mongodb",
+                "csv",
+                "parquet",
+                "influxdb",
+                "object_storage",
+            ],
+            "current_source": settings.source_repository_type,
+            "current_target": settings.target_repository_type,
+            "current_repository_instance": repository_info,
+            "environment_variables": env_vars,
+            "descriptions": {
+                "mongodb": "Production-ready document storage with indexing and aggregation",
+                "csv": "Simple file-based storage, human-readable format",
+                "parquet": "Columnar storage optimized for analytics workloads",
+                "influxdb": "Time-series optimized storage with downsampling",
+                "object_storage": "S3-compatible object storage (MinIO, DigitalOcean Spaces, AWS S3)",
+            },
+        }
+
+        return {
+            "configuration": config,
+            "repository_types": repository_types,
+            "timestamp": DateTimeUtils.now_iso(),
+            "config_file_location": ".env or environment variables",
+            "documentation": "/docs/CONFIGURATION_GUIDE.md",
+            "note": "Sensitive values are masked for security. Check environment variables for actual values.",
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get configuration: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get configuration: {str(e)}",
+        )
