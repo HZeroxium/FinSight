@@ -473,12 +473,12 @@ async def demo_mongodb_to_mongodb_conversion():
         source_repo_config={
             "connection_string": "mongodb://localhost:27017/",
             "database_name": "finsight_market_data",
-            "collection_prefix": "ohlcv",  # Source: existing 1h data
+            "ohlcv_collection": "ohlcv",  # Source: existing 1h data
         },
         target_repo_config={
             "connection_string": "mongodb://localhost:27017/",
             "database_name": "finsight_market_data",
-            "collection_prefix": "ohlcv_aggregated",  # Target: aggregated timeframes
+            "ohlcv_collection": "ohlcv_aggregated",  # Target: aggregated timeframes
         },
     )
 

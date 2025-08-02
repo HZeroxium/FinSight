@@ -557,7 +557,7 @@ async def run_csv_to_mongodb_example():
         target_repo_config={
             "connection_string": "mongodb://localhost:27017/",
             "database_name": "finsight_converted_data",
-            "collection_prefix": "ohlcv_converted",
+            "ohlcv_collection": "ohlcv_converted",
         },
     )
 

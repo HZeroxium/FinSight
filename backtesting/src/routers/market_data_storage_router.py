@@ -12,24 +12,18 @@ RESTful endpoints for managing market data storage operations including:
 Based on the storage service layer and cross-repository pipeline logic.
 """
 
-from typing import List, Optional, Dict, Any, Union
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from typing import List, Optional, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-import tempfile
-from pathlib import Path
-import asyncio
-import json
 from datetime import datetime
 
 from ..services.market_data_storage_service import MarketDataStorageService
 from ..misc.timeframe_load_convert_save import CrossRepositoryTimeFramePipeline
-from ..schemas.ohlcv_schemas import OHLCVQuerySchema
-from ..schemas.enums import Exchange, TimeFrame, RepositoryType
+from ..schemas.enums import Exchange, TimeFrame
 from ..utils.dependencies import (
-    get_market_data_service,
-    get_dependency_manager,
     require_admin_access,
+    get_storage_service,
+    get_cross_repository_pipeline,
 )
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
@@ -123,52 +117,8 @@ class StorageStatsResponse(BaseModel):
 
 
 # Dependency functions
-def get_storage_service() -> MarketDataStorageService:
-    """Get market data storage service with dependencies."""
-    try:
-        # This is a simplified version - in production you'd want proper DI
-        from ..utils.storage_client import StorageClient
-        from ..adapters.csv_market_data_repository import CSVMarketDataRepository
-        from ..adapters.parquet_market_data_repository import (
-            ParquetMarketDataRepository,
-        )
-
-        storage_client = StorageClient()
-        csv_repo = CSVMarketDataRepository()
-        parquet_repo = ParquetMarketDataRepository()
-
-        return MarketDataStorageService(
-            storage_client=storage_client,
-            csv_repository=csv_repo,
-            parquet_repository=parquet_repo,
-        )
-    except Exception as e:
-        logger.error(f"Failed to create storage service: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Storage service initialization failed: {str(e)}"
-        )
-
-
-def get_conversion_pipeline() -> CrossRepositoryTimeFramePipeline:
-    """Get timeframe conversion pipeline."""
-    try:
-        from ..adapters.csv_market_data_repository import CSVMarketDataRepository
-        from ..adapters.parquet_market_data_repository import (
-            ParquetMarketDataRepository,
-        )
-
-        csv_repo = CSVMarketDataRepository()
-        parquet_repo = ParquetMarketDataRepository()
-
-        return CrossRepositoryTimeFramePipeline(
-            source_repository=csv_repo, target_repository=parquet_repo
-        )
-    except Exception as e:
-        logger.error(f"Failed to create conversion pipeline: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Conversion pipeline initialization failed: {str(e)}",
-        )
+# Note: get_storage_service() and get_cross_repository_pipeline() are now imported from dependencies.py
+# This ensures all components use the centralized dependency injection system
 
 
 # Storage management endpoints
@@ -230,7 +180,7 @@ async def download_dataset(
 
         result = await storage_service.download_dataset(
             object_key=request.object_key,
-            extract_archive=request.extract_archive,
+            extract_archives=request.extract_archive,
             target_directory=request.target_directory,
         )
 
@@ -366,7 +316,7 @@ async def convert_timeframes(
     source_format: str = Query("csv", description="Source repository format"),
     target_format: str = Query("parquet", description="Target repository format"),
     overwrite_existing: bool = Query(False, description="Overwrite existing data"),
-    pipeline: CrossRepositoryTimeFramePipeline = Depends(get_conversion_pipeline),
+    pipeline: CrossRepositoryTimeFramePipeline = Depends(get_cross_repository_pipeline),
     _: bool = Depends(require_admin_access),
 ) -> Dict[str, Any]:
     """

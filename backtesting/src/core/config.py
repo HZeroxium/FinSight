@@ -21,13 +21,49 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Storage configuration
-    storage_base_directory: str = Field(default="data", env="STORAGE_BASE_DIRECTORY")
+    storage_base_directory: str = Field(
+        default="data/market_data", env="STORAGE_BASE_DIRECTORY"
+    )
 
     # MongoDB configuration
     mongodb_url: str = Field(default="mongodb://localhost:27017/", env="MONGODB_URL")
     mongodb_database: str = Field(
         default="finsight_market_data", env="MONGODB_DATABASE"
     )
+
+    # Object Storage Configuration (S3-compatible: MinIO, DigitalOcean Spaces, AWS S3)
+    # Storage provider selection
+    storage_provider: str = Field(
+        default="minio", env="STORAGE_PROVIDER"
+    )  # minio, digitalocean, aws
+
+    # S3-compatible storage settings
+    s3_endpoint_url: str = Field(default="http://localhost:9000", env="S3_ENDPOINT_URL")
+    s3_access_key: str = Field(default="minioadmin", env="S3_ACCESS_KEY")
+    s3_secret_key: str = Field(default="minioadmin", env="S3_SECRET_KEY")
+    s3_region_name: str = Field(default="us-east-1", env="S3_REGION_NAME")
+    s3_bucket_name: str = Field(default="market-data", env="S3_BUCKET_NAME")
+    s3_use_ssl: bool = Field(default=False, env="S3_USE_SSL")
+    s3_verify_ssl: bool = Field(default=True, env="S3_VERIFY_SSL")
+    s3_signature_version: str = Field(default="s3v4", env="S3_SIGNATURE_VERSION")
+    s3_max_pool_connections: int = Field(default=50, env="S3_MAX_POOL_CONNECTIONS")
+
+    # DigitalOcean Spaces specific settings
+    spaces_endpoint_url: str = Field(
+        default="https://nyc3.digitaloceanspaces.com", env="SPACES_ENDPOINT_URL"
+    )
+    spaces_access_key: str = Field(default="", env="SPACES_ACCESS_KEY")
+    spaces_secret_key: str = Field(default="", env="SPACES_SECRET_KEY")
+    spaces_region_name: str = Field(default="nyc3", env="SPACES_REGION_NAME")
+    spaces_bucket_name: str = Field(
+        default="finsight-market-data", env="SPACES_BUCKET_NAME"
+    )
+
+    # AWS S3 specific settings (if using AWS directly)
+    aws_access_key_id: str = Field(default="", env="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(default="", env="AWS_SECRET_ACCESS_KEY")
+    aws_region_name: str = Field(default="us-east-1", env="AWS_REGION_NAME")
+    aws_bucket_name: str = Field(default="finsight-market-data", env="AWS_BUCKET_NAME")
 
     # Data collection configuration (environment variable support)
     default_symbols: List[str] = Field(
@@ -50,8 +86,14 @@ class Settings(BaseSettings):
     binance_orders_per_second: int = Field(default=10, env="BINANCE_ORDERS_PER_SECOND")
     binance_orders_per_day: int = Field(default=200000, env="BINANCE_ORDERS_PER_DAY")
 
+    binance_api_key: str = Field(default="", env="BINANCE_API_KEY")
+    binance_secret_key: str = Field(default="", env="BINANCE_SECRET_KEY")
+
+    # Repository configuration
+    repository_type: str = Field(default="csv", env="REPOSITORY_TYPE")
+
     # Cross-repository configuration
-    source_repository_type: str = Field(default="mongodb", env="SOURCE_REPOSITORY_TYPE")
+    source_repository_type: str = Field(default="csv", env="SOURCE_REPOSITORY_TYPE")
     source_timeframe: str = Field(default="1h", env="SOURCE_TIMEFRAME")
     target_repository_type: str = Field(default="csv", env="TARGET_REPOSITORY_TYPE")
     target_timeframes: List[str] = Field(
@@ -141,6 +183,73 @@ class Settings(BaseSettings):
         if v.lower() not in allowed_envs:
             raise ValueError(f"environment must be one of {sorted(allowed_envs)}")
         return v.lower()
+
+    @field_validator("storage_provider")
+    @classmethod
+    def validate_storage_provider(cls, v):
+        allowed_providers = {"minio", "digitalocean", "aws", "s3"}
+        if v.lower() not in allowed_providers:
+            raise ValueError(
+                f"storage_provider must be one of {sorted(allowed_providers)}"
+            )
+        return v.lower()
+
+    def get_storage_config(self) -> Dict[str, Any]:
+        """
+        Get storage configuration based on the selected provider.
+
+        Returns:
+            Dictionary with storage configuration parameters
+        """
+        if self.storage_provider == "minio":
+            return {
+                "endpoint_url": self.s3_endpoint_url,
+                "access_key": self.s3_access_key,
+                "secret_key": self.s3_secret_key,
+                "region_name": self.s3_region_name,
+                "bucket_name": self.s3_bucket_name,
+                "use_ssl": self.s3_use_ssl,
+                "verify_ssl": self.s3_verify_ssl,
+                "signature_version": self.s3_signature_version,
+                "max_pool_connections": self.s3_max_pool_connections,
+            }
+        elif self.storage_provider == "digitalocean":
+            return {
+                "endpoint_url": self.spaces_endpoint_url,
+                "access_key": self.spaces_access_key,
+                "secret_key": self.spaces_secret_key,
+                "region_name": self.spaces_region_name,
+                "bucket_name": self.spaces_bucket_name,
+                "use_ssl": True,  # DigitalOcean Spaces always uses SSL
+                "verify_ssl": True,
+                "signature_version": "s3v4",
+                "max_pool_connections": self.s3_max_pool_connections,
+            }
+        elif self.storage_provider in ["aws", "s3"]:
+            return {
+                "endpoint_url": None,  # Use AWS default endpoint
+                "access_key": self.aws_access_key_id or self.s3_access_key,
+                "secret_key": self.aws_secret_access_key or self.s3_secret_key,
+                "region_name": self.aws_region_name,
+                "bucket_name": self.aws_bucket_name,
+                "use_ssl": True,  # AWS S3 always uses SSL
+                "verify_ssl": True,
+                "signature_version": "s3v4",
+                "max_pool_connections": self.s3_max_pool_connections,
+            }
+        else:
+            # Default to MinIO configuration
+            return {
+                "endpoint_url": self.s3_endpoint_url,
+                "access_key": self.s3_access_key,
+                "secret_key": self.s3_secret_key,
+                "region_name": self.s3_region_name,
+                "bucket_name": self.s3_bucket_name,
+                "use_ssl": self.s3_use_ssl,
+                "verify_ssl": self.s3_verify_ssl,
+                "signature_version": self.s3_signature_version,
+                "max_pool_connections": self.s3_max_pool_connections,
+            }
 
     model_config = SettingsConfigDict(
         env_file=".env",

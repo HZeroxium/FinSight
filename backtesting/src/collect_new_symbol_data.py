@@ -31,7 +31,7 @@ class NewSymbolDataCollector:
     def __init__(
         self,
         exchange: str = Exchange.BINANCE.value,
-        repository_type: str = "mongodb",
+        repository_type: str = None,
         repository_config: Optional[Dict[str, Any]] = None,
         max_lookback_days: int = 365,
         max_gap_days: int = 7,
@@ -57,6 +57,9 @@ class NewSymbolDataCollector:
         self.settings = settings
 
         # Setup repository
+        if repository_type is None:
+            repository_type = self.settings.repository_type
+
         if repository_config is None:
             repository_config = self._get_default_repository_config(repository_type)
 
