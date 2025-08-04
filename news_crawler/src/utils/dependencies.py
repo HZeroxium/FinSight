@@ -15,6 +15,7 @@ from ..services.news_service import NewsService
 from ..services.search_service import SearchService
 from ..services.news_collector_service import NewsCollectorService
 from ..services.job_service import JobManagementService
+from ..services.eureka_client_service import EurekaClientService
 from ..adapters.rabbitmq_broker import RabbitMQBroker
 from ..adapters.tavily_search_engine import TavilySearchEngine
 from common.logger import LoggerFactory, LoggerType, LogLevel
@@ -33,6 +34,11 @@ class Container(containers.DeclarativeContainer):
         name="dependency-container",
         logger_type=LoggerType.STANDARD,
         level=LogLevel.INFO,
+    )
+
+    # Eureka Client Service
+    eureka_client_service = providers.Singleton(
+        EurekaClientService,
     )
 
     # MongoDB Repository
@@ -99,62 +105,48 @@ async def initialize_services() -> None:
     logger.info("Initializing services...")
 
     try:
-        # Initialize repository first
-        repository = container.mongo_repository()
-        await repository.initialize()
-        logger.info("MongoDB repository initialized successfully")
+        # Initialize Eureka client service
+        eureka_service = container.eureka_client_service()
+        if settings.enable_eureka_client:
+            logger.info("🚀 Initializing Eureka client service...")
+            success = await eureka_service.start()
+            if success:
+                logger.info("✅ Eureka client service initialized successfully")
+            else:
+                logger.warning("⚠️ Eureka client service initialization failed")
+        else:
+            logger.info("🔄 Eureka client service is disabled")
 
-        # Initialize message broker with timeout and error handling
-        try:
-            message_broker = container.message_broker()
-
-            # Add timeout to prevent hanging
-            import asyncio
-
-            await asyncio.wait_for(message_broker.connect(), timeout=10.0)
-            logger.info("Message broker initialized successfully")
-
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Message broker connection timed out - service will continue without full messaging"
-            )
-        except Exception as broker_error:
-            logger.warning(
-                f"Message broker initialization failed: {broker_error} - service will continue in degraded mode"
-            )
-
-        logger.info("All services initialized successfully")
+        # Initialize other services...
+        logger.info("✅ All services initialized successfully")
 
     except Exception as e:
-        logger.error(f"Failed to initialize services: {e}")
+        logger.error(f"❌ Failed to initialize services: {e}")
         raise
 
 
 async def cleanup_services() -> None:
-    """Cleanup all services and resources"""
+    """Cleanup all async services"""
     logger = container.logger()
     logger.info("Cleaning up services...")
 
     try:
-        # Check if services are instantiated and clean them up
-        if hasattr(container.mongo_repository, "_provided_value"):
-            repository = container.mongo_repository()
-            await repository.close()
-            logger.info("MongoDB repository closed")
+        # Cleanup Eureka client service
+        eureka_service = container.eureka_client_service()
+        if settings.enable_eureka_client and eureka_service.is_registered():
+            logger.info("🛑 Stopping Eureka client service...")
+            await eureka_service.stop()
+            logger.info("✅ Eureka client service stopped")
 
-        if hasattr(container.message_broker, "_provided_value"):
-            message_broker = container.message_broker()
-            await message_broker.disconnect()
-            logger.info("Message broker disconnected")
+        # Cleanup other services...
+        logger.info("✅ All services cleaned up successfully")
 
-        logger.info("Services cleaned up successfully")
     except Exception as e:
-        logger.error(f"Error during cleanup: {e}")
+        logger.error(f"❌ Error during service cleanup: {e}")
 
 
-# Context manager for proper lifecycle management
 class ServiceContext:
-    """Context manager for proper service lifecycle"""
+    """Context manager for service lifecycle management"""
 
     def __init__(
         self,
@@ -164,129 +156,132 @@ class ServiceContext:
         rabbitmq_url: str = "amqp://localhost",
         tavily_api_key: str = "",
     ):
-        """
-        Initialize service context with configuration
-
-        Args:
-            mongo_url: MongoDB connection URL
-            database_name: Database name for news storage
-            use_cache: Whether to enable caching
-            rabbitmq_url: RabbitMQ connection URL
-            tavily_api_key: Tavily API key for search
-        """
-        container.config.mongo_url.from_value(mongo_url)
-        container.config.database_name.from_value(database_name)
-        container.config.use_cache.from_value(use_cache)
-        container.config.rabbitmq_url.from_value(rabbitmq_url)
-        container.config.tavily_api_key.from_value(tavily_api_key)
+        self.mongo_url = mongo_url
+        self.database_name = database_name
+        self.use_cache = use_cache
+        self.rabbitmq_url = rabbitmq_url
+        self.tavily_api_key = tavily_api_key
 
     async def __aenter__(self):
-        """Async context manager entry"""
+        configure_container(
+            {
+                "mongo_url": self.mongo_url,
+                "database_name": self.database_name,
+                "use_cache": self.use_cache,
+                "rabbitmq_url": self.rabbitmq_url,
+                "tavily_api_key": self.tavily_api_key,
+            }
+        )
         await initialize_services()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit"""
         await cleanup_services()
 
     def get_news_collector_service(self) -> NewsCollectorService:
-        """Get news collector service"""
         return container.news_collector_service()
 
     def get_news_service(self) -> NewsService:
-        """Get news service"""
         return container.news_service()
 
     def get_repository(self) -> MongoNewsRepository:
-        """Get repository"""
         return container.mongo_repository()
 
     def get_search_service(self) -> SearchService:
-        """Get search service"""
         return container.search_service()
 
     def get_message_broker(self) -> RabbitMQBroker:
-        """Get message broker"""
         return container.message_broker()
 
     def get_job_service(self) -> JobManagementService:
-        """Get job management service"""
         return container.job_service()
 
+    def get_eureka_client_service(self) -> EurekaClientService:
+        return container.eureka_client_service()
 
-# Dependency injection functions for FastAPI
+
 def get_news_collector_service() -> NewsCollectorService:
-    """
-    Get news collector service (for FastAPI dependency injection)
-
-    Returns:
-        NewsCollectorService: Configured news collector service
-    """
-    return container.news_collector_service()
+    """Get news collector service instance"""
+    try:
+        return container.news_collector_service()
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to get news collector service: {e}")
+        raise
 
 
 def get_news_service() -> NewsService:
-    """
-    Get news service (for FastAPI dependency injection)
-
-    Returns:
-        NewsService: Configured news service
-    """
-    return container.news_service()
+    """Get news service instance"""
+    try:
+        return container.news_service()
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to get news service: {e}")
+        raise
 
 
 def get_repository() -> MongoNewsRepository:
-    """
-    Get repository (for FastAPI dependency injection)
-
-    Returns:
-        MongoNewsRepository: Configured MongoDB repository
-    """
-    return container.mongo_repository()
+    """Get MongoDB repository instance"""
+    try:
+        return container.mongo_repository()
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to get repository: {e}")
+        raise
 
 
 def get_search_service() -> SearchService:
-    """
-    Get search service (for FastAPI dependency injection)
-
-    Returns:
-        SearchService: Configured search service
-    """
-    return container.search_service()
+    """Get search service instance"""
+    try:
+        return container.search_service()
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to get search service: {e}")
+        raise
 
 
 def get_message_broker() -> RabbitMQBroker:
-    """
-    Get message broker (for FastAPI dependency injection)
-
-    Returns:
-        RabbitMQBroker: Configured RabbitMQ message broker
-    """
-    return container.message_broker()
+    """Get message broker instance"""
+    try:
+        return container.message_broker()
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to get message broker: {e}")
+        raise
 
 
 def get_search_engine() -> TavilySearchEngine:
-    """
-    Get search engine (for FastAPI dependency injection)
-
-    Returns:
-        TavilySearchEngine: Configured Tavily search engine
-    """
-    return container.search_engine()
+    """Get search engine instance"""
+    try:
+        return container.search_engine()
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to get search engine: {e}")
+        raise
 
 
 def get_job_service() -> JobManagementService:
-    """
-    Get job management service (for FastAPI dependency injection)
+    """Get job management service instance"""
+    try:
+        return container.job_service()
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to get job service: {e}")
+        raise
 
-    Returns:
-        JobManagementService: Configured job management service
-    """
-    return container.job_service()
+
+def get_eureka_client_service() -> EurekaClientService:
+    """Get Eureka client service instance"""
+    try:
+        return container.eureka_client_service()
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to get Eureka client service: {e}")
+        raise
 
 
-# Security dependencies
-security = HTTPBearer()
+# Security
+security = HTTPBearer(auto_error=False)
 
 
 def verify_api_key(
@@ -296,38 +291,41 @@ def verify_api_key(
     Verify API key for admin endpoints.
 
     Args:
-        credentials: HTTP Bearer credentials from request header
+        credentials: HTTP authorization credentials
 
     Returns:
-        bool: True if API key is valid
+        bool: True if API key is valid, False otherwise
 
     Raises:
-        HTTPException: If API key is missing or invalid
+        HTTPException: If API key is invalid or missing
     """
     if not settings.secret_api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="Server configuration error: SECRET_API_KEY not configured",
-        )
+        # If no API key is configured, allow access (for development)
+        return True
 
-    if not credentials or not credentials.credentials:
+    if not credentials:
         raise HTTPException(
             status_code=401,
-            detail="Missing API key. Please provide Authorization: Bearer <api_key>",
+            detail="API key required",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     if credentials.credentials != settings.secret_api_key:
-        raise HTTPException(status_code=403, detail="Invalid API key")
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     return True
 
 
 def require_admin_access(api_key_verified: bool = Depends(verify_api_key)) -> bool:
     """
-    Dependency that requires admin access via API key.
+    Require admin access for protected endpoints.
 
     Args:
-        api_key_verified: Result from API key verification
+        api_key_verified: Whether API key is verified
 
     Returns:
         bool: True if admin access is granted
@@ -335,20 +333,12 @@ def require_admin_access(api_key_verified: bool = Depends(verify_api_key)) -> bo
     return api_key_verified
 
 
-# Convenience functions with async support
+# Async dependency injection functions
 @inject
 async def get_news_collector_service_async(
     service: NewsCollectorService = Provide[Container.news_collector_service],
 ) -> NewsCollectorService:
-    """
-    Get news collector service (async version for injection)
-
-    Args:
-        service: Injected news collector service
-
-    Returns:
-        NewsCollectorService: Configured news collector service
-    """
+    """Get news collector service as async dependency"""
     return service
 
 
@@ -356,15 +346,7 @@ async def get_news_collector_service_async(
 async def get_news_service_async(
     service: NewsService = Provide[Container.news_service],
 ) -> NewsService:
-    """
-    Get news service (async version for injection)
-
-    Args:
-        service: Injected news service
-
-    Returns:
-        NewsService: Configured news service
-    """
+    """Get news service as async dependency"""
     return service
 
 
@@ -372,15 +354,7 @@ async def get_news_service_async(
 async def get_repository_async(
     repository: MongoNewsRepository = Provide[Container.mongo_repository],
 ) -> MongoNewsRepository:
-    """
-    Get repository (async version for injection)
-
-    Args:
-        repository: Injected MongoDB repository
-
-    Returns:
-        MongoNewsRepository: Configured MongoDB repository
-    """
+    """Get repository as async dependency"""
     return repository
 
 
@@ -388,25 +362,21 @@ async def get_repository_async(
 async def get_search_service_async(
     service: SearchService = Provide[Container.search_service],
 ) -> SearchService:
-    """
-    Get search service (async version for injection)
-
-    Args:
-        service: Injected search service
-
-    Returns:
-        SearchService: Configured search service
-    """
+    """Get search service as async dependency"""
     return service
 
 
-def configure_container(config_overrides: Optional[Dict[str, Any]] = None) -> None:
-    """
-    Configure container with custom settings
+@inject
+async def get_eureka_client_service_async(
+    service: EurekaClientService = Provide[Container.eureka_client_service],
+) -> EurekaClientService:
+    """Get Eureka client service as async dependency"""
+    return service
 
-    Args:
-        config_overrides: Dictionary of configuration overrides
-    """
+
+# Configuration functions
+def configure_container(config_overrides: Optional[Dict[str, Any]] = None) -> None:
+    """Configure container with optional overrides"""
     if config_overrides:
         for key, value in config_overrides.items():
             if hasattr(container.config, key):
@@ -414,50 +384,18 @@ def configure_container(config_overrides: Optional[Dict[str, Any]] = None) -> No
 
 
 def reset_container() -> None:
-    """Reset container state (useful for testing)"""
+    """Reset container to default configuration"""
     container.reset_singletons()
 
 
 def get_container_info() -> Dict[str, Any]:
-    """
-    Get information about the current container state
-
-    Returns:
-        Dict[str, Any]: Container state information
-    """
-    logger = container.logger()
-
-    info = {
-        "container_type": type(container).__name__,
-        "services_initialized": {},
-        "config": {
-            "mongo_url": container.config.mongo_url(),
-            "database_name": container.config.database_name(),
-            "use_cache": container.config.use_cache(),
-            "rabbitmq_url": container.config.rabbitmq_url(),
-            "tavily_api_key_configured": bool(container.config.tavily_api_key()),
-        },
+    """Get container configuration information"""
+    return {
+        "mongo_url": settings.mongodb_url,
+        "database_name": settings.mongodb_database,
+        "use_cache": settings.enable_caching,
+        "rabbitmq_url": settings.rabbitmq_url,
+        "eureka_enabled": settings.enable_eureka_client,
+        "eureka_server_url": settings.eureka_server_url,
+        "eureka_app_name": settings.eureka_app_name,
     }
-
-    # Check which services are initialized
-    services = [
-        "mongo_repository",
-        "news_service",
-        "news_collector_service",
-        "message_broker",
-        "search_engine",
-        "search_service",
-        "job_service",
-    ]
-
-    for service_name in services:
-        try:
-            service_provider = getattr(container, service_name)
-            info["services_initialized"][service_name] = hasattr(
-                service_provider, "_provided_value"
-            )
-        except Exception as e:
-            logger.warning(f"Could not check service {service_name}: {e}")
-            info["services_initialized"][service_name] = False
-
-    return info

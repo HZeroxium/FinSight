@@ -14,14 +14,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .core.config import settings
-from .routers import news_router, job_router
+from .routers import news_router, job_router, eureka_router
 from .services.sentiment_consumer import SentimentConsumerService
 from .grpc_services import create_grpc_server, GrpcServer
 from .utils.dependencies import (
     get_search_service,
     get_message_broker,
     get_news_service,
+    get_eureka_client_service,
     initialize_services,
+    cleanup_services,
 )
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
@@ -38,15 +40,16 @@ logger = LoggerFactory.get_logger(
 # Global variables for services
 sentiment_consumer: SentimentConsumerService = None
 grpc_server: GrpcServer = None
+eureka_client_service = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Application lifespan manager with improved error handling and startup sequence.
-    Includes both REST API and gRPC server initialization.
+    Includes both REST API, gRPC server, and Eureka client initialization.
     """
-    global sentiment_consumer, grpc_server
+    global sentiment_consumer, grpc_server, eureka_client_service
 
     logger.info(f"🚀 Starting {settings.app_name} v1.0.0")
     logger.info(f"📊 Environment: {settings.environment}")
@@ -59,6 +62,11 @@ async def lifespan(app: FastAPI):
     if grpc_enabled:
         logger.info(f"🔌 gRPC Server: {settings.host}:{grpc_port}")
 
+    # Check if Eureka client is enabled
+    eureka_enabled = getattr(settings, "enable_eureka_client", True)
+    if eureka_enabled:
+        logger.info(f"🔗 Eureka Client: {settings.eureka_server_url}")
+
     startup_errors = []
 
     try:
@@ -67,12 +75,32 @@ async def lifespan(app: FastAPI):
         await initialize_services()
         logger.info("✅ Core services initialized successfully")
 
-        # Step 2: Wait a moment for services to stabilize
+        # Step 2: Initialize Eureka client service
+        if eureka_enabled:
+            logger.info("📋 Step 2: Initializing Eureka client service...")
+            try:
+                eureka_client_service = get_eureka_client_service()
+                success = await eureka_client_service.start()
+                if success:
+                    logger.info("✅ Eureka client service initialized successfully")
+                else:
+                    logger.warning("⚠️ Eureka client service initialization failed")
+                    startup_errors.append("Eureka client service initialization failed")
+            except Exception as eureka_error:
+                logger.error(f"⚠️ Failed to start Eureka client service: {eureka_error}")
+                startup_errors.append(
+                    f"Eureka client service error: {str(eureka_error)}"
+                )
+                eureka_client_service = None
+        else:
+            logger.info("🔄 Eureka client service is disabled")
+
+        # Step 3: Wait a moment for services to stabilize
         await asyncio.sleep(0.5)
 
-        # Step 3: Initialize gRPC server if enabled
+        # Step 4: Initialize gRPC server if enabled
         if grpc_enabled:
-            logger.info("📋 Step 2: Initializing gRPC server...")
+            logger.info("📋 Step 4: Initializing gRPC server...")
             try:
                 news_service = get_news_service()
                 grpc_server = await create_grpc_server(
@@ -85,8 +113,8 @@ async def lifespan(app: FastAPI):
                 startup_errors.append(f"gRPC server error: {str(grpc_error)}")
                 grpc_server = None
 
-        # Step 4: Initialize sentiment consumer with improved error handling
-        logger.info("📋 Step 3: Initializing sentiment consumer...")
+        # Step 5: Initialize sentiment consumer with improved error handling
+        logger.info("📋 Step 5: Initializing sentiment consumer...")
         try:
             message_broker = get_message_broker()
             sentiment_consumer = SentimentConsumerService(message_broker=message_broker)
@@ -108,8 +136,8 @@ async def lifespan(app: FastAPI):
             startup_errors.append(f"Sentiment consumer error: {str(consumer_error)}")
             sentiment_consumer = None
 
-        # Step 5: Health check for search service (with timeout and error handling)
-        logger.info("📋 Step 4: Performing health checks...")
+        # Step 6: Health check for search service (with timeout and error handling)
+        logger.info("📋 Step 6: Performing health checks...")
         try:
             search_service = get_search_service()
 
@@ -136,9 +164,17 @@ async def lifespan(app: FastAPI):
             logger.warning(f"⚠️ Service started with warnings: {startup_errors}")
             logger.info("🔧 Service is operational but some components may be degraded")
         else:
-            if grpc_enabled:
+            if grpc_enabled and eureka_enabled:
+                logger.info(
+                    "🎉 News Crawler Service is fully operational (REST + gRPC + Eureka)!"
+                )
+            elif grpc_enabled:
                 logger.info(
                     "🎉 News Crawler Service is fully operational (REST + gRPC)!"
+                )
+            elif eureka_enabled:
+                logger.info(
+                    "🎉 News Crawler Service is fully operational (REST + Eureka)!"
                 )
             else:
                 logger.info("🎉 News Crawler Service is fully operational (REST only)!")
@@ -154,7 +190,12 @@ async def lifespan(app: FastAPI):
     # Cleanup phase
     logger.info("🛑 Shutting down services...")
     try:
-        # Stop gRPC server first
+        # Stop Eureka client service first
+        if eureka_client_service and eureka_client_service.is_registered():
+            await eureka_client_service.stop()
+            logger.info("✅ Eureka client service stopped")
+
+        # Stop gRPC server
         if grpc_server:
             await grpc_server.stop()
             logger.info("✅ gRPC server stopped")
@@ -164,7 +205,8 @@ async def lifespan(app: FastAPI):
             await sentiment_consumer.stop_consuming()
             logger.info("✅ Sentiment consumer stopped")
 
-        # Additional cleanup can be added here
+        # Cleanup all services
+        await cleanup_services()
         logger.info("✅ All services cleaned up successfully")
 
     except Exception as e:
@@ -197,6 +239,7 @@ app.add_middleware(
 # app.include_router(search.router)
 app.include_router(news_router.router)
 app.include_router(job_router.router)
+app.include_router(eureka_router.router)
 
 
 @app.get("/")
@@ -215,14 +258,15 @@ async def root():
             "mongodb_storage": True,
             "rabbitmq_messaging": True,
             "caching": settings.enable_caching,
+            "eureka_client": settings.enable_eureka_client,
         },
     }
 
 
 @app.get("/health")
 async def health_check():
-    """Comprehensive health check endpoint including gRPC status."""
-    global sentiment_consumer, grpc_server
+    """Comprehensive health check endpoint including gRPC and Eureka status."""
+    global sentiment_consumer, grpc_server, eureka_client_service
 
     health_status = {
         "status": "healthy",
@@ -246,6 +290,26 @@ async def health_check():
             "enabled": grpc_enabled,
             "port": getattr(settings, "grpc_port", 50051),
             "status": grpc_status,
+        }
+
+    # Add Eureka client status if enabled
+    eureka_enabled = getattr(settings, "enable_eureka_client", True)
+    if eureka_enabled:
+        eureka_status = (
+            "healthy"
+            if eureka_client_service and eureka_client_service.is_registered()
+            else "stopped"
+        )
+        health_status["protocols"]["eureka_client"] = {
+            "enabled": eureka_enabled,
+            "server_url": settings.eureka_server_url,
+            "app_name": settings.eureka_app_name,
+            "instance_id": (
+                eureka_client_service.get_instance_id()
+                if eureka_client_service
+                else None
+            ),
+            "status": eureka_status,
         }
 
     try:
@@ -278,6 +342,13 @@ async def health_check():
         # Check if gRPC is supposed to be running but isn't
         if grpc_enabled and health_status["protocols"]["grpc"]["status"] == "stopped":
             unhealthy_components.append("grpc_server")
+
+        # Check if Eureka client is supposed to be running but isn't
+        if (
+            eureka_enabled
+            and health_status["protocols"]["eureka_client"]["status"] == "stopped"
+        ):
+            unhealthy_components.append("eureka_client")
 
         if unhealthy_components:
             health_status["status"] = "degraded"
