@@ -35,7 +35,67 @@ services:
       timeout: 5s
       retries: 3
 
+  eureka-server:
+    image: steeltoeoss/eureka-server:latest
+    container_name: eureka-server
+    restart: unless-stopped
+    ports:
+      - "8761:8761"
+    environment:
+      - EUREKA_SERVER_PORT=8761
+      - EUREKA_SERVER_HOST=0.0.0.0
+      - EUREKA_SERVER_DEFAULT_ZONE=default
+      - EUREKA_SERVER_DEFAULT_REGION=default
+      - EUREKA_SERVER_DEFAULT_GROUP=default
+      - EUREKA_SERVER_DEFAULT_APPLICATION=default
+
+  postgres:
+    image: postgres:15
+    container_name: mlflow_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio
+    container_name: mlflow_minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # MinIO Console
+    volumes:
+      - minio_data:/data
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mlflow
+    container_name: mlflow_server
+    restart: always
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: mlflow
+      AWS_SECRET_ACCESS_KEY: mlflow123
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - minio
+    command: >
+      mlflow server
+      --backend-store-uri postgresql://mlflow:mlflow@postgres:5432/mlflow
+      --default-artifact-root s3://mlflow/
+      --host 0.0.0.0
+
 volumes:
   rabbitmq-data:
   rabbitmq-logs:
   redis-stack-data:
+  postgres_data:
+  minio_data:
