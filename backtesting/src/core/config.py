@@ -118,11 +118,8 @@ class Settings(BaseSettings):
     cache_max_size: int = Field(default=1000, env="CACHE_MAX_SIZE")
 
     # Admin API configuration
-    admin_api_key: str = Field(
-        default="admin-default-key-change-in-production", env="ADMIN_API_KEY"
-    )
-    secret_api_key: str = Field(
-        default="secret-admin-key-change-in-production", env="SECRET_API_KEY"
+    api_key: str = Field(
+        default="admin-default-key-change-in-production", env="API_KEY"
     )
 
     # Cron job configuration

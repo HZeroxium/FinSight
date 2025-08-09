@@ -485,7 +485,7 @@ async def job_service_info(
                 "GET /market-data-jobs/stats": "Get job statistics",
                 "GET /market-data-jobs/health": "Perform health check",
             },
-            "authentication": "Required: Bearer token with SECRET_API_KEY",
+            "authentication": "Required: Bearer token with API_KEY",
             "features": [
                 "Cron job scheduling for automated data collection",
                 "Manual job execution with custom parameters",

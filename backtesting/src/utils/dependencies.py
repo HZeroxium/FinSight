@@ -347,10 +347,10 @@ def verify_api_key(
     Raises:
         HTTPException: If API key is missing or invalid
     """
-    if not settings.admin_api_key:
+    if not settings.api_key:
         raise HTTPException(
             status_code=500,
-            detail="Server configuration error: ADMIN_API_KEY not configured",
+            detail="Server configuration error: API_KEY not configured",
         )
 
     if not credentials or not credentials.credentials:
@@ -359,10 +359,10 @@ def verify_api_key(
             detail="Missing API key. Please provide Authorization: Bearer <api_key>",
         )
 
-    if credentials.credentials != settings.admin_api_key:
+    if credentials.credentials != settings.api_key:
         raise HTTPException(
             status_code=403,
-            detail="Invalid API key. Check ADMIN_API_KEY environment variable.",
+            detail="Invalid API key. Check API_KEY environment variable.",
         )
 
     return True

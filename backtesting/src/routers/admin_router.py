@@ -28,6 +28,7 @@ from ..core.config import Settings
 from common.logger import LoggerFactory
 from ..factories.admin_factory import get_admin_service
 from ..utils.datetime_utils import DateTimeUtils
+from ..utils.dependencies import require_admin_access
 
 
 # Security scheme for API key authentication
@@ -49,31 +50,6 @@ logger = LoggerFactory.get_logger(name="admin_router")
 
 # Configuration
 settings = Settings()
-
-
-def verify_api_key(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> bool:
-    """
-    Verify API key for admin endpoints.
-
-    Args:
-        credentials: HTTP bearer token credentials
-
-    Returns:
-        True if API key is valid
-
-    Raises:
-        HTTPException: If API key is invalid
-    """
-    if not credentials.credentials or credentials.credentials != settings.admin_api_key:
-        logger.warning(f"Invalid API key attempt: {credentials.credentials[:10]}...")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return True
 
 
 @router.get("/health", response_model=SystemHealthResponse)
@@ -99,7 +75,7 @@ async def get_system_health(
 
 @router.get("/stats", response_model=AdminStatsResponse)
 async def get_system_stats(
-    _: bool = Depends(verify_api_key),
+    _: bool = Depends(require_admin_access),
     admin_service: AdminService = Depends(get_admin_service),
 ) -> AdminStatsResponse:
     """
@@ -126,7 +102,7 @@ async def get_system_stats(
 @router.post("/data/ensure", response_model=DataEnsureResponse)
 async def ensure_data_available(
     request: DataEnsureRequest,
-    _: bool = Depends(verify_api_key),
+    _: bool = Depends(require_admin_access),
     admin_service: AdminService = Depends(get_admin_service),
 ) -> DataEnsureResponse:
     """
@@ -164,7 +140,7 @@ async def ensure_data_available(
 @router.post("/data/convert-timeframe", response_model=TimeframeConvertResponse)
 async def convert_timeframe_data(
     request: TimeframeConvertRequest,
-    _: bool = Depends(verify_api_key),
+    _: bool = Depends(require_admin_access),
     admin_service: AdminService = Depends(get_admin_service),
 ) -> TimeframeConvertResponse:
     """
@@ -202,7 +178,7 @@ async def convert_timeframe_data(
 @router.post("/data/cleanup", response_model=CleanupResponse)
 async def cleanup_old_data(
     request: CleanupRequest,
-    _: bool = Depends(verify_api_key),
+    _: bool = Depends(require_admin_access),
     admin_service: AdminService = Depends(get_admin_service),
 ) -> CleanupResponse:
     """
@@ -259,7 +235,7 @@ async def cleanup_old_data(
 
 @router.get("/info")
 async def get_admin_info(
-    _: bool = Depends(verify_api_key),
+    _: bool = Depends(require_admin_access),
 ) -> Dict[str, Any]:
     """
     Get information about available admin operations.
@@ -324,7 +300,7 @@ async def get_admin_info(
 
 @router.get("/config")
 async def get_current_configuration(
-    _: bool = Depends(verify_api_key),
+    _: bool = Depends(require_admin_access),
 ) -> Dict[str, Any]:
     """
     Get current system configuration.
@@ -413,8 +389,7 @@ async def get_current_configuration(
                 "cache_max_size": settings.cache_max_size,
             },
             "admin": {
-                "api_key": mask_sensitive_value(settings.admin_api_key),
-                "secret_api_key": mask_sensitive_value(settings.secret_api_key),
+                "api_key": mask_sensitive_value(settings.api_key),
             },
             "cron_job": {
                 "enabled": settings.cron_job_enabled,
