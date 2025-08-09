@@ -155,7 +155,7 @@ class PatchTSTAdapter(BaseTimeSeriesAdapter):
             )
 
             model = PatchTSTForPrediction(config)
-            self.logger.info(f"Created PatchTST model with config: {config}")
+            # self.logger.info(f"Created PatchTST model with config: {config}")
 
             return model
 

@@ -1,9 +1,9 @@
 # core/config.py
 
 from pathlib import Path
-from typing import Optional, List
-from pydantic_settings import BaseSettings
-from pydantic import Field
+from typing import Optional, List, Dict, Any
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
 
 
 class Settings(BaseSettings):
@@ -91,18 +91,44 @@ class Settings(BaseSettings):
         "file", env="TRAINING_JOB_REPOSITORY_TYPE"
     )
 
-    # Cloud Storage settings
-    enable_cloud_storage: bool = Field(False, env="ENABLE_CLOUD_STORAGE")
-    cloud_storage_type: str = Field("s3", env="CLOUD_STORAGE_TYPE")  # s3, gcs, azure
-    cloud_storage_bucket: str = Field("finsight-ml-data", env="CLOUD_STORAGE_BUCKET")
-    cloud_storage_region: str = Field("us-east-1", env="CLOUD_STORAGE_REGION")
-    cloud_storage_endpoint: Optional[str] = Field(None, env="CLOUD_STORAGE_ENDPOINT")
-    cloud_storage_access_key: Optional[str] = Field(
-        None, env="CLOUD_STORAGE_ACCESS_KEY"
+    # ===== Cloud Storage Configuration (following backtesting patterns) =====
+
+    # Storage provider selection
+    storage_provider: str = Field(
+        default="minio", env="STORAGE_PROVIDER"
+    )  # minio, digitalocean, aws
+
+    # S3-compatible storage settings
+    s3_endpoint_url: str = Field(default="http://localhost:9000", env="S3_ENDPOINT_URL")
+    s3_access_key: str = Field(default="minioadmin", env="S3_ACCESS_KEY")
+    s3_secret_key: str = Field(default="minioadmin", env="S3_SECRET_KEY")
+    s3_region_name: str = Field(default="us-east-1", env="S3_REGION_NAME")
+    s3_bucket_name: str = Field(default="market-data", env="S3_BUCKET_NAME")
+    s3_use_ssl: bool = Field(default=False, env="S3_USE_SSL")
+    s3_verify_ssl: bool = Field(default=True, env="S3_VERIFY_SSL")
+    s3_signature_version: str = Field(default="s3v4", env="S3_SIGNATURE_VERSION")
+    s3_max_pool_connections: int = Field(default=50, env="S3_MAX_POOL_CONNECTIONS")
+
+    # DigitalOcean Spaces specific settings
+    spaces_endpoint_url: str = Field(
+        default="https://nyc3.digitaloceanspaces.com", env="SPACES_ENDPOINT_URL"
     )
-    cloud_storage_secret_key: Optional[str] = Field(
-        None, env="CLOUD_STORAGE_SECRET_KEY"
+    spaces_access_key: str = Field(default="", env="SPACES_ACCESS_KEY")
+    spaces_secret_key: str = Field(default="", env="SPACES_SECRET_KEY")
+    spaces_region_name: str = Field(default="nyc3", env="SPACES_REGION_NAME")
+    spaces_bucket_name: str = Field(
+        default="finsight-market-data", env="SPACES_BUCKET_NAME"
     )
+
+    # AWS S3 specific settings (if using AWS directly)
+    aws_access_key_id: str = Field(default="", env="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(default="", env="AWS_SECRET_ACCESS_KEY")
+    aws_region_name: str = Field(default="us-east-1", env="AWS_REGION_NAME")
+    aws_bucket_name: str = Field(default="finsight-market-data", env="AWS_BUCKET_NAME")
+
+    # Storage prefix configuration for object storage
+    storage_prefix: str = Field(default="datasets", env="STORAGE_PREFIX")
+    storage_separator: str = Field(default="/", env="STORAGE_SEPARATOR")
 
     # Data loading settings
     data_loader_type: str = Field(
@@ -115,6 +141,15 @@ class Settings(BaseSettings):
         env="CLOUD_DATA_CACHE_DIR",
     )
     cloud_data_cache_ttl_hours: int = Field(24, env="CLOUD_DATA_CACHE_TTL_HOURS")
+
+    # Default symbols and timeframes for data loading
+    default_symbols: List[str] = Field(
+        default_factory=lambda: ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
+        env="DEFAULT_SYMBOLS",
+    )
+    default_timeframes: List[str] = Field(
+        default_factory=lambda: ["1h", "4h", "1d"], env="DEFAULT_TIMEFRAMES"
+    )
 
     # Experiment Tracker settings
     experiment_tracker_type: str = Field(
@@ -139,9 +174,39 @@ class Settings(BaseSettings):
         env="ENABLED_ADAPTERS",
     )
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    # Field validators
+    @field_validator("default_symbols", mode="before")
+    @classmethod
+    def parse_symbols(cls, v):
+        """Parse comma-separated symbols from environment variable"""
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",") if s.strip()]
+        return v
+
+    @field_validator("default_timeframes", mode="before")
+    @classmethod
+    def parse_timeframes(cls, v):
+        """Parse comma-separated timeframes from environment variable"""
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",") if s.strip()]
+        return v
+
+    @field_validator("storage_provider")
+    @classmethod
+    def validate_storage_provider(cls, v):
+        allowed_providers = {"minio", "digitalocean", "aws", "s3"}
+        if v.lower() not in allowed_providers:
+            raise ValueError(
+                f"storage_provider must be one of {sorted(allowed_providers)}"
+            )
+        return v.lower()
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -158,8 +223,6 @@ class Settings(BaseSettings):
         if self.logs_dir is None:
             self.logs_dir = self.base_dir / "logs"
 
-        # cloud_data_cache_dir now has a default factory, so no need to check for None
-
         # Create directories if they don't exist
         for directory in [
             self.data_dir,
@@ -168,6 +231,113 @@ class Settings(BaseSettings):
             self.cloud_data_cache_dir,
         ]:
             directory.mkdir(parents=True, exist_ok=True)
+
+    def get_storage_config(self) -> Dict[str, Any]:
+        """
+        Get storage configuration based on the selected provider.
+
+        Returns:
+            Dictionary with storage configuration parameters
+        """
+        if self.storage_provider == "minio":
+            return {
+                "endpoint_url": self.s3_endpoint_url,
+                "access_key": self.s3_access_key,
+                "secret_key": self.s3_secret_key,
+                "region_name": self.s3_region_name,
+                "bucket_name": self.s3_bucket_name,
+                "use_ssl": self.s3_use_ssl,
+                "verify_ssl": self.s3_verify_ssl,
+                "signature_version": self.s3_signature_version,
+                "max_pool_connections": self.s3_max_pool_connections,
+            }
+        elif self.storage_provider == "digitalocean":
+            return {
+                "endpoint_url": self.spaces_endpoint_url,
+                "access_key": self.spaces_access_key,
+                "secret_key": self.spaces_secret_key,
+                "region_name": self.spaces_region_name,
+                "bucket_name": self.spaces_bucket_name,
+                "use_ssl": True,  # DigitalOcean Spaces always uses SSL
+                "verify_ssl": True,
+                "signature_version": "s3v4",
+                "max_pool_connections": self.s3_max_pool_connections,
+            }
+        elif self.storage_provider in ["aws", "s3"]:
+            return {
+                "endpoint_url": None,  # Use AWS default endpoint
+                "access_key": self.aws_access_key_id or self.s3_access_key,
+                "secret_key": self.aws_secret_access_key or self.s3_secret_key,
+                "region_name": self.aws_region_name,
+                "bucket_name": self.aws_bucket_name,
+                "use_ssl": True,  # AWS S3 always uses SSL
+                "verify_ssl": True,
+                "signature_version": "s3v4",
+                "max_pool_connections": self.s3_max_pool_connections,
+            }
+        else:
+            # Default to MinIO configuration
+            return {
+                "endpoint_url": self.s3_endpoint_url,
+                "access_key": self.s3_access_key,
+                "secret_key": self.s3_secret_key,
+                "region_name": self.s3_region_name,
+                "bucket_name": self.s3_bucket_name,
+                "use_ssl": self.s3_use_ssl,
+                "verify_ssl": self.s3_verify_ssl,
+                "signature_version": self.s3_signature_version,
+                "max_pool_connections": self.s3_max_pool_connections,
+            }
+
+    def get_storage_prefix(self) -> str:
+        """
+        Get the base storage prefix for object storage.
+
+        Returns:
+            Base storage prefix (e.g., "datasets")
+        """
+        return self.storage_prefix
+
+    def build_storage_path(self, *parts: str) -> str:
+        """
+        Build a storage path using the configured prefix and separator.
+
+        Args:
+            *parts: Path components to join
+
+        Returns:
+            Complete storage path
+        """
+        all_parts = [self.storage_prefix] + list(parts)
+        return self.storage_separator.join(filter(None, all_parts))
+
+    def build_dataset_path(
+        self,
+        exchange: str,
+        symbol: str,
+        timeframe: str,
+        format_type: str = None,
+        date: str = None,
+    ) -> str:
+        """
+        Build a dataset storage path.
+
+        Args:
+            exchange: Exchange name
+            symbol: Trading symbol
+            timeframe: Timeframe
+            format_type: Data format (optional)
+            date: Date (optional)
+
+        Returns:
+            Dataset storage path
+        """
+        parts = [exchange, symbol, timeframe]
+        if format_type:
+            parts.append(format_type)
+        if date:
+            parts.append(date)
+        return self.build_storage_path(*parts)
 
     @property
     def serving(self) -> dict:

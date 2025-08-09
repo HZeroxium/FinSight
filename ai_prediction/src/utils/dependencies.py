@@ -6,7 +6,7 @@ from functools import lru_cache
 from ..interfaces.experiment_tracker_interface import IExperimentTracker
 from ..interfaces.data_loader_interface import IDataLoader
 from ..adapters.simple_experiment_tracker import SimpleExperimentTracker
-from ..data.data_loader import CloudDataLoader, FileDataLoader
+from ..data.data_loader import DataLoaderFactory
 from ..core.config import get_settings
 from common.logger.logger_factory import LoggerFactory
 
@@ -93,27 +93,15 @@ def get_data_loader() -> IDataLoader:
     if _data_loader is not None:
         return _data_loader
 
-    settings = get_settings()
-    loader_type = settings.data_loader_type.lower()
-
     try:
-        if loader_type in ["hybrid", "cloud"]:
-            _data_loader = CloudDataLoader()
-            logger.info(f"Initialized CloudDataLoader in {loader_type} mode")
-
-        elif loader_type == "local":
-            _data_loader = FileDataLoader()
-            logger.info("Initialized FileDataLoader for local files only")
-
-        else:
-            logger.warning(f"Unknown data loader type: {loader_type}, using hybrid")
-            _data_loader = CloudDataLoader()
-            logger.info("Initialized CloudDataLoader as default")
+        # Use the factory to create the appropriate data loader
+        _data_loader = DataLoaderFactory.create_data_loader()
+        logger.info(f"Initialized data loader: {type(_data_loader).__name__}")
 
     except Exception as e:
         logger.error(f"Failed to initialize data loader: {e}")
         # Fallback to simple file loader
-        _data_loader = FileDataLoader()
+        _data_loader = DataLoaderFactory.create_file_loader()
         logger.info("Using FileDataLoader as fallback")
 
     return _data_loader
@@ -219,13 +207,15 @@ def get_dependency_info() -> dict:
         },
         "data_loader": {
             "type": settings.data_loader_type,
-            "cloud_enabled": settings.enable_cloud_storage,
+            "cloud_enabled": (
+                settings.cloud_enabled if hasattr(settings, "cloud_enabled") else False
+            ),
             "instance": type(_data_loader).__name__ if _data_loader else None,
         },
         "cloud_storage": {
-            "enabled": settings.enable_cloud_storage,
-            "type": settings.cloud_storage_type,
-            "bucket": settings.cloud_storage_bucket,
+            "enabled": settings.storage_provider != "local",
+            "provider": settings.storage_provider,
+            "bucket": settings.get_storage_config().get("bucket_name", "unknown"),
         },
         "mlflow": {
             "tracking_uri": settings.mlflow_tracking_uri,

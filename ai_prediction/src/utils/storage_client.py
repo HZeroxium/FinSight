@@ -3,7 +3,6 @@
 """
 Object Storage Client for S3-compatible storage systems.
 Supports MinIO, DigitalOcean Spaces, AWS S3, and other S3-compatible storage.
-Adapted for AI Prediction service artifact management.
 """
 
 import os
@@ -15,8 +14,7 @@ from botocore.exceptions import ClientError, NoCredentialsError
 from botocore.config import Config
 from io import BytesIO
 
-from ..core.config import get_settings
-from common.logger.logger_factory import LoggerFactory
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class StorageClientError(Exception):
@@ -27,105 +25,86 @@ class StorageClientError(Exception):
 
 class StorageClient:
     """
-    S3-compatible object storage client with async support for AI predictions.
+    S3-compatible object storage client with async support.
 
     Supports MinIO, AWS S3, DigitalOcean Spaces, and other S3-compatible providers.
     Provides methods for upload, download, delete, and management operations.
-    Optimized for model artifacts, experiment data, and ML pipeline outputs.
     """
 
     def __init__(
         self,
-        endpoint_url: Optional[str] = None,
+        endpoint_url: str = "http://localhost:9000",
         access_key: Optional[str] = None,
         secret_key: Optional[str] = None,
-        region_name: Optional[str] = None,
-        bucket_name: Optional[str] = None,
-        use_ssl: Optional[bool] = None,
+        region_name: str = "us-east-1",
+        bucket_name: str = "market-data",
+        use_ssl: bool = False,
         verify_ssl: bool = True,
         signature_version: str = "s3v4",
         max_pool_connections: int = 50,
     ):
         """
-        Initialize storage client with configuration from settings.
+        Initialize storage client.
 
         Args:
-            endpoint_url: S3 endpoint URL (falls back to config)
-            access_key: S3 access key (falls back to config/environment)
-            secret_key: S3 secret key (falls back to config/environment)
-            region_name: S3 region name (falls back to config)
-            bucket_name: Default bucket name (falls back to config)
-            use_ssl: Whether to use SSL/TLS (falls back to config)
+            endpoint_url: S3 endpoint URL (e.g., MinIO server URL)
+            access_key: S3 access key (falls back to environment variables)
+            secret_key: S3 secret key (falls back to environment variables)
+            region_name: S3 region name
+            bucket_name: Default bucket name for operations
+            use_ssl: Whether to use SSL/TLS
             verify_ssl: Whether to verify SSL certificates
             signature_version: S3 signature version
             max_pool_connections: Maximum connection pool size
         """
-        self.settings = get_settings()
-
-        # Use provided values or fallback to configuration/environment
-        self.endpoint_url = endpoint_url or self.settings.cloud_storage_endpoint
-        self.access_key = (
-            access_key
-            or self.settings.cloud_storage_access_key
-            or os.getenv("AWS_ACCESS_KEY_ID")
-        )
-        self.secret_key = (
-            secret_key
-            or self.settings.cloud_storage_secret_key
-            or os.getenv("AWS_SECRET_ACCESS_KEY")
-        )
-        self.region_name = region_name or self.settings.cloud_storage_region
-        self.bucket_name = bucket_name or self.settings.cloud_storage_bucket
-        self.use_ssl = (
-            use_ssl
-            if use_ssl is not None
-            else (self.endpoint_url and self.endpoint_url.startswith("https://"))
-        )
+        self.endpoint_url = endpoint_url
+        self.access_key = access_key or os.getenv("S3_ACCESS_KEY")
+        self.secret_key = secret_key or os.getenv("S3_SECRET_KEY")
+        self.region_name = region_name
+        self.bucket_name = bucket_name
+        self.use_ssl = use_ssl
         self.verify_ssl = verify_ssl
 
         # Initialize logger
-        self.logger = LoggerFactory.get_logger("StorageClient")
+        self.logger = LoggerFactory.get_logger(
+            name="storage-client",
+            logger_type=LoggerType.STANDARD,
+            level=LogLevel.INFO,
+            file_level=LogLevel.DEBUG,
+            log_file="logs/storage_client.log",
+        )
 
         # Configure boto3 client
         config = Config(
-            region_name=self.region_name,
+            region_name=region_name,
             signature_version=signature_version,
             retries={"max_attempts": 3, "mode": "adaptive"},
             max_pool_connections=max_pool_connections,
         )
 
         try:
-            # For AWS S3, endpoint_url should be None
-            endpoint = (
-                self.endpoint_url
-                if self.endpoint_url and not self.endpoint_url.endswith("amazonaws.com")
-                else None
-            )
-
             self.s3_client = boto3.client(
                 "s3",
-                endpoint_url=endpoint,
+                endpoint_url=endpoint_url,
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_key,
-                region_name=self.region_name,
                 config=config,
-                use_ssl=self.use_ssl,
+                use_ssl=use_ssl,
                 verify=verify_ssl,
             )
 
             self.s3_resource = boto3.resource(
                 "s3",
-                endpoint_url=endpoint,
+                endpoint_url=endpoint_url,
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_key,
-                region_name=self.region_name,
                 config=config,
-                use_ssl=self.use_ssl,
+                use_ssl=use_ssl,
                 verify=verify_ssl,
             )
 
             self.logger.info(
-                f"Storage client initialized with endpoint: {endpoint or 'AWS S3'}, bucket: {self.bucket_name}"
+                f"Storage client initialized with endpoint: {endpoint_url}"
             )
 
         except (NoCredentialsError, ClientError) as e:
@@ -150,9 +129,9 @@ class StorageClient:
         try:
             # Check if bucket exists
             await asyncio.get_event_loop().run_in_executor(
-                None, self.s3_client.head_bucket, {"Bucket": bucket}
+                None, lambda: self.s3_client.head_bucket(Bucket=bucket)
             )
-            self.logger.debug(f"Bucket '{bucket}' already exists")
+            self.logger.info(f"Bucket '{bucket}' already exists")
             return True
 
         except ClientError as e:
@@ -237,11 +216,12 @@ class StorageClient:
                 str(local_path),
                 bucket,
                 object_key,
+                extra_args,
             )
 
             file_size = local_path.stat().st_size
             self.logger.info(
-                f"Uploaded file '{local_path.name}' to '{bucket}/{object_key}' ({file_size} bytes)"
+                f"Uploaded file '{local_path}' to '{bucket}/{object_key}' ({file_size} bytes)"
             )
             return True
 
@@ -287,7 +267,7 @@ class StorageClient:
 
             file_size = local_path.stat().st_size
             self.logger.info(
-                f"Downloaded '{bucket}/{object_key}' to '{local_path.name}' ({file_size} bytes)"
+                f"Downloaded '{bucket}/{object_key}' to '{local_path}' ({file_size} bytes)"
             )
             return True
 
@@ -295,245 +275,99 @@ class StorageClient:
             self.logger.error(f"Failed to download '{bucket}/{object_key}': {e}")
             raise StorageClientError(f"Download failed: {e}")
 
-    async def upload_directory(
+    async def upload_bytes(
         self,
-        local_dir_path: Union[str, Path],
-        object_key_prefix: str,
+        data: bytes,
+        object_key: str,
         bucket_name: Optional[str] = None,
-        include_patterns: Optional[List[str]] = None,
-        exclude_patterns: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        metadata: Optional[Dict[str, str]] = None,
+        content_type: Optional[str] = None,
+    ) -> bool:
         """
-        Upload a directory and its contents to object storage.
+        Upload bytes data to object storage.
 
         Args:
-            local_dir_path: Local directory path to upload
-            object_key_prefix: Object key prefix for uploaded files
+            data: Bytes data to upload
+            object_key: Object key in storage
             bucket_name: Target bucket (uses default if not provided)
-            include_patterns: List of file patterns to include
-            exclude_patterns: List of file patterns to exclude
+            metadata: Optional metadata to attach
+            content_type: Content type for the object
 
         Returns:
-            Upload result dictionary with file list and summary
+            True if upload successful
 
         Raises:
             StorageClientError: If upload fails
         """
         bucket = bucket_name or self.bucket_name
-        local_path = Path(local_dir_path)
-
-        if not local_path.exists() or not local_path.is_dir():
-            raise StorageClientError(f"Local directory not found: {local_path}")
 
         try:
             # Ensure bucket exists
             await self.create_bucket(bucket)
 
-            uploaded_files = []
-            total_size = 0
+            # Prepare upload parameters
+            extra_args = {}
+            if metadata:
+                extra_args["Metadata"] = metadata
+            if content_type:
+                extra_args["ContentType"] = content_type
 
-            # Walk through directory and upload files
-            for file_path in local_path.rglob("*"):
-                if file_path.is_file():
-                    # Apply include/exclude patterns if specified
-                    if include_patterns and not any(
-                        file_path.match(pattern) for pattern in include_patterns
-                    ):
-                        continue
-                    if exclude_patterns and any(
-                        file_path.match(pattern) for pattern in exclude_patterns
-                    ):
-                        continue
-
-                    # Calculate relative path for object key
-                    relative_path = file_path.relative_to(local_path)
-                    object_key = f"{object_key_prefix.rstrip('/')}/{relative_path}"
-
-                    # Upload file
-                    success = await self.upload_file(file_path, object_key, bucket)
-                    if success:
-                        file_size = file_path.stat().st_size
-                        uploaded_files.append(
-                            {
-                                "local_path": str(file_path),
-                                "object_key": object_key,
-                                "size": file_size,
-                            }
-                        )
-                        total_size += file_size
-
-            self.logger.info(
-                f"Uploaded directory '{local_path}' to '{bucket}/{object_key_prefix}' "
-                f"({len(uploaded_files)} files, {total_size} bytes)"
+            # Upload bytes
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                self.s3_client.upload_fileobj,
+                BytesIO(data),
+                bucket,
+                object_key,
+                extra_args,
             )
 
-            return {
-                "success": True,
-                "uploaded_files": uploaded_files,
-                "total_files": len(uploaded_files),
-                "total_size": total_size,
-                "bucket": bucket,
-                "object_key_prefix": object_key_prefix,
-            }
+            self.logger.info(f"Uploaded {len(data)} bytes to '{bucket}/{object_key}'")
+            return True
 
         except Exception as e:
-            self.logger.error(f"Failed to upload directory '{local_path}': {e}")
-            raise StorageClientError(f"Directory upload failed: {e}")
+            self.logger.error(f"Failed to upload bytes to '{bucket}/{object_key}': {e}")
+            raise StorageClientError(f"Upload failed: {e}")
 
-    async def download_directory(
+    async def download_bytes(
         self,
-        object_key_prefix: str,
-        local_dir_path: Union[str, Path],
+        object_key: str,
         bucket_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> bytes:
         """
-        Download all objects with a prefix to a local directory.
+        Download object as bytes.
 
         Args:
-            object_key_prefix: Object key prefix to download
-            local_dir_path: Local destination directory
+            object_key: Object key in storage
             bucket_name: Source bucket (uses default if not provided)
 
         Returns:
-            Download result dictionary
+            Object data as bytes
 
         Raises:
             StorageClientError: If download fails
         """
         bucket = bucket_name or self.bucket_name
-        local_path = Path(local_dir_path)
 
         try:
-            # Create local directory
-            local_path.mkdir(parents=True, exist_ok=True)
-
-            # List objects with prefix
-            objects = await self.list_objects(
-                prefix=object_key_prefix, bucket_name=bucket
-            )
-
-            downloaded_files = []
-            total_size = 0
-
-            for obj in objects:
-                object_key = obj["key"]
-
-                # Calculate local file path
-                relative_key = object_key[len(object_key_prefix.rstrip("/")) + 1 :]
-                local_file_path = local_path / relative_key
-
-                # Download file
-                success = await self.download_file(object_key, local_file_path, bucket)
-                if success:
-                    downloaded_files.append(
-                        {
-                            "object_key": object_key,
-                            "local_path": str(local_file_path),
-                            "size": obj["size"],
-                        }
-                    )
-                    total_size += obj["size"]
-
-            self.logger.info(
-                f"Downloaded directory '{bucket}/{object_key_prefix}' to '{local_path}' "
-                f"({len(downloaded_files)} files, {total_size} bytes)"
-            )
-
-            return {
-                "success": True,
-                "downloaded_files": downloaded_files,
-                "total_files": len(downloaded_files),
-                "total_size": total_size,
-                "local_path": str(local_path),
-            }
-
-        except Exception as e:
-            self.logger.error(
-                f"Failed to download directory '{bucket}/{object_key_prefix}': {e}"
-            )
-            raise StorageClientError(f"Directory download failed: {e}")
-
-    async def object_exists(
-        self,
-        object_key: str,
-        bucket_name: Optional[str] = None,
-    ) -> bool:
-        """
-        Check if an object exists in storage.
-
-        Args:
-            object_key: Object key to check
-            bucket_name: Source bucket (uses default if not provided)
-
-        Returns:
-            True if object exists
-        """
-        bucket = bucket_name or self.bucket_name
-
-        try:
+            buffer = BytesIO()
             await asyncio.get_event_loop().run_in_executor(
                 None,
-                self.s3_client.head_object,
-                {"Bucket": bucket, "Key": object_key},
-            )
-            return True
-
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "404":
-                return False
-            else:
-                self.logger.error(f"Error checking object '{bucket}/{object_key}': {e}")
-                raise StorageClientError(f"Error checking object: {e}")
-
-    async def list_objects(
-        self,
-        prefix: str = "",
-        bucket_name: Optional[str] = None,
-        max_keys: int = 1000,
-    ) -> List[Dict[str, Any]]:
-        """
-        List objects in bucket with optional prefix filter.
-
-        Args:
-            prefix: Object key prefix filter
-            bucket_name: Source bucket (uses default if not provided)
-            max_keys: Maximum number of keys to return
-
-        Returns:
-            List of object information dictionaries
-
-        Raises:
-            StorageClientError: If listing fails
-        """
-        bucket = bucket_name or self.bucket_name
-
-        try:
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                self.s3_client.list_objects_v2,
-                {"Bucket": bucket, "Prefix": prefix, "MaxKeys": max_keys},
+                self.s3_client.download_fileobj,
+                bucket,
+                object_key,
+                buffer,
             )
 
-            objects = []
-            if "Contents" in response:
-                for obj in response["Contents"]:
-                    objects.append(
-                        {
-                            "key": obj["Key"],
-                            "size": obj["Size"],
-                            "last_modified": obj["LastModified"],
-                            "etag": obj["ETag"].strip('"'),
-                        }
-                    )
-
-            self.logger.debug(
-                f"Listed {len(objects)} objects in '{bucket}' with prefix '{prefix}'"
+            data = buffer.getvalue()
+            self.logger.info(
+                f"Downloaded {len(data)} bytes from '{bucket}/{object_key}'"
             )
-            return objects
+            return data
 
         except Exception as e:
-            self.logger.error(f"Failed to list objects in '{bucket}': {e}")
-            raise StorageClientError(f"List failed: {e}")
+            self.logger.error(f"Failed to download '{bucket}/{object_key}': {e}")
+            raise StorageClientError(f"Download failed: {e}")
 
     async def delete_object(
         self,
@@ -569,6 +403,91 @@ class StorageClient:
             self.logger.error(f"Failed to delete '{bucket}/{object_key}': {e}")
             raise StorageClientError(f"Delete failed: {e}")
 
+    async def list_objects(
+        self,
+        prefix: str = "",
+        bucket_name: Optional[str] = None,
+        max_keys: int = 1000,
+    ) -> List[Dict[str, Any]]:
+        """
+        List objects in bucket with optional prefix filter.
+
+        Args:
+            prefix: Object key prefix filter
+            bucket_name: Source bucket (uses default if not provided)
+            max_keys: Maximum number of keys to return
+
+        Returns:
+            List of object information dictionaries
+
+        Raises:
+            StorageClientError: If listing fails
+        """
+        bucket = bucket_name or self.bucket_name
+
+        try:
+            # Prepare parameters for list_objects_v2
+            params = {"Bucket": bucket, "MaxKeys": max_keys}
+            if prefix and prefix.strip():  # Only add Prefix if it's not empty
+                params["Prefix"] = prefix
+
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.s3_client.list_objects_v2(**params),
+            )
+
+            objects = []
+            if "Contents" in response:
+                for obj in response["Contents"]:
+                    objects.append(
+                        {
+                            "key": obj["Key"],
+                            "size": obj["Size"],
+                            "last_modified": obj["LastModified"],
+                            "etag": obj["ETag"].strip('"'),
+                        }
+                    )
+
+            self.logger.info(
+                f"Listed {len(objects)} objects in '{bucket}' with prefix '{prefix}'"
+            )
+            return objects
+
+        except Exception as e:
+            self.logger.error(f"Failed to list objects in '{bucket}': {e}")
+            raise StorageClientError(f"StorageClient: List failed: {e}")
+
+    async def object_exists(
+        self,
+        object_key: str,
+        bucket_name: Optional[str] = None,
+    ) -> bool:
+        """
+        Check if an object exists in storage.
+
+        Args:
+            object_key: Object key to check
+            bucket_name: Source bucket (uses default if not provided)
+
+        Returns:
+            True if object exists
+        """
+        bucket = bucket_name or self.bucket_name
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.s3_client.head_object(Bucket=bucket, Key=object_key),
+            )
+            return True
+
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                return False
+            else:
+                self.logger.error(f"Error checking object '{bucket}/{object_key}': {e}")
+                raise StorageClientError(f"Error checking object: {e}")
+
     async def get_object_info(
         self,
         object_key: str,
@@ -589,8 +508,7 @@ class StorageClient:
         try:
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
-                self.s3_client.head_object,
-                {"Bucket": bucket, "Key": object_key},
+                lambda: self.s3_client.head_object(Bucket=bucket, Key=object_key),
             )
 
             return {
@@ -610,3 +528,92 @@ class StorageClient:
                     f"Error getting object info '{bucket}/{object_key}': {e}"
                 )
                 raise StorageClientError(f"Error getting object info: {e}")
+
+    async def generate_presigned_url(
+        self,
+        object_key: str,
+        bucket_name: Optional[str] = None,
+        expiration: int = 3600,
+        http_method: str = "GET",
+    ) -> str:
+        """
+        Generate a presigned URL for temporary access to an object.
+
+        Args:
+            object_key: Object key
+            bucket_name: Source bucket (uses default if not provided)
+            expiration: URL expiration time in seconds
+            http_method: HTTP method (GET, PUT, etc.)
+
+        Returns:
+            Presigned URL string
+
+        Raises:
+            StorageClientError: If URL generation fails
+        """
+        bucket = bucket_name or self.bucket_name
+
+        try:
+            url = await asyncio.get_event_loop().run_in_executor(
+                None,
+                self.s3_client.generate_presigned_url,
+                f"{http_method.lower()}_object",
+                {"Bucket": bucket, "Key": object_key},
+                expiration,
+            )
+
+            self.logger.info(
+                f"Generated presigned URL for '{bucket}/{object_key}' (expires in {expiration}s)"
+            )
+            return url
+
+        except Exception as e:
+            self.logger.error(f"Failed to generate presigned URL: {e}")
+            raise StorageClientError(f"Presigned URL generation failed: {e}")
+
+    async def get_storage_info(self) -> Dict[str, Any]:
+        """
+        Get storage client and bucket information.
+
+        Returns:
+            Storage information dictionary
+        """
+        try:
+            bucket_info = {}
+            try:
+                response = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.s3_client.head_bucket(Bucket=self.bucket_name),
+                )
+                bucket_info["exists"] = True
+                bucket_info["region"] = (
+                    response.get("ResponseMetadata", {})
+                    .get("HTTPHeaders", {})
+                    .get("x-amz-bucket-region")
+                )
+            except ClientError:
+                bucket_info["exists"] = False
+
+            # List some objects to get usage stats
+            objects = await self.list_objects(max_keys=1000)
+            total_size = sum(obj["size"] for obj in objects)
+
+            return {
+                "storage_type": "s3_compatible",
+                "endpoint_url": self.endpoint_url,
+                "bucket_name": self.bucket_name,
+                "region": self.region_name,
+                "bucket_info": bucket_info,
+                "total_objects": len(objects),
+                "total_size_bytes": total_size,
+                "use_ssl": self.use_ssl,
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to get storage info: {e}")
+            return {
+                "storage_type": "s3_compatible",
+                "endpoint_url": self.endpoint_url,
+                "bucket_name": self.bucket_name,
+                "error": str(e),
+            }

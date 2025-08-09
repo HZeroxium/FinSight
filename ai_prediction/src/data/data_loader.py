@@ -9,18 +9,9 @@ import pandas as pd
 from pathlib import Path
 from ..interfaces.data_loader_interface import IDataLoader
 from ..schemas.enums import TimeFrame
-from common.logger.logger_factory import LoggerFactory
+from common.logger.logger_factory import LoggerFactory, LoggerType, LogLevel
 from ..core.config import get_settings
-
-# Try to import cloud storage dependencies
-try:
-    import boto3
-    from botocore.exceptions import ClientError, NoCredentialsError
-
-    AWS_AVAILABLE = True
-except ImportError:
-    AWS_AVAILABLE = False
-    boto3 = None
+from ..utils.storage_client import StorageClient
 
 
 class CloudDataLoader(IDataLoader):
@@ -29,7 +20,7 @@ class CloudDataLoader(IDataLoader):
 
     This loader attempts to load data from cloud storage first, then falls back
     to local files if cloud data is not available. It also implements intelligent
-    caching to improve performance.
+    caching to improve performance and updates local storage for fallback scenarios.
     """
 
     def __init__(self, data_dir: Optional[Path] = None):
@@ -43,26 +34,30 @@ class CloudDataLoader(IDataLoader):
         self.settings = settings
         self.cache_dir = settings.cloud_data_cache_dir
         self.cache_ttl_hours = settings.cloud_data_cache_ttl_hours
-        self.cloud_enabled = settings.enable_cloud_storage and AWS_AVAILABLE
 
-        self.logger = LoggerFactory.get_logger("CloudDataLoader")
+        # Initialize logger
+        self.logger = LoggerFactory.get_logger(
+            name="cloud-data-loader",
+            logger_type=LoggerType.STANDARD,
+            level=LogLevel.INFO,
+            file_level=LogLevel.DEBUG,
+            log_file="logs/cloud_data_loader.log",
+        )
 
-        # Initialize cloud storage client if available
-        self.s3_client = None
-        if self.cloud_enabled:
-            try:
-                self.s3_client = boto3.client(
-                    "s3",
-                    region_name=settings.cloud_storage_region,
-                    endpoint_url=settings.cloud_storage_endpoint,
-                    aws_access_key_id=settings.cloud_storage_access_key,
-                    aws_secret_access_key=settings.cloud_storage_secret_key,
-                )
-                self.bucket = settings.cloud_storage_bucket
-                self.logger.info(f"Cloud storage initialized: {self.bucket}")
-            except Exception as e:
-                self.logger.warning(f"Failed to initialize cloud storage: {e}")
-                self.cloud_enabled = False
+        # Initialize storage client
+        self.storage_client = None
+        self.cloud_enabled = False
+
+        try:
+            storage_config = settings.get_storage_config()
+            self.storage_client = StorageClient(**storage_config)
+            self.cloud_enabled = True
+            self.logger.info(
+                f"Cloud storage initialized: {storage_config['bucket_name']}"
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize cloud storage: {e}")
+            self.cloud_enabled = False
 
     async def load_data(
         self, symbol: str, timeframe: TimeFrame, data_path: Optional[Path] = None
@@ -72,7 +67,7 @@ class CloudDataLoader(IDataLoader):
 
         Priority order:
         1. Valid cached cloud data (if within TTL)
-        2. Fresh cloud data (download and cache)
+        2. Fresh cloud data (download and cache, update local)
         3. Local data files (fallback)
         """
         self.logger.info(f"Loading data for {symbol}_{timeframe.value}")
@@ -97,6 +92,10 @@ class CloudDataLoader(IDataLoader):
                 if cloud_data is not None:
                     # Cache the downloaded data
                     await self._cache_data(symbol, timeframe, cloud_data)
+
+                    # Update local storage for fallback scenarios
+                    await self._update_local_storage(symbol, timeframe, cloud_data)
+
                     self.logger.info(
                         f"Loaded data from cloud for {symbol}_{timeframe.value}"
                     )
@@ -147,37 +146,43 @@ class CloudDataLoader(IDataLoader):
     async def _load_from_cloud(
         self, symbol: str, timeframe: TimeFrame
     ) -> Optional[pd.DataFrame]:
-        """Load data from cloud storage."""
-        if not self.cloud_enabled:
+        """Load data from cloud storage using storage client."""
+        if not self.cloud_enabled or not self.storage_client:
             return None
 
         try:
-            # Generate cloud object key following backtesting service pattern
-            # Format: datasets/{exchange}/{symbol}/{timeframe}/{format}/{date}/{filename}
+            # Generate cloud object keys following backtesting service pattern
             object_keys = self._generate_cloud_object_keys(symbol, timeframe)
 
             for object_key in object_keys:
                 try:
+                    # Check if object exists
+                    if not await self.storage_client.object_exists(object_key):
+                        continue
+
                     # Download to temporary file
                     with tempfile.NamedTemporaryFile(
                         suffix=".csv", delete=False
                     ) as tmp_file:
-                        self.s3_client.download_file(
-                            self.bucket, object_key, tmp_file.name
+                        success = await self.storage_client.download_file(
+                            object_key=object_key,
+                            local_file_path=tmp_file.name,
                         )
 
-                        # Load the data
-                        data = await self._load_from_file(Path(tmp_file.name))
+                        if success:
+                            # Load the data
+                            data = await self._load_from_file(Path(tmp_file.name))
 
-                        # Clean up temp file
-                        os.unlink(tmp_file.name)
+                            # Clean up temp file
+                            os.unlink(tmp_file.name)
 
-                        return data
+                            self.logger.info(
+                                f"Successfully loaded from cloud: {object_key}"
+                            )
+                            return data
 
-                except ClientError as e:
-                    error_code = e.response["Error"]["Code"]
-                    if error_code != "NoSuchKey":
-                        self.logger.warning(f"Error downloading {object_key}: {e}")
+                except Exception as e:
+                    self.logger.warning(f"Error downloading {object_key}: {e}")
                     continue
 
             self.logger.debug(f"No cloud data found for {symbol}_{timeframe.value}")
@@ -189,7 +194,7 @@ class CloudDataLoader(IDataLoader):
 
     async def _check_cloud_exists(self, symbol: str, timeframe: TimeFrame) -> bool:
         """Check if data exists in cloud storage."""
-        if not self.cloud_enabled:
+        if not self.cloud_enabled or not self.storage_client:
             return False
 
         try:
@@ -197,12 +202,10 @@ class CloudDataLoader(IDataLoader):
 
             for object_key in object_keys:
                 try:
-                    self.s3_client.head_object(Bucket=self.bucket, Key=object_key)
-                    return True
-                except ClientError as e:
-                    error_code = e.response["Error"]["Code"]
-                    if error_code != "404":
-                        self.logger.warning(f"Error checking {object_key}: {e}")
+                    if await self.storage_client.object_exists(object_key):
+                        return True
+                except Exception as e:
+                    self.logger.warning(f"Error checking {object_key}: {e}")
                     continue
 
             return False
@@ -242,10 +245,20 @@ class CloudDataLoader(IDataLoader):
                         f"{symbol.upper()}_{timeframe.value}.{format_type}",
                         f"{symbol.lower()}_{timeframe.value}.{format_type}",
                         f"{exchange}_{symbol}_{timeframe.value}_{date_str}.{format_type}",
+                        f"data.{format_type}",  # Generic filename
                     ]
 
                     for filename in filenames:
-                        object_key = f"datasets/{exchange}/{symbol}/{timeframe.value}/{format_type}/{date_str}/{filename}"
+                        object_key = (
+                            self.settings.build_dataset_path(
+                                exchange=exchange,
+                                symbol=symbol,
+                                timeframe=timeframe.value,
+                                format_type=format_type,
+                                date=date_str,
+                            )
+                            + f"/{filename}"
+                        )
                         object_keys.append(object_key)
 
         return object_keys
@@ -307,6 +320,24 @@ class CloudDataLoader(IDataLoader):
     def _get_cache_file_path(self, symbol: str, timeframe: TimeFrame) -> Path:
         """Get cache file path for symbol and timeframe."""
         return self.cache_dir / f"{symbol}_{timeframe.value}_cached.csv"
+
+    # ===== Local Storage Update Methods =====
+
+    async def _update_local_storage(
+        self, symbol: str, timeframe: TimeFrame, data: pd.DataFrame
+    ) -> None:
+        """Update local storage with cloud data for fallback scenarios."""
+        try:
+            # Create local file path
+            local_file = self.data_dir / f"{symbol}_{timeframe.value}.csv"
+            local_file.parent.mkdir(parents=True, exist_ok=True)
+
+            # Save data to local storage
+            data.to_csv(local_file, index=False)
+            self.logger.info(f"Updated local storage: {local_file}")
+
+        except Exception as e:
+            self.logger.warning(f"Failed to update local storage: {e}")
 
     # ===== Local File Methods =====
 
@@ -420,7 +451,13 @@ class FileDataLoader(IDataLoader):
         else:
             self.data_dir = Path(data_dir)
 
-        self.logger = LoggerFactory.get_logger("FileDataLoader")
+        self.logger = LoggerFactory.get_logger(
+            name="file-data-loader",
+            logger_type=LoggerType.STANDARD,
+            level=LogLevel.INFO,
+            file_level=LogLevel.DEBUG,
+            log_file="logs/file_data_loader.log",
+        )
 
     async def load_data(
         self, symbol: str, timeframe: TimeFrame, data_path: Optional[Path] = None
@@ -537,3 +574,45 @@ class FileDataLoader(IDataLoader):
         )
 
         return train_data, val_data, test_data
+
+
+# ===== Data Loader Factory =====
+
+
+class DataLoaderFactory:
+    """Factory for creating data loaders based on configuration."""
+
+    @staticmethod
+    def create_data_loader(data_dir: Optional[Path] = None) -> IDataLoader:
+        """
+        Create a data loader based on configuration.
+
+        Args:
+            data_dir: Optional data directory override
+
+        Returns:
+            Configured data loader instance
+        """
+        settings = get_settings()
+        loader_type = settings.data_loader_type.lower()
+
+        if loader_type == "cloud":
+            return CloudDataLoader(data_dir)
+        elif loader_type == "local":
+            return FileDataLoader(data_dir)
+        elif loader_type == "hybrid":
+            # Hybrid mode uses CloudDataLoader which has built-in fallback
+            return CloudDataLoader(data_dir)
+        else:
+            # Default to hybrid mode
+            return CloudDataLoader(data_dir)
+
+    @staticmethod
+    def create_cloud_loader(data_dir: Optional[Path] = None) -> CloudDataLoader:
+        """Create a cloud data loader."""
+        return CloudDataLoader(data_dir)
+
+    @staticmethod
+    def create_file_loader(data_dir: Optional[Path] = None) -> FileDataLoader:
+        """Create a file data loader."""
+        return FileDataLoader(data_dir)
