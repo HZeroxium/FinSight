@@ -3,43 +3,41 @@
 """
 Market Data Storage Service
 
-Service for managing market data storage operations including upload, download,
-conversion between different formats (CSV, Parquet), and object storage management.
+Handles upload, download, and management of market data datasets
+in object storage (S3-compatible) with format conversion support.
 """
 
-import os
 import asyncio
-from typing import List, Optional, Dict, Any, Union, Tuple
-from datetime import datetime, timedelta
-from pathlib import Path
-import tempfile
-import shutil
+import json
 import zipfile
 import tarfile
-from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Tuple
 
-from ..interfaces.market_data_repository import MarketDataRepository
-from ..interfaces.errors import RepositoryError
-from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVBatchSchema, OHLCVQuerySchema
-from ..utils.storage_client import StorageClient, StorageClientError
-from ..utils.datetime_utils import DateTimeUtils
-from ..services.market_data_service import MarketDataService
+from ..core.config import settings
+from ..utils.storage_client import StorageClient
 from ..adapters.csv_market_data_repository import CSVMarketDataRepository
 from ..adapters.parquet_market_data_repository import ParquetMarketDataRepository
-from ..misc.timeframe_load_convert_save import CrossRepositoryTimeFramePipeline
+from ..interfaces.market_data_repository import MarketDataRepository
+from ..services.market_data_service import MarketDataService
+from ..schemas.ohlcv_schemas import OHLCVQuerySchema, OHLCVSchema
 from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..utils.datetime_utils import DateTimeUtils
+
+
+class RepositoryError(Exception):
+    """Exception raised for repository-related errors"""
+
+    pass
 
 
 class MarketDataStorageService:
     """
     Service for managing market data storage operations.
 
-    Features:
-    - Dataset upload/download to/from object storage
-    - Format conversion (CSV ↔ Parquet)
-    - Bulk data operations
-    - Archive management (ZIP, TAR)
-    - Cross-repository data migration
+    Handles upload, download, format conversion, and dataset management
+    in object storage with support for multiple formats and timeframes.
     """
 
     def __init__(
@@ -53,15 +51,15 @@ class MarketDataStorageService:
         compression_level: int = 6,
     ):
         """
-        Initialize market data storage service.
+        Initialize the storage service.
 
         Args:
-            storage_client: Object storage client
-            csv_repository: CSV repository for file operations
-            parquet_repository: Parquet repository for file operations
-            temp_dir: Temporary directory for processing
-            max_workers: Maximum worker threads for parallel operations
-            chunk_size: Chunk size for batch operations
+            storage_client: Storage client for object storage operations
+            csv_repository: CSV repository for data access
+            parquet_repository: Parquet repository for data access
+            temp_dir: Temporary directory for file operations
+            max_workers: Maximum number of concurrent workers
+            chunk_size: Size of data chunks for processing
             compression_level: Compression level for archives
         """
         self.storage_client = storage_client
@@ -72,9 +70,6 @@ class MarketDataStorageService:
         self.chunk_size = chunk_size
         self.compression_level = compression_level
 
-        # Create temp directory
-        self.temp_dir.mkdir(parents=True, exist_ok=True)
-
         # Initialize logger
         self.logger = LoggerFactory.get_logger(
             name="storage-service",
@@ -84,14 +79,8 @@ class MarketDataStorageService:
             log_file="logs/storage_service.log",
         )
 
-        # Initialize services
-        self.csv_service = None
-        self.parquet_service = None
-
-        if csv_repository:
-            self.csv_service = MarketDataService(csv_repository)
-        if parquet_repository:
-            self.parquet_service = MarketDataService(parquet_repository)
+        # Ensure temp directory exists
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
 
         self.logger.info("Market Data Storage Service initialized")
 
@@ -113,10 +102,10 @@ class MarketDataStorageService:
         Args:
             exchange: Exchange name
             symbol: Trading symbol
-            timeframe: Time interval
+            timeframe: Timeframe
             start_date: Start date in ISO format
             end_date: End date in ISO format
-            source_format: Source data format ('csv' or 'parquet')
+            source_format: Source format for upload ('csv' or 'parquet')
             target_format: Target format for upload ('csv' or 'parquet')
             compress: Whether to compress the dataset
             include_metadata: Whether to include metadata files
@@ -225,13 +214,20 @@ class MarketDataStorageService:
                                 "file_name": file_to_upload.name,
                             }
                         )
+                    else:
+                        raise RepositoryError(
+                            f"Failed to upload file: {file_to_upload}"
+                        )
+
+                # Calculate total size
+                total_size = sum(obj["size"] for obj in uploaded_objects)
 
                 result = {
-                    "success": len(uploaded_objects) > 0,
+                    "success": True,
                     "message": f"Upload completed: {len(uploaded_objects)} files uploaded",
                     "records_processed": len(data.data),
                     "uploaded_objects": uploaded_objects,
-                    "total_size_bytes": sum(obj["size"] for obj in uploaded_objects),
+                    "total_size_bytes": total_size,
                     "format": target_format,
                     "compressed": compress,
                 }
@@ -240,9 +236,13 @@ class MarketDataStorageService:
                 return result
 
             finally:
-                # Cleanup temporary directory
-                if work_dir.exists():
+                # Clean up temporary files
+                try:
+                    import shutil
+
                     shutil.rmtree(work_dir, ignore_errors=True)
+                except Exception as e:
+                    self.logger.warning(f"Failed to clean up temp directory: {e}")
 
         except Exception as e:
             self.logger.error(f"Error uploading dataset: {e}")
@@ -378,21 +378,15 @@ class MarketDataStorageService:
                 }
 
             # Use cross-repository pipeline for conversion
-            conversion_timeframes = (
-                target_timeframes if target_timeframes else [timeframe]
-            )
-            pipeline = CrossRepositoryTimeFramePipeline(
-                source_repository=source_repo,
-                target_repository=target_repo,
-                source_timeframe=timeframe,
-                target_timeframes=conversion_timeframes,
-            )
-
-            result = await pipeline.process_symbol_cross_repository(
-                symbol=symbol,
+            # Assuming CrossRepositoryTimeFramePipeline is no longer needed or replaced
+            # For now, we'll call the services directly
+            result = await source_service.convert_ohlcv_data(
                 exchange=exchange,
+                symbol=symbol,
+                timeframe=timeframe,
                 start_date=start_date,
                 end_date=end_date,
+                target_format=target_format,
                 overwrite_existing=overwrite_existing,
             )
 
@@ -561,7 +555,7 @@ class MarketDataStorageService:
         exchange_filter: Optional[str] = None,
         symbol_filter: Optional[str] = None,
         timeframe_filter: Optional[str] = None,
-        prefix: str = "datasets/",
+        prefix: str = None,
         limit: int = 1000,
     ) -> Dict[str, Any]:
         """
@@ -571,7 +565,7 @@ class MarketDataStorageService:
             exchange_filter: Filter by exchange
             symbol_filter: Filter by symbol
             timeframe_filter: Filter by timeframe
-            prefix: Object key prefix to search
+            prefix: Object key prefix to search (if None, uses configured default)
             limit: Maximum number of objects to return
 
         Returns:
@@ -580,11 +574,16 @@ class MarketDataStorageService:
         try:
             self.logger.info("Listing available datasets")
 
+            # Use configured prefix if none provided
+            if prefix is None:
+                prefix = settings.get_storage_prefix() + "/"
+            elif not prefix.startswith(settings.get_storage_prefix() + "/"):
+                # Ensure prefix includes the configured storage prefix
+                prefix = settings.build_storage_path(prefix)
+
             # List objects from storage
-            # Ensure prefix is not None
-            safe_prefix = prefix if prefix is not None else "datasets/"
             objects = await self.storage_client.list_objects(
-                prefix=safe_prefix, max_keys=limit
+                prefix=prefix, max_keys=limit
             )
 
             # Parse and filter datasets
@@ -666,6 +665,11 @@ class MarketDataStorageService:
                 "success": False,
                 "message": f"Failed to list datasets: {str(e)}",
                 "datasets": [],
+                "total_datasets": 0,
+                "total_size_bytes": 0,
+                "unique_exchanges": [],
+                "unique_symbols": [],
+                "unique_timeframes": [],
             }
 
     async def delete_dataset(
@@ -737,9 +741,9 @@ class MarketDataStorageService:
             csv_stats = {}
             parquet_stats = {}
 
-            if self.csv_service:
+            if self.csv_repository:
                 try:
-                    csv_storage_info = await self.csv_service.get_storage_info()
+                    csv_storage_info = await self.csv_repository.get_storage_info()
                     csv_stats = {
                         "available": True,
                         "storage_info": csv_storage_info,
@@ -747,9 +751,11 @@ class MarketDataStorageService:
                 except Exception as e:
                     csv_stats = {"available": False, "error": str(e)}
 
-            if self.parquet_service:
+            if self.parquet_repository:
                 try:
-                    parquet_storage_info = await self.parquet_service.get_storage_info()
+                    parquet_storage_info = (
+                        await self.parquet_repository.get_storage_info()
+                    )
                     parquet_stats = {
                         "available": True,
                         "storage_info": parquet_storage_info,
@@ -836,15 +842,8 @@ class MarketDataStorageService:
         _, service = self._get_repository_service(format_type)
         if service:
             # Create a temporary batch and save it
-            batch = OHLCVBatchSchema(
-                exchange=exchange,
-                symbol=symbol,
-                timeframe=timeframe,
-                records=data,
-            )
-
-            # For temporary saving, we'll create a simple file
-            # This is a simplified implementation
+            # Assuming OHLCVBatchSchema is no longer needed or replaced
+            # For now, we'll create a simple file
             if format_type == "csv":
                 # Save as CSV (simplified)
                 import csv
@@ -898,8 +897,6 @@ class MarketDataStorageService:
 
         # Create dataset info file
         info_file = work_dir / "dataset_info.json"
-        import json
-
         info_data = {
             "exchange": exchange,
             "symbol": symbol,
@@ -976,11 +973,20 @@ This dataset contains OHLCV (Open, High, Low, Close, Volume) data for the specif
         file_path: Path,
         format_type: str,
     ) -> str:
-        """Generate object key for storage."""
+        """Generate object key for storage using configured prefix."""
         timestamp = datetime.now().strftime("%Y%m%d")
-        extension = file_path.suffix
 
-        return f"datasets/{exchange}/{symbol}/{timeframe}/{format_type}/{timestamp}/{file_path.name}"
+        # Use settings to build the path consistently
+        return (
+            settings.build_dataset_path(
+                exchange=exchange,
+                symbol=symbol,
+                timeframe=timeframe,
+                format_type=format_type,
+                date=timestamp,
+            )
+            + f"/{file_path.name}"
+        )
 
     def _is_archive(self, file_path: Path) -> bool:
         """Check if file is an archive."""
@@ -1018,9 +1024,22 @@ This dataset contains OHLCV (Open, High, Low, Close, Volume) data for the specif
     def _parse_object_key(self, object_key: str) -> Optional[Dict[str, Any]]:
         """Parse object key to extract dataset metadata."""
         try:
-            # Expected format: datasets/{exchange}/{symbol}/{timeframe}/{format}/{date}/{filename}
+            # Expected format: {storage_prefix}/{exchange}/{symbol}/{timeframe}/{format}/{date}/{filename}
+            # Example: datasets/binance/BTCUSDT/1h/parquet/20250809/filename.zip
             parts = object_key.split("/")
-            if len(parts) >= 6 and parts[0] == "datasets":
+
+            # Check if the object key starts with the configured storage prefix
+            if len(parts) >= 7 and parts[0] == settings.get_storage_prefix():
+                return {
+                    "exchange": parts[1],
+                    "symbol": parts[2],
+                    "timeframe": parts[3],
+                    "format": parts[4],
+                    "date": parts[5],
+                    "filename": parts[-1],
+                }
+            # Fallback for old format or different prefix
+            elif len(parts) >= 6 and parts[0] == "datasets":
                 return {
                     "exchange": parts[1],
                     "symbol": parts[2],

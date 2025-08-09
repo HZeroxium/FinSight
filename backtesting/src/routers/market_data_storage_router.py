@@ -8,6 +8,7 @@ RESTful endpoints for managing market data storage operations including:
 - Dataset format conversion (CSV ↔ Parquet)
 - Bulk data operations and archiving
 - Storage statistics and monitoring
+- User-friendly shortcut endpoints for common operations
 
 Based on the storage service layer and cross-repository pipeline logic.
 """
@@ -19,7 +20,7 @@ from datetime import datetime
 
 from ..services.market_data_storage_service import MarketDataStorageService
 from ..misc.timeframe_load_convert_save import CrossRepositoryTimeFramePipeline
-from ..schemas.enums import Exchange, TimeFrame
+from ..schemas.enums import Exchange, TimeFrame, CryptoSymbol, RepositoryType
 from ..utils.dependencies import (
     require_admin_access,
     get_storage_service,
@@ -40,33 +41,67 @@ logger = LoggerFactory.get_logger(
 router = APIRouter(prefix="/storage", tags=["market-data-storage"])
 
 
-# Request/Response schemas
+# Request/Response schemas with user-friendly defaults
 class DatasetUploadRequest(BaseModel):
-    """Request schema for dataset upload operations."""
+    """Request schema for dataset upload operations with smart defaults."""
 
-    exchange: str = Field(default=Exchange.BINANCE.value, description="Exchange name")
-    symbol: str = Field(description="Trading symbol (e.g., BTCUSDT)")
-    timeframe: str = Field(default=TimeFrame.HOUR_1.value, description="Time interval")
-    start_date: str = Field(description="Start date in ISO format")
-    end_date: str = Field(description="End date in ISO format")
-    source_format: str = Field(
-        default="csv", description="Source data format (csv or parquet)"
+    exchange: Optional[str] = Field(
+        default=Exchange.BINANCE.value,
+        description="Exchange name (defaults to binance)",
     )
-    target_format: str = Field(
-        default="parquet", description="Target format for upload (csv or parquet)"
+    symbol: Optional[str] = Field(
+        default=CryptoSymbol.BTCUSDT.value,
+        description="Trading symbol (defaults to BTCUSDT)",
     )
-    compress: bool = Field(default=True, description="Whether to compress the dataset")
-    include_metadata: bool = Field(
-        default=True, description="Whether to include metadata files"
+    timeframe: Optional[str] = Field(
+        default=TimeFrame.HOUR_1.value, description="Time interval (defaults to 1h)"
+    )
+    start_date: Optional[str] = Field(
+        default=None,
+        description="Start date in ISO format (defaults to dataset's first date)",
+    )
+    end_date: Optional[str] = Field(
+        default=None,
+        description="End date in ISO format (defaults to dataset's last date)",
+    )
+    source_format: Optional[str] = Field(
+        default=RepositoryType.CSV.value,
+        description="Source data format (csv or parquet, defaults to csv)",
+    )
+    target_format: Optional[str] = Field(
+        default=RepositoryType.PARQUET.value,
+        description="Target format for upload (csv or parquet, defaults to parquet)",
+    )
+    compress: Optional[bool] = Field(
+        default=True, description="Whether to compress the dataset (defaults to True)"
+    )
+    include_metadata: Optional[bool] = Field(
+        default=True, description="Whether to include metadata files (defaults to True)"
     )
 
 
 class DatasetDownloadRequest(BaseModel):
-    """Request schema for dataset download operations."""
+    """Request schema for dataset download operations with smart defaults."""
 
-    object_key: str = Field(description="Object storage key for the dataset")
-    extract_archive: bool = Field(
-        default=False, description="Whether to extract archive files"
+    object_key: Optional[str] = Field(
+        default=None,
+        description="Object storage key for the dataset (auto-generated if not provided)",
+    )
+    symbol: Optional[str] = Field(
+        default="BTCUSDT",
+        description="Trading symbol for auto-generating object key (defaults to BTCUSDT)",
+    )
+    timeframe: Optional[str] = Field(
+        default=TimeFrame.HOUR_1.value,
+        description="Timeframe for auto-generating object key (defaults to 1h)",
+    )
+    exchange: Optional[str] = Field(
+        default=Exchange.BINANCE.value,
+        description="Exchange for auto-generating object key (defaults to binance)",
+    )
+    extract_archive: Optional[bool] = Field(
+        default=False,
+        description="Whether to extract archive files (defaults to False)",
     )
     target_directory: Optional[str] = Field(
         default=None, description="Target directory for extraction"
@@ -74,19 +109,40 @@ class DatasetDownloadRequest(BaseModel):
 
 
 class FormatConversionRequest(BaseModel):
-    """Request schema for data format conversion."""
+    """Request schema for data format conversion with smart defaults."""
 
-    exchange: str = Field(default=Exchange.BINANCE.value, description="Exchange name")
-    symbol: str = Field(description="Trading symbol")
-    timeframe: str = Field(description="Source timeframe")
-    start_date: str = Field(description="Start date in ISO format")
-    end_date: str = Field(description="End date in ISO format")
-    source_format: str = Field(description="Source repository format (csv or parquet)")
-    target_format: str = Field(description="Target repository format (csv or parquet)")
-    target_timeframes: Optional[List[str]] = Field(
-        default=None, description="Target timeframes for conversion (optional)"
+    exchange: Optional[str] = Field(
+        default=Exchange.BINANCE.value,
+        description="Exchange name (defaults to binance)",
     )
-    overwrite_existing: bool = Field(
+    symbol: Optional[str] = Field(
+        default=CryptoSymbol.BTCUSDT.value,
+        description="Trading symbol (defaults to BTCUSDT)",
+    )
+    timeframe: Optional[str] = Field(
+        default=TimeFrame.HOUR_1.value, description="Source timeframe (defaults to 1h)"
+    )
+    start_date: Optional[str] = Field(
+        default=None,
+        description="Start date in ISO format (defaults to dataset's first date)",
+    )
+    end_date: Optional[str] = Field(
+        default=None,
+        description="End date in ISO format (defaults to dataset's last date)",
+    )
+    source_format: Optional[str] = Field(
+        default=RepositoryType.CSV.value,
+        description="Source repository format (csv or parquet, defaults to csv)",
+    )
+    target_format: Optional[str] = Field(
+        default=RepositoryType.PARQUET.value,
+        description="Target repository format (csv or parquet, defaults to parquet)",
+    )
+    target_timeframes: Optional[List[str]] = Field(
+        default=[TimeFrame.HOUR_4.value, TimeFrame.DAY_1.value],
+        description="Target timeframes for conversion (optional)",
+    )
+    overwrite_existing: Optional[bool] = Field(
         default=False, description="Whether to overwrite existing data"
     )
 
@@ -121,6 +177,334 @@ class StorageStatsResponse(BaseModel):
 # This ensures all components use the centralized dependency injection system
 
 
+# User-friendly shortcut endpoints
+
+
+@router.get("/query/{symbol}")
+async def query_dataset_by_symbol(
+    symbol: str,
+    timeframe: Optional[str] = Query(
+        TimeFrame.HOUR_1.value, description="Timeframe to query (defaults to 1h)"
+    ),
+    exchange: Optional[str] = Query(
+        Exchange.BINANCE.value, description="Exchange name (defaults to binance)"
+    ),
+    format_type: Optional[str] = Query(
+        RepositoryType.CSV.value,
+        description="Data format to query (csv or parquet, defaults to csv)",
+    ),
+    storage_service: MarketDataStorageService = Depends(get_storage_service),
+) -> Dict[str, Any]:
+    """
+    Query dataset information by symbol and timeframe.
+
+    User-friendly endpoint that defaults exchange to "binance" and provides
+    smart defaults for common parameters.
+    """
+    try:
+        logger.info(
+            f"Querying dataset: {exchange}/{symbol}/{timeframe} ({format_type})"
+        )
+
+        # Generate object key prefix for the dataset using settings
+        from ..core.config import settings
+
+        prefix = settings.build_dataset_path(
+            exchange=exchange, symbol=symbol, timeframe=timeframe
+        )
+
+        result = await storage_service.list_datasets(
+            prefix=prefix,
+            limit=10,  # Limit to most recent datasets
+        )
+
+        datasets = result.get("datasets", [])
+        filtered_datasets = [
+            ds for ds in datasets if ds.get("format", "").lower() == format_type.lower()
+        ]
+
+        return {
+            "success": True,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "exchange": exchange,
+            "format": format_type,
+            "datasets": filtered_datasets,
+            "total_count": len(filtered_datasets),
+            "message": f"Found {len(filtered_datasets)} datasets for {symbol}/{timeframe}",
+        }
+
+    except Exception as e:
+        logger.error(f"Error querying dataset for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Dataset query failed: {str(e)}")
+
+
+@router.get("/download/{symbol}")
+async def download_dataset_by_symbol(
+    symbol: str,
+    timeframe: Optional[str] = Query(
+        TimeFrame.HOUR_1.value, description="Timeframe to download (defaults to 1h)"
+    ),
+    exchange: Optional[str] = Query(
+        Exchange.BINANCE.value, description="Exchange name (defaults to binance)"
+    ),
+    format_type: Optional[str] = Query(
+        RepositoryType.CSV.value,
+        description="Data format to download (csv or parquet, defaults to csv)",
+    ),
+    extract_archive: Optional[bool] = Query(
+        False, description="Whether to extract archive files (defaults to False)"
+    ),
+    target_directory: Optional[str] = Query(
+        None, description="Target directory for extraction"
+    ),
+    storage_service: MarketDataStorageService = Depends(get_storage_service),
+    _: bool = Depends(require_admin_access),
+) -> Dict[str, Any]:
+    """
+    Download dataset by symbol and timeframe.
+
+    User-friendly endpoint that automatically generates the object key
+    based on symbol, timeframe, and exchange parameters.
+    """
+    try:
+        logger.info(
+            f"Downloading dataset: {exchange}/{symbol}/{timeframe} ({format_type})"
+        )
+
+        # Generate object key for the dataset
+        object_key = f"{exchange}/{symbol}/{timeframe}/data.{format_type}"
+
+        result = await storage_service.download_dataset(
+            object_key=object_key,
+            extract_archives=extract_archive,
+            target_directory=target_directory,
+        )
+
+        if result["success"]:
+            logger.info(f"Dataset download completed: {result['message']}")
+        else:
+            logger.warning(f"Dataset download failed: {result['message']}")
+
+        return {
+            **result,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "exchange": exchange,
+            "format": format_type,
+            "object_key": object_key,
+        }
+
+    except Exception as e:
+        logger.error(f"Error downloading dataset for {symbol}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Dataset download failed: {str(e)}"
+        )
+
+
+@router.post("/upload/{symbol}")
+async def upload_dataset_by_symbol(
+    symbol: str,
+    timeframe: Optional[str] = Query(
+        TimeFrame.HOUR_1.value, description="Timeframe to upload (defaults to 1h)"
+    ),
+    exchange: Optional[str] = Query(
+        Exchange.BINANCE.value, description="Exchange name (defaults to binance)"
+    ),
+    source_format: Optional[str] = Query(
+        RepositoryType.CSV.value,
+        description="Source data format (csv or parquet, defaults to csv)",
+    ),
+    target_format: Optional[str] = Query(
+        RepositoryType.PARQUET.value,
+        description="Target format for upload (csv or parquet, defaults to parquet)",
+    ),
+    start_date: Optional[str] = Query(
+        default=None,
+        description="Start date in ISO format (defaults to dataset's first date)",
+    ),
+    end_date: Optional[str] = Query(
+        default=None,
+        description="End date in ISO format (defaults to dataset's last date)",
+    ),
+    compress: Optional[bool] = Query(
+        default=True, description="Whether to compress the dataset (defaults to True)"
+    ),
+    include_metadata: Optional[bool] = Query(
+        default=True, description="Whether to include metadata files (defaults to True)"
+    ),
+    storage_service: MarketDataStorageService = Depends(get_storage_service),
+    _: bool = Depends(require_admin_access),
+) -> Dict[str, Any]:
+    """
+    Upload dataset by symbol and timeframe.
+
+    User-friendly endpoint that provides smart defaults for all parameters
+    and automatically handles date ranges if not specified.
+
+    If start_date and end_date are not provided, the endpoint will automatically
+    determine the full date range of the available dataset.
+    """
+    try:
+        logger.info(f"Uploading dataset: {exchange}/{symbol}/{timeframe}")
+
+        # If dates are not provided, try to get them from the dataset
+        if not start_date or not end_date:
+            logger.info("No date range specified, attempting to get full dataset range")
+
+            # Get source repository to determine data range
+            source_repo, source_service = storage_service._get_repository_service(
+                source_format
+            )
+            if not source_service:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Source repository not available for format: {source_format}",
+                )
+
+            # Get the full data range from the repository
+            data_range = await source_service.repository.get_data_range(
+                exchange=exchange,
+                symbol=symbol,
+                data_type="ohlcv",
+                timeframe=timeframe,
+            )
+
+            if data_range:
+                actual_start_date = start_date or data_range["start_date"]
+                actual_end_date = end_date or data_range["end_date"]
+                logger.info(
+                    f"Auto-detected dataset range: {actual_start_date} to {actual_end_date}"
+                )
+            else:
+                # Fallback to current date if no data exists
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                actual_start_date = start_date or current_date
+                actual_end_date = end_date or current_date
+                logger.warning(
+                    f"No data found, using fallback date range: {actual_start_date} to {actual_end_date}"
+                )
+        else:
+            actual_start_date = start_date
+            actual_end_date = end_date
+
+        result = await storage_service.upload_dataset(
+            exchange=exchange,
+            symbol=symbol,
+            timeframe=timeframe,
+            start_date=actual_start_date,
+            end_date=actual_end_date,
+            source_format=source_format,
+            target_format=target_format,
+            compress=compress,
+            include_metadata=include_metadata,
+        )
+
+        if result["success"]:
+            logger.info(f"Dataset upload completed: {result['message']}")
+        else:
+            logger.warning(f"Dataset upload failed: {result['message']}")
+
+        return {
+            **result,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "exchange": exchange,
+            "source_format": source_format,
+            "target_format": target_format,
+            "start_date": actual_start_date,
+            "end_date": actual_end_date,
+            "auto_detected_range": not (start_date and end_date),
+        }
+
+    except Exception as e:
+        logger.error(f"Error uploading dataset for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=f"Dataset upload failed: {str(e)}")
+
+
+@router.get("/list/simple")
+async def list_datasets_simple(
+    symbol: Optional[str] = Query(
+        default=CryptoSymbol.BTCUSDT.value, description="Filter by trading symbol"
+    ),
+    timeframe: Optional[str] = Query(
+        default=TimeFrame.HOUR_1.value, description="Filter by timeframe"
+    ),
+    exchange: Optional[str] = Query(
+        Exchange.BINANCE.value, description="Filter by exchange (defaults to binance)"
+    ),
+    format_type: Optional[str] = Query(
+        default=RepositoryType.CSV.value,
+        description="Filter by data format (csv or parquet)",
+    ),
+    limit: int = Query(
+        50,
+        ge=1,
+        le=500,
+        description="Maximum number of objects to return (defaults to 50)",
+    ),
+    storage_service: MarketDataStorageService = Depends(get_storage_service),
+) -> Dict[str, Any]:
+    """
+    List datasets with simple filtering options.
+
+    User-friendly endpoint that allows filtering by symbol, timeframe, exchange,
+    and format with smart defaults.
+    """
+    try:
+        # Import settings for prefix building
+        from ..core.config import settings
+
+        # Build prefix based on provided filters using settings
+        if symbol and timeframe:
+            prefix = settings.build_dataset_path(
+                exchange=exchange, symbol=symbol, timeframe=timeframe
+            )
+        elif symbol:
+            prefix = settings.build_storage_path(exchange, symbol)
+        elif timeframe:
+            prefix = settings.build_storage_path(exchange, timeframe)
+        else:
+            prefix = settings.build_storage_path(exchange)
+
+        logger.info(
+            f"Listing datasets with filters: symbol={symbol}, timeframe={timeframe}, exchange={exchange}, format={format_type}"
+        )
+
+        result = await storage_service.list_datasets(
+            prefix=prefix,
+            limit=limit,
+        )
+
+        datasets = result.get("datasets", [])
+
+        # Apply format filter if specified
+        if format_type:
+            datasets = [
+                ds
+                for ds in datasets
+                if ds.get("format", "").lower() == format_type.lower()
+            ]
+
+        return {
+            "success": True,
+            "filters": {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "exchange": exchange,
+                "format": format_type,
+            },
+            "datasets": datasets,
+            "total_count": len(datasets),
+            "limit": limit,
+            "message": f"Found {len(datasets)} datasets matching criteria",
+        }
+
+    except Exception as e:
+        logger.error(f"Error listing datasets: {e}")
+        raise HTTPException(status_code=500, detail=f"Dataset listing failed: {str(e)}")
+
+
 # Storage management endpoints
 
 
@@ -134,28 +518,83 @@ async def upload_dataset(
     Upload a dataset to object storage.
 
     Supports format conversion and compression during upload.
+
+    If start_date and end_date are not provided, the endpoint will automatically
+    determine the full date range of the available dataset.
     """
     try:
-        logger.info(
-            f"Starting dataset upload: {request.exchange}/{request.symbol}/{request.timeframe}"
+        # Apply smart defaults
+        exchange = request.exchange or Exchange.BINANCE.value
+        symbol = request.symbol or "BTCUSDT"
+        timeframe = request.timeframe or TimeFrame.HOUR_1.value
+        source_format = request.source_format or "csv"
+        target_format = request.target_format or "parquet"
+        compress = request.compress if request.compress is not None else True
+        include_metadata = (
+            request.include_metadata if request.include_metadata is not None else True
         )
 
+        # Handle date defaults with auto-detection
+        if not request.start_date or not request.end_date:
+            logger.info("No date range specified, attempting to get full dataset range")
+
+            # Get source repository to determine data range
+            source_repo, source_service = storage_service._get_repository_service(
+                source_format
+            )
+            if not source_service:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Source repository not available for format: {source_format}",
+                )
+
+            # Get the full data range from the repository
+            data_range = await source_service.repository.get_data_range(
+                exchange=exchange,
+                symbol=symbol,
+                data_type="ohlcv",
+                timeframe=timeframe,
+            )
+
+            if data_range:
+                start_date = request.start_date or data_range["start_date"]
+                end_date = request.end_date or data_range["end_date"]
+                logger.info(f"Auto-detected dataset range: {start_date} to {end_date}")
+            else:
+                # Fallback to current date if no data exists
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                start_date = request.start_date or current_date
+                end_date = request.end_date or current_date
+                logger.warning(
+                    f"No data found, using fallback date range: {start_date} to {end_date}"
+                )
+        else:
+            start_date = request.start_date
+            end_date = request.end_date
+
+        logger.info(f"Starting dataset upload: {exchange}/{symbol}/{timeframe}")
+
         result = await storage_service.upload_dataset(
-            exchange=request.exchange,
-            symbol=request.symbol,
-            timeframe=request.timeframe,
-            start_date=request.start_date,
-            end_date=request.end_date,
-            source_format=request.source_format,
-            target_format=request.target_format,
-            compress=request.compress,
-            include_metadata=request.include_metadata,
+            exchange=exchange,
+            symbol=symbol,
+            timeframe=timeframe,
+            start_date=start_date,
+            end_date=end_date,
+            source_format=source_format,
+            target_format=target_format,
+            compress=compress,
+            include_metadata=include_metadata,
         )
 
         if result["success"]:
             logger.info(f"Dataset upload completed: {result['message']}")
         else:
             logger.warning(f"Dataset upload failed: {result['message']}")
+
+        # Add auto-detection info to response
+        result["auto_detected_range"] = not (request.start_date and request.end_date)
+        result["actual_start_date"] = start_date
+        result["actual_end_date"] = end_date
 
         return result
 
@@ -173,14 +612,23 @@ async def download_dataset(
     """
     Download a dataset from object storage.
 
-    Supports automatic archive extraction.
+    Supports automatic archive extraction and object key auto-generation.
     """
     try:
-        logger.info(f"Starting dataset download: {request.object_key}")
+        # Auto-generate object key if not provided
+        if not request.object_key:
+            exchange = request.exchange or Exchange.BINANCE.value
+            symbol = request.symbol or "BTCUSDT"
+            timeframe = request.timeframe or TimeFrame.HOUR_1.value
+            object_key = f"{exchange}/{symbol}/{timeframe}/data.csv"
+        else:
+            object_key = request.object_key
+
+        logger.info(f"Starting dataset download: {object_key}")
 
         result = await storage_service.download_dataset(
-            object_key=request.object_key,
-            extract_archives=request.extract_archive,
+            object_key=object_key,
+            extract_archives=request.extract_archive or False,
             target_directory=request.target_directory,
         )
 
@@ -200,7 +648,9 @@ async def download_dataset(
 
 @router.get("/list")
 async def list_datasets(
-    prefix: Optional[str] = Query(None, description="Object key prefix for filtering"),
+    prefix: Optional[str] = Query(
+        default=None, description="Object key prefix for filtering"
+    ),
     limit: int = Query(
         100, ge=1, le=1000, description="Maximum number of objects to return"
     ),
@@ -267,29 +717,83 @@ async def convert_dataset_format(
     Convert dataset between formats (CSV ↔ Parquet).
 
     Based on timeframe_load_convert_save.py logic.
+
+    If start_date and end_date are not provided, the endpoint will automatically
+    determine the full date range of the available dataset.
     """
     try:
+        # Apply smart defaults
+        exchange = request.exchange or Exchange.BINANCE.value
+        symbol = request.symbol or CryptoSymbol.BTCUSDT.value
+        timeframe = request.timeframe or TimeFrame.HOUR_1.value
+        source_format = request.source_format or RepositoryType.CSV.value
+        target_format = request.target_format or RepositoryType.PARQUET.value
+        overwrite_existing = request.overwrite_existing or False
+
+        # Handle date defaults with auto-detection
+        if not request.start_date or not request.end_date:
+            logger.info("No date range specified, attempting to get full dataset range")
+
+            # Get source repository to determine data range
+            source_repo, source_service = storage_service._get_repository_service(
+                source_format
+            )
+            if not source_service:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Source repository not available for format: {source_format}",
+                )
+
+            # Get the full data range from the repository
+            data_range = await source_service.repository.get_data_range(
+                exchange=exchange,
+                symbol=symbol,
+                data_type="ohlcv",
+                timeframe=timeframe,
+            )
+
+            if data_range:
+                start_date = request.start_date or data_range["start_date"]
+                end_date = request.end_date or data_range["end_date"]
+                logger.info(f"Auto-detected dataset range: {start_date} to {end_date}")
+            else:
+                # Fallback to current date if no data exists
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                start_date = request.start_date or current_date
+                end_date = request.end_date or current_date
+                logger.warning(
+                    f"No data found, using fallback date range: {start_date} to {end_date}"
+                )
+        else:
+            start_date = request.start_date
+            end_date = request.end_date
+
         logger.info(
-            f"Starting format conversion: {request.source_format} -> {request.target_format} "
-            f"for {request.exchange}/{request.symbol}/{request.timeframe}"
+            f"Starting format conversion: {source_format} -> {target_format} "
+            f"for {exchange}/{symbol}/{timeframe}"
         )
 
         result = await storage_service.convert_dataset_format(
-            exchange=request.exchange,
-            symbol=request.symbol,
-            timeframe=request.timeframe,
-            start_date=request.start_date,
-            end_date=request.end_date,
-            source_format=request.source_format,
-            target_format=request.target_format,
+            exchange=exchange,
+            symbol=symbol,
+            timeframe=timeframe,
+            start_date=start_date,
+            end_date=end_date,
+            source_format=source_format,
+            target_format=target_format,
             target_timeframes=request.target_timeframes,
-            overwrite_existing=request.overwrite_existing,
+            overwrite_existing=overwrite_existing,
         )
 
         if result["success"]:
             logger.info(f"Format conversion completed: {result['message']}")
         else:
             logger.warning(f"Format conversion failed: {result['message']}")
+
+        # Add auto-detection info to response
+        result["auto_detected_range"] = not (request.start_date and request.end_date)
+        result["actual_start_date"] = start_date
+        result["actual_end_date"] = end_date
 
         return result
 
@@ -303,7 +807,7 @@ async def convert_dataset_format(
 @router.post("/convert/timeframes")
 async def convert_timeframes(
     exchange: str = Query(Exchange.BINANCE.value, description="Exchange name"),
-    symbol: str = Query(..., description="Trading symbol"),
+    symbol: str = Query(CryptoSymbol.BTCUSDT.value, description="Trading symbol"),
     source_timeframe: str = Query(
         TimeFrame.HOUR_1.value, description="Source timeframe"
     ),
@@ -311,10 +815,20 @@ async def convert_timeframes(
         default=[TimeFrame.HOUR_4.value, TimeFrame.DAY_1.value],
         description="Target timeframes for conversion",
     ),
-    start_date: str = Query(..., description="Start date in ISO format"),
-    end_date: str = Query(..., description="End date in ISO format"),
-    source_format: str = Query("csv", description="Source repository format"),
-    target_format: str = Query("parquet", description="Target repository format"),
+    start_date: Optional[str] = Query(
+        default=None,
+        description="Start date in ISO format (defaults to dataset's first date)",
+    ),
+    end_date: Optional[str] = Query(
+        default=None,
+        description="End date in ISO format (defaults to dataset's last date)",
+    ),
+    source_format: str = Query(
+        default=RepositoryType.CSV.value, description="Source repository format"
+    ),
+    target_format: str = Query(
+        default=RepositoryType.PARQUET.value, description="Target repository format"
+    ),
     overwrite_existing: bool = Query(False, description="Overwrite existing data"),
     pipeline: CrossRepositoryTimeFramePipeline = Depends(get_cross_repository_pipeline),
     _: bool = Depends(require_admin_access),
@@ -323,12 +837,61 @@ async def convert_timeframes(
     Convert timeframes using the cross-repository pipeline.
 
     References timeframe_load_convert_save.py logic for data conversion.
+
+    If start_date and end_date are not provided, the endpoint will automatically
+    determine the full date range of the available dataset.
     """
     try:
         logger.info(
             f"Starting timeframe conversion: {source_timeframe} -> {target_timeframes} "
             f"for {exchange}/{symbol}"
         )
+
+        # Handle date defaults with auto-detection
+        actual_start_date = start_date
+        actual_end_date = end_date
+
+        if not start_date or not end_date:
+            logger.info("No date range specified, attempting to get full dataset range")
+
+            # Get source repository to determine data range
+            from ..adapters.csv_market_data_repository import CSVMarketDataRepository
+            from ..adapters.parquet_market_data_repository import (
+                ParquetMarketDataRepository,
+            )
+
+            if source_format == "csv":
+                source_repo = CSVMarketDataRepository()
+            elif source_format == "parquet":
+                source_repo = ParquetMarketDataRepository()
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Unsupported source format: {source_format}",
+                )
+
+            # Get the full data range from the repository
+            data_range = await source_repo.get_data_range(
+                exchange=exchange,
+                symbol=symbol,
+                data_type="ohlcv",
+                timeframe=source_timeframe,
+            )
+
+            if data_range:
+                actual_start_date = start_date or data_range["start_date"]
+                actual_end_date = end_date or data_range["end_date"]
+                logger.info(
+                    f"Auto-detected dataset range: {actual_start_date} to {actual_end_date}"
+                )
+            else:
+                # Fallback to current date if no data exists
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                actual_start_date = start_date or current_date
+                actual_end_date = end_date or current_date
+                logger.warning(
+                    f"No data found, using fallback date range: {actual_start_date} to {actual_end_date}"
+                )
 
         # Configure pipeline repositories based on formats
         if source_format != target_format:
@@ -361,8 +924,8 @@ async def convert_timeframes(
         result = await pipeline.run_cross_repository_pipeline(
             symbols=[symbol],
             exchange=exchange,
-            start_date=start_date,
-            end_date=end_date,
+            start_date=actual_start_date,
+            end_date=actual_end_date,
             overwrite_existing=overwrite_existing,
         )
 
@@ -382,6 +945,9 @@ async def convert_timeframes(
             "target_timeframes": target_timeframes,
             "statistics": result.get("statistics", {}),
             "converted_records": result.get("total_converted", 0),
+            "auto_detected_range": not (start_date and end_date),
+            "actual_start_date": actual_start_date,
+            "actual_end_date": actual_end_date,
         }
 
     except Exception as e:
@@ -498,6 +1064,12 @@ async def storage_service_info() -> Dict[str, Any]:
         "version": "1.0.0",
         "description": "Object storage management and data conversion for market data",
         "endpoints": {
+            # User-friendly shortcut endpoints
+            "query_by_symbol": "GET /storage/query/{symbol} - Query dataset by symbol and timeframe",
+            "download_by_symbol": "GET /storage/download/{symbol} - Download dataset by symbol and timeframe",
+            "upload_by_symbol": "POST /storage/upload/{symbol} - Upload dataset by symbol and timeframe",
+            "list_simple": "GET /storage/list/simple - List datasets with simple filtering",
+            # Standard endpoints
             "upload": "POST /storage/upload - Upload dataset to object storage",
             "download": "POST /storage/download - Download dataset from object storage",
             "list": "GET /storage/list - List available datasets",
@@ -524,5 +1096,16 @@ async def storage_service_info() -> Dict[str, Any]:
             "Compression and archiving",
             "Bulk operations",
             "Storage monitoring",
+            "User-friendly shortcut endpoints",
+            "Smart defaults for common parameters",
         ],
+        "smart_defaults": {
+            "exchange": "binance",
+            "symbol": "BTCUSDT",
+            "timeframe": "1h",
+            "source_format": "csv",
+            "target_format": "parquet",
+            "compress": True,
+            "include_metadata": True,
+        },
     }

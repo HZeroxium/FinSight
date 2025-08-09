@@ -172,7 +172,7 @@ class AdminService:
             )
 
             # Check if data already exists
-            data_exists = self.market_data_service.check_data_exists(
+            data_exists = await self.market_data_service.check_data_exists(
                 exchange=request.exchange,
                 symbol=request.symbol,
                 timeframe=request.timeframe,
@@ -196,7 +196,7 @@ class AdminService:
                 )
 
                 # Get final statistics
-                final_stats = self.market_data_service.get_ohlcv_stats(
+                final_stats = await self.market_data_service.get_ohlcv_stats(
                     exchange=request.exchange,
                     symbol=request.symbol,
                     timeframe=request.timeframe,
@@ -213,7 +213,7 @@ class AdminService:
                 )
             else:
                 # Data exists and no refresh requested
-                existing_stats = self.market_data_service.get_ohlcv_stats(
+                existing_stats = await self.market_data_service.get_ohlcv_stats(
                     exchange=request.exchange,
                     symbol=request.symbol,
                     timeframe=request.timeframe,
@@ -264,7 +264,7 @@ class AdminService:
             )
 
             # Fetch source data
-            source_data = self.market_data_service.get_ohlcv_data(
+            source_data = await self.market_data_service.get_ohlcv_data(
                 exchange=request.exchange,
                 symbol=request.symbol,
                 timeframe=request.source_timeframe,
@@ -295,7 +295,7 @@ class AdminService:
                 for record in converted_data:
                     record.timeframe = request.target_timeframe
 
-                success = self.market_data_service.save_ohlcv_data(
+                success = await self.market_data_service.save_ohlcv_data(
                     exchange=request.exchange,
                     symbol=request.symbol,
                     timeframe=request.target_timeframe,

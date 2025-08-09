@@ -28,7 +28,7 @@ from ..core.config import Settings
 from common.logger import LoggerFactory
 from ..factories.admin_factory import get_admin_service
 from ..utils.datetime_utils import DateTimeUtils
-from ..utils.dependencies import require_admin_access
+from ..utils.dependencies import verify_api_key as require_admin_access
 
 
 # Security scheme for API key authentication

@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 import time
+from starlette.responses import Response
 
 from .routers import admin_router
 from .routers import market_data_router, backtesting_router
@@ -196,6 +197,44 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Middleware log request và response."""
+    start_time = time.time()
+
+    # Đọc request body (phải clone lại vì body chỉ đọc 1 lần)
+    request_body = await request.body()
+
+    logger.info(f"=== Incoming Request ===")
+    logger.info(f"Client: {request.client.host if request.client else 'unknown'}")
+    logger.info(f"{request.method} {request.url}")
+    logger.info(f"Query Params: {request.query_params}")
+    logger.info(f"Body: {request_body.decode('utf-8') if request_body else None}")
+
+    # Gọi tiếp middleware/route
+    response = await call_next(request)
+
+    # Đọc response body (lưu lại vì response gốc là streaming)
+    resp_body = b""
+    async for chunk in response.body_iterator:
+        resp_body += chunk
+
+    process_time = (time.time() - start_time) * 1000
+
+    logger.info(f"=== Outgoing Response ===")
+    logger.info(f"Status code: {response.status_code}")
+    logger.info(f"Process time: {process_time:.2f} ms")
+    logger.info(f"Response Body: {resp_body.decode('utf-8') if resp_body else None}")
+
+    # Tạo lại response mới với body cũ
+    return Response(
+        content=resp_body,
+        status_code=response.status_code,
+        headers=dict(response.headers),
+        media_type=response.media_type,
+    )
+
+
 # Root endpoint
 @app.get("/", response_model=Dict[str, Any])
 async def root():
@@ -253,7 +292,7 @@ async def health_check():
 # Include routers
 app.include_router(
     admin_router.router,
-    prefix="/api/v1/admin",
+    prefix="/api/v1",
     tags=["admin"],
 )
 
