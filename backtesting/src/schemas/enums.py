@@ -106,6 +106,10 @@ class CryptoSymbol(str, Enum):
     SUIUSDT = "SUIUSDT"
 
 
+# Alias for CryptoSymbol
+Symbol = CryptoSymbol
+
+
 class TimeFrame(str, Enum):
     """Supported timeframes for market data"""
 
@@ -179,3 +183,16 @@ class TimeFrameMultiplier(Enum):
     DAY_3 = 4320
     WEEK_1 = 10080
     MONTH_1 = 43200  # Approximate: 30 days
+
+
+class BacktestingEngineType(str, Enum):
+    """Types of backtesting engines"""
+
+    BACKTRADER = "backtrader"
+    TA4J = "ta4j"
+    ZOOT = "zoot"
+    IBKR = "ibkr"
+    GATEWAY = "gateway"
+    PANDAS = "pandas"
+    CACTUS = "cactus"
+    BACKTESTR = "backtestr"

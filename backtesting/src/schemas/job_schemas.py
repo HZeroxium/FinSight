@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 
-from .enums import Exchange, TimeFrame, RepositoryType
+from .enums import Exchange, TimeFrame, RepositoryType, CryptoSymbol
 
 
 class JobStatus(str, Enum):
@@ -301,25 +301,27 @@ class ManualJobRequest(BaseModel):
     """Request to run a manual data collection job."""
 
     symbols: Optional[List[str]] = Field(
-        default=None,
+        default=["BTCUSDT", "ETHUSDT", "BNBUSDT"],
         description="Specific symbols to collect (uses config default if not provided)",
     )
     timeframes: Optional[List[str]] = Field(
-        default=None,
+        default=[
+            "1h",
+        ],
         description="Specific timeframes to collect (uses config default if not provided)",
     )
     max_lookback_days: Optional[int] = Field(
-        default=None,
+        default=30,
         ge=1,
         le=365,
         description="Maximum lookback days (uses config default if not provided)",
     )
     exchange: Optional[str] = Field(
-        default=None,
+        default=Exchange.BINANCE.value,
         description="Exchange to collect from (uses config default if not provided)",
     )
     repository_type: Optional[str] = Field(
-        default=None,
+        default=RepositoryType.CSV.value,
         description="Repository type for storage (uses config default if not provided)",
     )
     job_priority: JobPriority = Field(
@@ -378,10 +380,18 @@ class ManualJobResponse(BaseModel):
 
     status: str = Field(..., description="Job execution status")
     job_id: str = Field(..., description="Unique job identifier")
-    symbols: List[str] = Field(..., description="Symbols that were processed")
-    timeframes: List[str] = Field(..., description="Timeframes that were processed")
-    exchange: str = Field(..., description="Exchange used for data collection")
-    max_lookback_days: int = Field(..., description="Max lookback days used")
+    symbols: List[str] = Field(
+        default=[CryptoSymbol.BTCUSDT.value], description="Symbols that were processed"
+    )
+    timeframes: List[str] = Field(
+        default=[TimeFrame.HOUR_1.value], description="Timeframes that were processed"
+    )
+    exchange: str = Field(
+        default=Exchange.BINANCE.value, description="Exchange used for data collection"
+    )
+    max_lookback_days: int = Field(
+        default=30, ge=1, le=365, description="Max lookback days used"
+    )
     start_time: datetime = Field(..., description="Job start time")
     end_time: Optional[datetime] = Field(default=None, description="Job end time")
     duration_seconds: Optional[float] = Field(
@@ -565,13 +575,20 @@ class JobOperationResponse(BaseModel):
 class DataCollectionJobRequest(BaseModel):
     """Request for data collection job execution."""
 
-    symbols: List[str] = Field(..., description="List of symbols to collect")
-    timeframes: List[str] = Field(..., description="List of timeframes to collect")
+    symbols: List[str] = Field(
+        default=[CryptoSymbol.BTCUSDT.value],
+        description="List of symbols to collect",
+    )
+    timeframes: List[str] = Field(
+        default=[TimeFrame.HOUR_1.value], description="List of timeframes to collect"
+    )
     start_date: Optional[str] = Field(
-        default=None, description="Start date for data collection (ISO format)"
+        default=datetime.now().strftime("%Y-%m-%d"),
+        description="Start date for data collection (ISO format)",
     )
     end_date: Optional[str] = Field(
-        default=None, description="End date for data collection (ISO format)"
+        default=datetime.now().strftime("%Y-%m-%d"),
+        description="End date for data collection (ISO format)",
     )
     exchange: str = Field(
         default=Exchange.BINANCE.value, description="Exchange to collect from"

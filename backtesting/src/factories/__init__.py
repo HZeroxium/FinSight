@@ -6,10 +6,7 @@ with different implementations and configurations.
 """
 
 from .market_data_repository_factory import (
-    MarketDataRepositoryFactory,
-    repository_factory,
     create_repository,
-    create_repository_from_config,
 )
 
 from .backtesting_factory import (

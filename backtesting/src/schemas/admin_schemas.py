@@ -12,16 +12,29 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 
 from .ohlcv_schemas import OHLCVSchema, OHLCVStatsSchema
+from .enums import Exchange, Symbol, TimeFrame, RepositoryType
 
 
 class DataEnsureRequest(BaseModel):
     """Request schema for ensuring data availability."""
 
-    exchange: str = Field(..., description="Exchange name (e.g., binance)")
-    symbol: str = Field(..., description="Trading symbol (e.g., BTCUSDT)")
-    timeframe: str = Field(..., description="Timeframe (e.g., 1h, 1d)")
-    start_date: datetime = Field(..., description="Start date for data range")
-    end_date: datetime = Field(..., description="End date for data range")
+    exchange: str = Field(
+        default=Exchange.BINANCE.value, description="Exchange name (e.g., binance)"
+    )
+    symbol: str = Field(
+        default=Symbol.BTCUSDT.value, description="Trading symbol (e.g., BTCUSDT)"
+    )
+    timeframe: str = Field(
+        default=TimeFrame.HOUR_1.value, description="Timeframe (e.g., 1h, 1d)"
+    )
+    start_date: datetime = Field(
+        default=datetime.now().strftime("%Y-%m-%d"),
+        description="Start date for data range",
+    )
+    end_date: datetime = Field(
+        default=datetime.now().strftime("%Y-%m-%d"),
+        description="End date for data range",
+    )
     force_refresh: bool = Field(
         default=False, description="Force refresh even if data exists"
     )
@@ -50,12 +63,26 @@ class DataEnsureResponse(BaseModel):
 class TimeframeConvertRequest(BaseModel):
     """Request schema for timeframe conversion."""
 
-    exchange: str = Field(..., description="Exchange name (e.g., binance)")
-    symbol: str = Field(..., description="Trading symbol (e.g., BTCUSDT)")
-    source_timeframe: str = Field(..., description="Source timeframe (e.g., 1h)")
-    target_timeframe: str = Field(..., description="Target timeframe (e.g., 1d)")
-    start_date: datetime = Field(..., description="Start date for conversion")
-    end_date: datetime = Field(..., description="End date for conversion")
+    exchange: str = Field(
+        default=Exchange.BINANCE.value, description="Exchange name (e.g., binance)"
+    )
+    symbol: str = Field(
+        default=Symbol.BTCUSDT.value, description="Trading symbol (e.g., BTCUSDT)"
+    )
+    source_timeframe: str = Field(
+        default=TimeFrame.HOUR_1.value, description="Source timeframe (e.g., 1h)"
+    )
+    target_timeframe: str = Field(
+        default=TimeFrame.DAY_1.value, description="Target timeframe (e.g., 1d)"
+    )
+    start_date: datetime = Field(
+        default=datetime.now().strftime("%Y-%m-%d"),
+        description="Start date for conversion",
+    )
+    end_date: datetime = Field(
+        default=datetime.now().strftime("%Y-%m-%d"),
+        description="End date for conversion",
+    )
     save_converted: bool = Field(
         default=True, description="Whether to save converted data"
     )
@@ -116,10 +143,13 @@ class SystemHealthResponse(BaseModel):
 class CleanupRequest(BaseModel):
     """Request schema for data cleanup operations."""
 
-    exchange: str = Field(..., description="Exchange name")
-    symbol: str = Field(..., description="Trading symbol")
-    timeframe: str = Field(..., description="Data timeframe")
-    cutoff_date: datetime = Field(..., description="Delete data before this date")
+    exchange: str = Field(default=Exchange.BINANCE.value, description="Exchange name")
+    symbol: str = Field(default=Symbol.BTCUSDT.value, description="Trading symbol")
+    timeframe: str = Field(default=TimeFrame.HOUR_1.value, description="Data timeframe")
+    cutoff_date: datetime = Field(
+        default=datetime.now().strftime("%Y-%m-%d"),
+        description="Delete data before this date",
+    )
     confirm: bool = Field(
         default=False, description="Confirmation flag for destructive operation"
     )

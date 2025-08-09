@@ -25,6 +25,10 @@ class Settings(BaseSettings):
         default="data/market_data", env="STORAGE_BASE_DIRECTORY"
     )
 
+    # Storage prefix configuration for object storage
+    storage_prefix: str = Field(default="datasets", env="STORAGE_PREFIX")
+    storage_separator: str = Field(default="/", env="STORAGE_SEPARATOR")
+
     # MongoDB configuration
     mongodb_url: str = Field(default="mongodb://localhost:27017/", env="MONGODB_URL")
     mongodb_database: str = Field(
@@ -247,6 +251,56 @@ class Settings(BaseSettings):
                 "signature_version": self.s3_signature_version,
                 "max_pool_connections": self.s3_max_pool_connections,
             }
+
+    def get_storage_prefix(self) -> str:
+        """
+        Get the base storage prefix for object storage.
+
+        Returns:
+            Base storage prefix (e.g., "datasets")
+        """
+        return self.storage_prefix
+
+    def build_storage_path(self, *parts: str) -> str:
+        """
+        Build a storage path using the configured prefix and separator.
+
+        Args:
+            *parts: Path components to join
+
+        Returns:
+            Complete storage path
+        """
+        all_parts = [self.storage_prefix] + list(parts)
+        return self.storage_separator.join(filter(None, all_parts))
+
+    def build_dataset_path(
+        self,
+        exchange: str,
+        symbol: str,
+        timeframe: str,
+        format_type: str = None,
+        date: str = None,
+    ) -> str:
+        """
+        Build a dataset storage path.
+
+        Args:
+            exchange: Exchange name
+            symbol: Trading symbol
+            timeframe: Timeframe
+            format_type: Data format (optional)
+            date: Date (optional)
+
+        Returns:
+            Dataset storage path
+        """
+        parts = [exchange, symbol, timeframe]
+        if format_type:
+            parts.append(format_type)
+        if date:
+            parts.append(date)
+        return self.build_storage_path(*parts)
 
     model_config = SettingsConfigDict(
         env_file=".env",
