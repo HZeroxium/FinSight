@@ -4,6 +4,16 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
+from ..schemas.enums import (
+    DataLoaderType,
+    ExperimentTrackerType,
+    StorageProviderType,
+    TimeFrame,
+    CryptoSymbol,
+    ModelType,
+    TaskType,
+    ServingAdapterType,
+)
 
 
 class Settings(BaseSettings):
@@ -104,7 +114,7 @@ class Settings(BaseSettings):
 
     # Storage provider selection
     storage_provider: str = Field(
-        default="minio", env="STORAGE_PROVIDER"
+        default=StorageProviderType.MINIO.value, env="STORAGE_PROVIDER"
     )  # minio, digitalocean, aws
 
     # S3-compatible storage settings
@@ -141,7 +151,7 @@ class Settings(BaseSettings):
 
     # Data loading settings
     data_loader_type: str = Field(
-        "hybrid", env="DATA_LOADER_TYPE"
+        DataLoaderType.HYBRID.value, env="DATA_LOADER_TYPE"
     )  # local, cloud, hybrid
     cloud_data_cache_dir: Path = Field(
         default_factory=lambda: Path(__file__).parent.parent.parent
@@ -153,19 +163,28 @@ class Settings(BaseSettings):
 
     # Default symbols and timeframes for data loading
     default_symbols: List[str] = Field(
-        default_factory=lambda: ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
+        default_factory=lambda: [
+            CryptoSymbol.BTCUSDT.value,
+            CryptoSymbol.ETHUSDT.value,
+            CryptoSymbol.BNBUSDT.value,
+        ],
         env="DEFAULT_SYMBOLS",
     )
     default_timeframes: List[str] = Field(
-        default_factory=lambda: ["1h", "4h", "1d"], env="DEFAULT_TIMEFRAMES"
+        default_factory=lambda: [
+            TimeFrame.HOUR_1.value,
+            TimeFrame.HOUR_4.value,
+            TimeFrame.DAY_1.value,
+        ],
+        env="DEFAULT_TIMEFRAMES",
     )
 
     # Experiment Tracker settings
     experiment_tracker_type: str = Field(
-        "simple", env="EXPERIMENT_TRACKER_TYPE"
+        ExperimentTrackerType.SIMPLE.value, env="EXPERIMENT_TRACKER_TYPE"
     )  # simple, mlflow
     experiment_tracker_fallback: str = Field(
-        "simple", env="EXPERIMENT_TRACKER_FALLBACK"
+        ExperimentTrackerType.SIMPLE.value, env="EXPERIMENT_TRACKER_FALLBACK"
     )
 
     # MLflow settings
@@ -179,7 +198,12 @@ class Settings(BaseSettings):
     # Model saving configuration
     save_multiple_formats: bool = Field(True, env="SAVE_MULTIPLE_FORMATS")
     enabled_adapters: List[str] = Field(
-        default_factory=lambda: ["simple", "torchscript", "torchserve", "triton"],
+        default_factory=lambda: [
+            ServingAdapterType.SIMPLE.value,
+            ServingAdapterType.TORCHSCRIPT.value,
+            ServingAdapterType.TORCHSERVE.value,
+            ServingAdapterType.TRITON.value,
+        ],
         env="ENABLED_ADAPTERS",
     )
 
@@ -296,7 +320,7 @@ class Settings(BaseSettings):
         Returns:
             Dictionary with storage configuration parameters
         """
-        if self.storage_provider == "minio":
+        if self.storage_provider == StorageProviderType.MINIO.value:
             return {
                 "endpoint_url": self.s3_endpoint_url,
                 "access_key": self.s3_access_key,
@@ -308,7 +332,7 @@ class Settings(BaseSettings):
                 "signature_version": self.s3_signature_version,
                 "max_pool_connections": self.s3_max_pool_connections,
             }
-        elif self.storage_provider == "digitalocean":
+        elif self.storage_provider == StorageProviderType.DIGITALOCEAN.value:
             return {
                 "endpoint_url": self.spaces_endpoint_url,
                 "access_key": self.spaces_access_key,
@@ -320,7 +344,10 @@ class Settings(BaseSettings):
                 "signature_version": "s3v4",
                 "max_pool_connections": self.s3_max_pool_connections,
             }
-        elif self.storage_provider in ["aws", "s3"]:
+        elif self.storage_provider in [
+            StorageProviderType.AWS.value,
+            StorageProviderType.S3.value,
+        ]:
             return {
                 "endpoint_url": None,  # Use AWS default endpoint
                 "access_key": self.aws_access_key_id or self.s3_access_key,

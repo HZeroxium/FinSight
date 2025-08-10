@@ -24,6 +24,7 @@ class CryptoSymbol(str, Enum):
 
     BTCUSDT = "BTCUSDT"
     ETHUSDT = "ETHUSDT"
+    BNBUSDT = "BNBUSDT"
 
 
 class TimeFrame(str, Enum):

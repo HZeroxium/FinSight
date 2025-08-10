@@ -1,7 +1,8 @@
 # app.py
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 import uvicorn
@@ -11,13 +12,14 @@ from .routers import prediction_router, training_router
 from .routers.models import router as models_router
 from .routers.serving import router as serving_router
 from .schemas.base_schemas import HealthResponse
-from common.logger import LoggerFactory
+from common.logger import LoggerFactory, LogLevel
+
+logger = LoggerFactory.get_logger("FinSightApp", console_level=LogLevel.DEBUG)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger = LoggerFactory.get_logger("FinSightApp")
     settings = get_settings()
 
     logger.info("Starting FinSight Model Builder API")
@@ -94,6 +96,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Middleware log request và response."""
+    start_time = time.time()
+
+    # Đọc request body (phải clone lại vì body chỉ đọc 1 lần)
+    request_body = await request.body()
+
+    logger.debug(f"=== Incoming Request ===")
+    logger.debug(f"Client: {request.client.host if request.client else 'unknown'}")
+    logger.debug(f"{request.method} {request.url}")
+    logger.debug(f"Query Params: {request.query_params}")
+    logger.debug(f"Body: {request_body.decode('utf-8') if request_body else None}")
+
+    # Gọi tiếp middleware/route
+    response = await call_next(request)
+
+    # Đọc response body (lưu lại vì response gốc là streaming)
+    resp_body = b""
+    async for chunk in response.body_iterator:
+        resp_body += chunk
+
+    process_time = (time.time() - start_time) * 1000
+
+    logger.debug(f"=== Outgoing Response ===")
+    logger.debug(f"Status code: {response.status_code}")
+    logger.debug(f"Process time: {process_time:.2f} ms")
+    logger.debug(f"Response Body: {resp_body.decode('utf-8') if resp_body else None}")
+
+    # Tạo lại response mới với body cũ
+    return Response(
+        content=resp_body,
+        status_code=response.status_code,
+        headers=dict(response.headers),
+        media_type=response.media_type,
+    )
+
+
 # Include routers
 app.include_router(
     training_router
@@ -128,19 +169,25 @@ async def health_check():
 
     # Check directory availability (handle case where settings might not have these directories)
     dependencies = {}
-    
-    if hasattr(settings, 'data_dir') and settings.data_dir:
-        dependencies["data_dir"] = "available" if settings.data_dir.exists() else "missing"
+
+    if hasattr(settings, "data_dir") and settings.data_dir:
+        dependencies["data_dir"] = (
+            "available" if settings.data_dir.exists() else "missing"
+        )
     else:
         dependencies["data_dir"] = "not_configured"
-        
-    if hasattr(settings, 'models_dir') and settings.models_dir:
-        dependencies["models_dir"] = "available" if settings.models_dir.exists() else "missing"
+
+    if hasattr(settings, "models_dir") and settings.models_dir:
+        dependencies["models_dir"] = (
+            "available" if settings.models_dir.exists() else "missing"
+        )
     else:
         dependencies["models_dir"] = "not_configured"
-        
-    if hasattr(settings, 'logs_dir') and settings.logs_dir:
-        dependencies["logs_dir"] = "available" if settings.logs_dir.exists() else "missing"
+
+    if hasattr(settings, "logs_dir") and settings.logs_dir:
+        dependencies["logs_dir"] = (
+            "available" if settings.logs_dir.exists() else "missing"
+        )
     else:
         dependencies["logs_dir"] = "not_configured"
 
