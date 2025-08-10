@@ -22,9 +22,18 @@ class Settings(BaseSettings):
     base_dir: Path = Field(
         default_factory=lambda: Path(__file__).parent.parent.parent.parent
     )
-    data_dir: Path = Field(default=None, env="DATA_DIR")
-    models_dir: Path = Field(default=None, env="MODELS_DIR")
-    logs_dir: Path = Field(default=None, env="LOGS_DIR")
+    data_dir: Path = Field(
+        default_factory=lambda: Path(__file__).parent.parent.parent.parent / "data",
+        env="DATA_DIR",
+    )
+    models_dir: Path = Field(
+        default_factory=lambda: Path(__file__).parent.parent.parent.parent / "models",
+        env="MODELS_DIR",
+    )
+    logs_dir: Path = Field(
+        default_factory=lambda: Path(__file__).parent.parent.parent.parent / "logs",
+        env="LOGS_DIR",
+    )
 
     # Model management settings
     model_name_pattern: str = Field(
@@ -213,16 +222,7 @@ class Settings(BaseSettings):
         self._setup_directories()
 
     def _setup_directories(self):
-        """Set up default directories if not specified"""
-        if self.data_dir is None:
-            self.data_dir = self.base_dir / "data"
-
-        if self.models_dir is None:
-            self.models_dir = self.base_dir / "models"
-
-        if self.logs_dir is None:
-            self.logs_dir = self.base_dir / "logs"
-
+        """Create directories if they don't exist"""
         # Create directories if they don't exist
         for directory in [
             self.data_dir,
@@ -386,6 +386,8 @@ class Settings(BaseSettings):
 
 # Global settings instance
 _settings: Optional[Settings] = None
+
+settings = Settings()
 
 
 def get_settings() -> Settings:

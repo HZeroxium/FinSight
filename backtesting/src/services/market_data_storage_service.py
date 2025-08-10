@@ -79,6 +79,15 @@ class MarketDataStorageService:
             log_file="logs/storage_service.log",
         )
 
+        # Initialize services for the repositories if available
+        self.csv_service = None
+        if self.csv_repository:
+            self.csv_service = MarketDataService(self.csv_repository)
+            
+        self.parquet_service = None
+        if self.parquet_repository:
+            self.parquet_service = MarketDataService(self.parquet_repository)
+
         # Ensure temp directory exists
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -377,18 +386,38 @@ class MarketDataStorageService:
                     "message": "Required repositories not available",
                 }
 
-            # Use cross-repository pipeline for conversion
-            # Assuming CrossRepositoryTimeFramePipeline is no longer needed or replaced
-            # For now, we'll call the services directly
-            result = await source_service.convert_ohlcv_data(
+            # Convert data by reading from source and saving to target
+            # Get data from source service
+            source_data = await source_service.get_ohlcv_data(
                 exchange=exchange,
                 symbol=symbol,
                 timeframe=timeframe,
                 start_date=start_date,
                 end_date=end_date,
-                target_format=target_format,
-                overwrite_existing=overwrite_existing,
             )
+            
+            if not source_data.data:
+                return {
+                    "success": False,
+                    "message": "No data found in source repository",
+                    "total_records_processed": 0,
+                }
+            
+            # Save data to target service
+            save_success = await target_service.save_ohlcv_data(
+                exchange=exchange,
+                symbol=symbol,
+                timeframe=timeframe,
+                data=source_data.data,
+                validate=True,
+            )
+            
+            result = {
+                "success": save_success,
+                "total_records_processed": len(source_data.data) if save_success else 0,
+                "source_format": source_format,
+                "target_format": target_format,
+            }
 
             conversion_result = {
                 "success": result.get("success", False),

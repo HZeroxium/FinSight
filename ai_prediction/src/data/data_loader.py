@@ -2,14 +2,16 @@
 
 import os
 import tempfile
-import asyncio
+import zipfile
+import tarfile
+import shutil
 from datetime import datetime, timedelta
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional, List, Dict, Any
 import pandas as pd
 from pathlib import Path
 from ..interfaces.data_loader_interface import IDataLoader
 from ..schemas.enums import TimeFrame
-from common.logger.logger_factory import LoggerFactory, LoggerType, LogLevel
+from common.logger.logger_factory import LoggerFactory, LoggerType
 from ..core.config import get_settings
 from ..utils.storage_client import StorageClient
 
@@ -39,8 +41,6 @@ class CloudDataLoader(IDataLoader):
         self.logger = LoggerFactory.get_logger(
             name="cloud-data-loader",
             logger_type=LoggerType.STANDARD,
-            level=LogLevel.INFO,
-            file_level=LogLevel.DEBUG,
             log_file="logs/cloud_data_loader.log",
         )
 
@@ -146,46 +146,48 @@ class CloudDataLoader(IDataLoader):
     async def _load_from_cloud(
         self, symbol: str, timeframe: TimeFrame
     ) -> Optional[pd.DataFrame]:
-        """Load data from cloud storage using storage client."""
+        """Load data from cloud storage using smart discovery and archive extraction."""
         if not self.cloud_enabled or not self.storage_client:
             return None
 
         try:
-            # Generate cloud object keys following backtesting service pattern
-            object_keys = self._generate_cloud_object_keys(symbol, timeframe)
+            self.logger.info(f"Searching for cloud data: {symbol}_{timeframe.value}")
 
-            for object_key in object_keys:
+            # Find available datasets using smart listing
+            datasets = await self._discover_cloud_datasets(symbol, timeframe)
+
+            if not datasets:
+                self.logger.debug(
+                    f"No cloud datasets found for {symbol}_{timeframe.value}"
+                )
+                return None
+
+            # Sort datasets by preference (parquet first, then most recent)
+            sorted_datasets = self._sort_datasets_by_preference(datasets)
+
+            # Try to load from the best available dataset
+            for dataset in sorted_datasets:
                 try:
-                    # Check if object exists
-                    if not await self.storage_client.object_exists(object_key):
-                        continue
+                    self.logger.info(
+                        f"Attempting to load dataset: {dataset['object_key']}"
+                    )
+                    data = await self._download_and_extract_dataset(dataset)
 
-                    # Download to temporary file
-                    with tempfile.NamedTemporaryFile(
-                        suffix=".csv", delete=False
-                    ) as tmp_file:
-                        success = await self.storage_client.download_file(
-                            object_key=object_key,
-                            local_file_path=tmp_file.name,
+                    if data is not None:
+                        self.logger.info(
+                            f"Successfully loaded {len(data)} records from cloud"
                         )
-
-                        if success:
-                            # Load the data
-                            data = await self._load_from_file(Path(tmp_file.name))
-
-                            # Clean up temp file
-                            os.unlink(tmp_file.name)
-
-                            self.logger.info(
-                                f"Successfully loaded from cloud: {object_key}"
-                            )
-                            return data
+                        return data
 
                 except Exception as e:
-                    self.logger.warning(f"Error downloading {object_key}: {e}")
+                    self.logger.warning(
+                        f"Failed to load dataset {dataset['object_key']}: {e}"
+                    )
                     continue
 
-            self.logger.debug(f"No cloud data found for {symbol}_{timeframe.value}")
+            self.logger.warning(
+                f"Failed to load any cloud dataset for {symbol}_{timeframe.value}"
+            )
             return None
 
         except Exception as e:
@@ -193,75 +195,274 @@ class CloudDataLoader(IDataLoader):
             return None
 
     async def _check_cloud_exists(self, symbol: str, timeframe: TimeFrame) -> bool:
-        """Check if data exists in cloud storage."""
+        """Check if data exists in cloud storage using smart discovery."""
         if not self.cloud_enabled or not self.storage_client:
             return False
 
         try:
-            object_keys = self._generate_cloud_object_keys(symbol, timeframe)
-
-            for object_key in object_keys:
-                try:
-                    if await self.storage_client.object_exists(object_key):
-                        return True
-                except Exception as e:
-                    self.logger.warning(f"Error checking {object_key}: {e}")
-                    continue
-
-            return False
+            datasets = await self._discover_cloud_datasets(symbol, timeframe)
+            return len(datasets) > 0
 
         except Exception as e:
             self.logger.error(f"Failed to check cloud existence: {e}")
             return False
 
-    def _generate_cloud_object_keys(
+    async def _discover_cloud_datasets(
         self, symbol: str, timeframe: TimeFrame
-    ) -> list[str]:
+    ) -> List[Dict[str, Any]]:
         """
-        Generate possible cloud object keys for the given symbol and timeframe.
+        Discover available datasets in cloud storage using prefix-based listing.
 
-        Following the pattern from backtesting service:
-        datasets/{exchange}/{symbol}/{timeframe}/{format}/{date}/{filename}
+        Returns a list of dataset metadata dictionaries with object_key, format, date, etc.
         """
-        # Try different date patterns (recent dates first)
-        dates = []
-        current_date = datetime.now()
-        for i in range(30):  # Check last 30 days
-            date_str = (current_date - timedelta(days=i)).strftime("%Y%m%d")
-            dates.append(date_str)
+        try:
+            datasets = []
 
-        # Try different exchange and format combinations
-        exchanges = ["binance", "coinbase", "kraken"]  # Common exchanges
-        formats = ["csv", "parquet"]
+            # Search in common exchanges - prioritize binance as default
+            exchanges = ["binance"]  # Start with binance as it's most common
 
-        object_keys = []
+            for exchange in exchanges:
+                try:
+                    # Build search prefix following the backtesting pattern
+                    # {storage_prefix}/{exchange}/{symbol}/{timeframe}/
+                    prefix = self.settings.build_dataset_path(
+                        exchange=exchange, symbol=symbol, timeframe=timeframe.value
+                    )
 
-        for exchange in exchanges:
-            for format_type in formats:
-                for date_str in dates:
-                    # Try different filename patterns
-                    filenames = [
-                        f"{symbol}_{timeframe.value}.{format_type}",
-                        f"{symbol.upper()}_{timeframe.value}.{format_type}",
-                        f"{symbol.lower()}_{timeframe.value}.{format_type}",
-                        f"{exchange}_{symbol}_{timeframe.value}_{date_str}.{format_type}",
-                        f"data.{format_type}",  # Generic filename
+                    self.logger.debug(f"Searching with prefix: {prefix}")
+
+                    # List objects with this prefix
+                    objects = await self.storage_client.list_objects(
+                        prefix=prefix, max_keys=100  # Limit to avoid too many results
+                    )
+
+                    for obj in objects:
+                        dataset_info = self._parse_cloud_object_info(obj)
+                        if dataset_info:
+                            datasets.append(dataset_info)
+
+                except Exception as e:
+                    self.logger.warning(f"Error searching in exchange {exchange}: {e}")
+                    continue
+
+            self.logger.info(
+                f"Found {len(datasets)} datasets for {symbol}_{timeframe.value}"
+            )
+            return datasets
+
+        except Exception as e:
+            self.logger.error(f"Failed to discover cloud datasets: {e}")
+            return []
+
+    def _parse_cloud_object_info(self, obj: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Parse cloud object information to extract dataset metadata."""
+        try:
+            object_key = obj["key"]
+
+            # Expected format: {storage_prefix}/{exchange}/{symbol}/{timeframe}/{format}/{date}/{filename}
+            # Example: datasets/binance/BTCUSDT/1h/parquet/20250809/binance_BTCUSDT_1h_20250809_123456.zip
+            parts = object_key.split("/")
+
+            if len(parts) >= 6:
+                # Extract metadata from path
+                prefix_idx = 0
+                if parts[0] == self.settings.get_storage_prefix():
+                    prefix_idx = 1
+
+                if len(parts) >= prefix_idx + 5:
+                    exchange = parts[prefix_idx]
+                    symbol = parts[prefix_idx + 1]
+                    timeframe = parts[prefix_idx + 2]
+                    format_type = parts[prefix_idx + 3]
+                    date_str = parts[prefix_idx + 4]
+                    filename = parts[-1]
+
+                    return {
+                        "object_key": object_key,
+                        "exchange": exchange,
+                        "symbol": symbol,
+                        "timeframe": timeframe,
+                        "format": format_type,
+                        "date": date_str,
+                        "filename": filename,
+                        "size": obj.get("size", 0),
+                        "last_modified": obj.get("last_modified", ""),
+                        "is_archive": self._is_archive_file(filename),
+                    }
+
+            return None
+
+        except Exception as e:
+            self.logger.warning(f"Error parsing object info: {e}")
+            return None
+
+    def _sort_datasets_by_preference(
+        self, datasets: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Sort datasets by preference: parquet first, then most recent."""
+
+        def sort_key(dataset):
+            # Prefer parquet over csv
+            format_priority = 0 if dataset.get("format") == "parquet" else 1
+            # Prefer more recent dates (negative for reverse sort)
+            date_priority = -(
+                int(dataset.get("date", "0"))
+                if dataset.get("date", "").isdigit()
+                else 0
+            )
+            return (format_priority, date_priority)
+
+        return sorted(datasets, key=sort_key)
+
+    async def _download_and_extract_dataset(
+        self, dataset: Dict[str, Any]
+    ) -> Optional[pd.DataFrame]:
+        """Download and extract a dataset from cloud storage."""
+        try:
+            object_key = dataset["object_key"]
+            is_archive = dataset.get("is_archive", False)
+
+            # Create temporary directory for downloads
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+
+                # Download the file
+                download_file = temp_path / dataset["filename"]
+                success = await self.storage_client.download_file(
+                    object_key=object_key, local_file_path=download_file
+                )
+
+                if not success:
+                    self.logger.warning(f"Failed to download {object_key}")
+                    return None
+
+                # Extract if it's an archive
+                if is_archive:
+                    extract_dir = temp_path / "extracted"
+                    extract_dir.mkdir(exist_ok=True)
+
+                    extracted_files = await self._extract_archive(
+                        download_file, extract_dir
+                    )
+                    if not extracted_files:
+                        self.logger.warning(
+                            f"Failed to extract archive {download_file}"
+                        )
+                        return None
+
+                    # Find the main data file
+                    data_file = self._find_main_data_file(
+                        extracted_files, dataset["format"]
+                    )
+                    if not data_file:
+                        self.logger.warning(f"No data file found in extracted archive")
+                        return None
+                else:
+                    data_file = download_file
+
+                # Load the data
+                data = await self._load_from_file(data_file)
+
+                if data is not None:
+                    # Cache the data locally for future use
+                    await self._cache_data_from_cloud(dataset, data)
+
+                return data
+
+        except Exception as e:
+            self.logger.error(f"Error downloading and extracting dataset: {e}")
+            return None
+
+    def _is_archive_file(self, filename: str) -> bool:
+        """Check if filename indicates an archive file."""
+        archive_extensions = {".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2"}
+        filename_lower = filename.lower()
+        return any(filename_lower.endswith(ext) for ext in archive_extensions)
+
+    async def _extract_archive(
+        self, archive_path: Path, extract_dir: Path
+    ) -> List[Path]:
+        """Extract archive and return list of extracted files."""
+        extracted_files = []
+
+        try:
+            if archive_path.suffix.lower() == ".zip":
+                with zipfile.ZipFile(archive_path, "r") as zipf:
+                    zipf.extractall(extract_dir)
+                    extracted_files = [
+                        extract_dir / name
+                        for name in zipf.namelist()
+                        if not name.endswith("/")
                     ]
 
-                    for filename in filenames:
-                        object_key = (
-                            self.settings.build_dataset_path(
-                                exchange=exchange,
-                                symbol=symbol,
-                                timeframe=timeframe.value,
-                                format_type=format_type,
-                                date=date_str,
-                            )
-                            + f"/{filename}"
-                        )
-                        object_keys.append(object_key)
+            elif archive_path.suffix.lower() in {
+                ".tar",
+                ".tar.gz",
+                ".tgz",
+                ".tar.bz2",
+            } or str(archive_path).endswith(".tar.gz"):
+                with tarfile.open(archive_path, "r:*") as tarf:
+                    tarf.extractall(extract_dir)
+                    extracted_files = [
+                        extract_dir / name
+                        for name in tarf.getnames()
+                        if not name.endswith("/")
+                    ]
 
-        return object_keys
+            self.logger.debug(
+                f"Extracted {len(extracted_files)} files from {archive_path}"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to extract archive {archive_path}: {e}")
+
+        return [f for f in extracted_files if f.is_file()]
+
+    def _find_main_data_file(
+        self, extracted_files: List[Path], format_type: str
+    ) -> Optional[Path]:
+        """Find the main data file from extracted files."""
+        # Look for files with the expected format
+        candidates = [
+            f
+            for f in extracted_files
+            if f.suffix.lower() in [f".{format_type}", ".csv", ".parquet"]
+        ]
+
+        if not candidates:
+            return None
+
+        # Prefer files that look like main data files
+        for candidate in candidates:
+            filename_lower = candidate.name.lower()
+            if any(
+                keyword in filename_lower for keyword in ["data", "ohlcv", "candles"]
+            ):
+                return candidate
+
+        # Fall back to the largest file (likely the data file)
+        return max(candidates, key=lambda f: f.stat().st_size if f.exists() else 0)
+
+    async def _cache_data_from_cloud(
+        self, dataset: Dict[str, Any], data: pd.DataFrame
+    ) -> None:
+        """Cache cloud data locally and update local storage."""
+        try:
+            symbol = dataset["symbol"]
+            timeframe = TimeFrame(dataset["timeframe"])
+
+            # Cache in the standard cache location
+            await self._cache_data(symbol, timeframe, data)
+
+            # Also update local storage for fallback
+            await self._update_local_storage(symbol, timeframe, data)
+
+            self.logger.info(
+                f"Cached {len(data)} records for {symbol}_{timeframe.value}"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to cache cloud data: {e}")
 
     # ===== Cache Methods =====
 
@@ -454,8 +655,6 @@ class FileDataLoader(IDataLoader):
         self.logger = LoggerFactory.get_logger(
             name="file-data-loader",
             logger_type=LoggerType.STANDARD,
-            level=LogLevel.INFO,
-            file_level=LogLevel.DEBUG,
             log_file="logs/file_data_loader.log",
         )
 
