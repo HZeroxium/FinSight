@@ -686,9 +686,11 @@ class TrainingService:
                         if artifacts_logged:
                             model_name = f"{request.symbol}_{request.timeframe.value}_{request.model_type.value}"
                             try:
+                                # Use the full run-based URI for model registration
+                                model_uri = f"runs:/{run_id}/model"
                                 model_version = await experiment_tracker.register_model(
                                     name=model_name,
-                                    model_uri="model",  # Relative path in artifacts
+                                    model_uri=model_uri,
                                     run_id=run_id,
                                     description=f"Model trained for {request.symbol} {request.timeframe.value} using {request.model_type.value}",
                                     tags={
@@ -703,6 +705,10 @@ class TrainingService:
                                 )
                             except Exception as e:
                                 self.logger.warning(f"Could not register model: {e}")
+                                # Try without model registry if registration fails
+                                self.logger.info(
+                                    "Model artifacts are still logged and accessible via MLflow run"
+                                )
                         else:
                             self.logger.warning(
                                 "Skipping model registration due to artifact logging failure"

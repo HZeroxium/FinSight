@@ -487,7 +487,7 @@ class BackgroundTaskManager:
                 },
             )
 
-            # Create progress callback wrapper
+            # Create a simple progress callback that will be called from within the thread's event loop
             async def wrapped_progress_callback(
                 status: TrainingJobStatus, progress: float, message: str = "", **kwargs
             ):
@@ -496,7 +496,7 @@ class BackgroundTaskManager:
                     if job_id in self.cancelled_jobs:
                         raise asyncio.CancelledError("Job was cancelled")
 
-                    # Update worker heartbeat
+                    # Update worker heartbeat (thread-safe)
                     worker.last_heartbeat = datetime.now(timezone.utc)
 
                     # Create progress update
@@ -509,7 +509,7 @@ class BackgroundTaskManager:
                         **kwargs,
                     )
 
-                    # Update repository
+                    # Update repository - this will be called within the thread's event loop
                     await self.job_facade.update_progress(job_id, progress_update)
 
                     # Call user progress callback if provided
@@ -521,10 +521,34 @@ class BackgroundTaskManager:
                         f"Error in progress callback for job {job_id}: {e}"
                     )
 
-            # Execute training function with proper async context
-            # Note: We run the training function directly in the current async context
-            # to avoid MLflow run conflicts between different executors/threads
-            result = await training_function(request, wrapped_progress_callback)
+            # Execute training function in ThreadPoolExecutor to avoid blocking the event loop
+            # We use run_in_executor to run the CPU-intensive training in a separate thread
+            loop = asyncio.get_event_loop()
+
+            # Create a sync wrapper for the training function
+            def sync_training_wrapper():
+                # Run the async training function in a new event loop within the thread
+                import asyncio
+
+                try:
+                    # Create new event loop for this thread
+                    thread_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(thread_loop)
+
+                    # Run the training function
+                    result = thread_loop.run_until_complete(
+                        training_function(request, wrapped_progress_callback)
+                    )
+                    return result
+                finally:
+                    # Clean up the thread event loop
+                    try:
+                        thread_loop.close()
+                    except Exception:
+                        pass
+
+            # Execute in thread pool executor
+            result = await loop.run_in_executor(self.executor, sync_training_wrapper)
 
             # Calculate duration
             duration = time.time() - start_time

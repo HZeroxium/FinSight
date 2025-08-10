@@ -181,18 +181,22 @@ class Settings(BaseSettings):
 
     # Experiment Tracker settings
     experiment_tracker_type: str = Field(
-        ExperimentTrackerType.SIMPLE.value, env="EXPERIMENT_TRACKER_TYPE"
+        ExperimentTrackerType.MLFLOW.value, env="EXPERIMENT_TRACKER_TYPE"
     )  # simple, mlflow
     experiment_tracker_fallback: str = Field(
         ExperimentTrackerType.SIMPLE.value, env="EXPERIMENT_TRACKER_FALLBACK"
     )
 
     # MLflow settings
-    mlflow_tracking_uri: Optional[str] = Field(None, env="MLFLOW_TRACKING_URI")
+    mlflow_tracking_uri: Optional[str] = Field(
+        "http://localhost:5000", env="MLFLOW_TRACKING_URI"
+    )
     mlflow_experiment_name: str = Field("finsight-ml", env="MLFLOW_EXPERIMENT_NAME")
-    mlflow_artifact_root: Optional[str] = Field(None, env="MLFLOW_ARTIFACT_ROOT")
+    mlflow_artifact_root: Optional[str] = Field(
+        "s3://mlflow/", env="MLFLOW_ARTIFACT_ROOT"
+    )
     mlflow_default_artifact_root: Optional[str] = Field(
-        None, env="MLFLOW_DEFAULT_ARTIFACT_ROOT"
+        "s3://mlflow/", env="MLFLOW_DEFAULT_ARTIFACT_ROOT"
     )
 
     # Model saving configuration
