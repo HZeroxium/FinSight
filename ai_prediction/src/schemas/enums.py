@@ -37,3 +37,36 @@ class TimeFrame(str, Enum):
     HOUR_12 = "12h"
     DAY_1 = "1d"
     WEEK_1 = "1w"
+
+
+class DataLoaderType(str, Enum):
+    """Supported data loader types"""
+
+    LOCAL = "local"
+    CLOUD = "cloud"
+    HYBRID = "hybrid"
+
+
+class ExperimentTrackerType(str, Enum):
+    """Supported experiment tracker types"""
+
+    SIMPLE = "simple"
+    MLFLOW = "mlflow"
+
+
+class ServingAdapterType(str, Enum):
+    """Supported serving adapter types"""
+
+    SIMPLE = "simple"
+    TRITON = "triton"
+    TORCHSERVE = "torchserve"
+    TORCHSCRIPT = "torchscript"
+
+
+class StorageProviderType(str, Enum):
+    """Supported storage provider types"""
+
+    MINIO = "minio"
+    DIGITALOCEAN = "digitalocean"
+    AWS = "aws"
+    S3 = "s3"

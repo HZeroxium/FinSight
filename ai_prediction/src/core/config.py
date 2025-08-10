@@ -200,15 +200,72 @@ class Settings(BaseSettings):
             return [s.strip() for s in v.split(",") if s.strip()]
         return v
 
+    @field_validator("data_loader_type")
+    @classmethod
+    def validate_data_loader_type(cls, v):
+        from ..schemas.enums import DataLoaderType
+
+        try:
+            return DataLoaderType(v.lower()).value
+        except ValueError:
+            allowed_types = [loader_type.value for loader_type in DataLoaderType]
+            raise ValueError(f"data_loader_type must be one of {sorted(allowed_types)}")
+
+    @field_validator("experiment_tracker_type")
+    @classmethod
+    def validate_experiment_tracker_type(cls, v):
+        from ..schemas.enums import ExperimentTrackerType
+
+        try:
+            return ExperimentTrackerType(v.lower()).value
+        except ValueError:
+            allowed_types = [
+                tracker_type.value for tracker_type in ExperimentTrackerType
+            ]
+            raise ValueError(
+                f"experiment_tracker_type must be one of {sorted(allowed_types)}"
+            )
+
+    @field_validator("experiment_tracker_fallback")
+    @classmethod
+    def validate_experiment_tracker_fallback(cls, v):
+        from ..schemas.enums import ExperimentTrackerType
+
+        try:
+            return ExperimentTrackerType(v.lower()).value
+        except ValueError:
+            allowed_types = [
+                tracker_type.value for tracker_type in ExperimentTrackerType
+            ]
+            raise ValueError(
+                f"experiment_tracker_fallback must be one of {sorted(allowed_types)}"
+            )
+
+    @field_validator("serving_adapter_type")
+    @classmethod
+    def validate_serving_adapter_type(cls, v):
+        from ..schemas.enums import ServingAdapterType
+
+        try:
+            return ServingAdapterType(v.lower()).value
+        except ValueError:
+            allowed_types = [adapter_type.value for adapter_type in ServingAdapterType]
+            raise ValueError(
+                f"serving_adapter_type must be one of {sorted(allowed_types)}"
+            )
+
     @field_validator("storage_provider")
     @classmethod
     def validate_storage_provider(cls, v):
-        allowed_providers = {"minio", "digitalocean", "aws", "s3"}
-        if v.lower() not in allowed_providers:
+        from ..schemas.enums import StorageProviderType
+
+        try:
+            return StorageProviderType(v.lower()).value
+        except ValueError:
+            allowed_providers = [provider.value for provider in StorageProviderType]
             raise ValueError(
                 f"storage_provider must be one of {sorted(allowed_providers)}"
             )
-        return v.lower()
 
     model_config = SettingsConfigDict(
         env_file=".env",

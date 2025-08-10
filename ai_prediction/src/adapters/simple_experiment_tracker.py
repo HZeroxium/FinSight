@@ -58,11 +58,14 @@ class SimpleExperimentTracker(IExperimentTracker):
         self.logger = LoggerFactory.get_logger("SimpleExperimentTracker")
         self.logger.info(f"Simple experiment tracker initialized at {self.base_dir}")
 
-        # Create default experiment if it doesn't exist
-        asyncio.create_task(self._ensure_default_experiment())
+        # Flag to track if default experiment has been ensured
+        self._default_experiment_ensured = False
 
     async def _ensure_default_experiment(self) -> None:
         """Ensure default experiment exists."""
+        if self._default_experiment_ensured:
+            return
+
         default_exp = await self.get_experiment_by_name(
             self.settings.mlflow_experiment_name
         )
@@ -71,6 +74,8 @@ class SimpleExperimentTracker(IExperimentTracker):
                 name=self.settings.mlflow_experiment_name,
                 tags={"type": "default", "domain": "finance"},
             )
+
+        self._default_experiment_ensured = True
 
     # ===== Experiment Management =====
 
@@ -149,6 +154,9 @@ class SimpleExperimentTracker(IExperimentTracker):
         nested: bool = False,
     ) -> str:
         """Start a new experiment run."""
+        # Ensure default experiment exists
+        await self._ensure_default_experiment()
+
         if experiment_id is None:
             default_exp = await self.get_experiment_by_name(
                 self.settings.mlflow_experiment_name

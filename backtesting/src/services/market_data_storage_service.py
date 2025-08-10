@@ -83,7 +83,7 @@ class MarketDataStorageService:
         self.csv_service = None
         if self.csv_repository:
             self.csv_service = MarketDataService(self.csv_repository)
-            
+
         self.parquet_service = None
         if self.parquet_repository:
             self.parquet_service = MarketDataService(self.parquet_repository)
@@ -395,14 +395,14 @@ class MarketDataStorageService:
                 start_date=start_date,
                 end_date=end_date,
             )
-            
+
             if not source_data.data:
                 return {
                     "success": False,
                     "message": "No data found in source repository",
                     "total_records_processed": 0,
                 }
-            
+
             # Save data to target service
             save_success = await target_service.save_ohlcv_data(
                 exchange=exchange,
@@ -411,7 +411,7 @@ class MarketDataStorageService:
                 data=source_data.data,
                 validate=True,
             )
-            
+
             result = {
                 "success": save_success,
                 "total_records_processed": len(source_data.data) if save_success else 0,

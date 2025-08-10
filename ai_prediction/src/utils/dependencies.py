@@ -1,180 +1,214 @@
 # utils/dependencies.py
 
+"""
+Dependency Injection Container for AI Prediction Module
+
+This module sets up dependency injection using the dependency_injector library
+to provide clean separation of concerns and enable easy testing and configuration.
+"""
+
 from typing import Optional
-from functools import lru_cache
+from dependency_injector import containers, providers
+from pathlib import Path
 
 from ..interfaces.experiment_tracker_interface import IExperimentTracker
 from ..interfaces.data_loader_interface import IDataLoader
 from ..adapters.simple_experiment_tracker import SimpleExperimentTracker
-from ..data.data_loader import DataLoaderFactory
-from ..core.config import get_settings
+from ..data.cloud_data_loader import CloudDataLoader
+from ..data.file_data_loader import FileDataLoader
+from ..utils.storage_client import StorageClient
+from ..core.config import get_settings, Settings
+from ..schemas.enums import DataLoaderType, ExperimentTrackerType, StorageProviderType
 from common.logger.logger_factory import LoggerFactory
 
 # Initialize logger
 logger = LoggerFactory.get_logger("Dependencies")
 
-# Global instances for singleton behavior
-_experiment_tracker: Optional[IExperimentTracker] = None
-_data_loader: Optional[IDataLoader] = None
+
+def _create_data_loader(
+    loader_type: str,
+    cloud_loader: CloudDataLoader,
+    file_loader: FileDataLoader,
+) -> IDataLoader:
+    """Factory function to create data loader based on type"""
+
+    logger.info(f"Creating data loader with type: {loader_type}")
+
+    loader_type_enum = DataLoaderType(loader_type.lower())
+
+    if loader_type_enum == DataLoaderType.CLOUD:
+        logger.info("Selected CloudDataLoader")
+        return cloud_loader
+    elif loader_type_enum == DataLoaderType.LOCAL:
+        logger.info("Selected FileDataLoader")
+        return file_loader
+    elif loader_type_enum == DataLoaderType.HYBRID:
+        # Hybrid mode uses CloudDataLoader which has built-in fallback
+        logger.info("Selected CloudDataLoader (hybrid mode)")
+        return cloud_loader
+    else:
+        # Default to hybrid mode
+        logger.warning(f"Unknown loader type '{loader_type}', defaulting to hybrid")
+        return cloud_loader
 
 
-def get_experiment_tracker() -> IExperimentTracker:
-    """
-    Get experiment tracker instance with fallback logic.
+def _create_experiment_tracker(
+    tracker_type: str,
+    fallback_type: str,
+    simple_tracker: SimpleExperimentTracker,
+    settings: Settings,
+) -> IExperimentTracker:
+    """Factory function to create experiment tracker with fallback logic"""
 
-    Primary: MLflow (if available and configured)
-    Fallback: Simple file-based tracker
-
-    Returns:
-        IExperimentTracker: Configured experiment tracker
-    """
-    global _experiment_tracker
-
-    if _experiment_tracker is not None:
-        return _experiment_tracker
-
-    settings = get_settings()
-    tracker_type = settings.experiment_tracker_type.lower()
-    fallback_type = settings.experiment_tracker_fallback.lower()
+    logger.info(f"Creating experiment tracker with type: {tracker_type}")
 
     # Try primary tracker
     try:
-        if tracker_type == "mlflow":
+        tracker_type_enum = ExperimentTrackerType(tracker_type.lower())
+
+        if tracker_type_enum == ExperimentTrackerType.MLFLOW:
             from ..adapters.mlflow_experiment_tracker import MLflowExperimentTracker
 
-            _experiment_tracker = MLflowExperimentTracker(
+            tracker = MLflowExperimentTracker(
                 tracking_uri=settings.mlflow_tracking_uri,
                 experiment_name=settings.mlflow_experiment_name,
                 artifact_root=settings.mlflow_artifact_root,
             )
-            logger.info(f"Initialized MLflow experiment tracker")
+            logger.info("Initialized MLflow experiment tracker")
+            return tracker
 
-        elif tracker_type == "simple":
-            _experiment_tracker = SimpleExperimentTracker()
-            logger.info(f"Initialized Simple experiment tracker")
-
-        else:
-            raise ValueError(f"Unknown experiment tracker type: {tracker_type}")
+        elif tracker_type_enum == ExperimentTrackerType.SIMPLE:
+            logger.info("Initialized Simple experiment tracker")
+            return simple_tracker
 
     except Exception as e:
         logger.warning(f"Failed to initialize primary tracker ({tracker_type}): {e}")
 
         # Try fallback tracker
         try:
-            if fallback_type == "simple":
-                _experiment_tracker = SimpleExperimentTracker()
-                logger.info(f"Initialized fallback Simple experiment tracker")
-            else:
-                raise ValueError(f"Unknown fallback tracker type: {fallback_type}")
-
+            fallback_enum = ExperimentTrackerType(fallback_type.lower())
+            if fallback_enum == ExperimentTrackerType.SIMPLE:
+                logger.info("Initialized fallback Simple experiment tracker")
+                return simple_tracker
         except Exception as fallback_error:
             logger.error(f"Failed to initialize fallback tracker: {fallback_error}")
-            # Default to simple tracker as last resort
-            _experiment_tracker = SimpleExperimentTracker()
-            logger.info("Using default Simple experiment tracker as last resort")
 
-    return _experiment_tracker
+    # Default to simple tracker as last resort
+    logger.info("Using default Simple experiment tracker as last resort")
+    return simple_tracker
 
 
+class Container(containers.DeclarativeContainer):
+    """Main dependency injection container for AI Prediction module"""
+
+    # Configuration - using the centralized settings
+    config = providers.Object(get_settings())
+
+    # Core utilities
+    logger_factory = providers.Singleton(LoggerFactory)
+
+    # Storage client for cloud operations - we'll create it manually in a factory
+    storage_client = providers.Factory(
+        lambda: StorageClient(**get_settings().get_storage_config())
+    )
+
+    # Data loaders
+    cloud_data_loader = providers.Singleton(
+        CloudDataLoader, data_dir=config.provided.data_dir
+    )
+
+    file_data_loader = providers.Singleton(
+        FileDataLoader, data_dir=config.provided.data_dir
+    )
+
+    # Experiment trackers
+    simple_experiment_tracker = providers.Singleton(SimpleExperimentTracker)
+
+    # Factories
+    data_loader = providers.Factory(
+        _create_data_loader,
+        loader_type=config.provided.data_loader_type,
+        cloud_loader=cloud_data_loader,
+        file_loader=file_data_loader,
+    )
+
+    experiment_tracker = providers.Factory(
+        _create_experiment_tracker,
+        tracker_type=config.provided.experiment_tracker_type,
+        fallback_type=config.provided.experiment_tracker_fallback,
+        simple_tracker=simple_experiment_tracker,
+        settings=config,
+    )
+
+
+class DependencyManager:
+    """
+    Dependency Manager for easy access to container services.
+
+    Provides a high-level interface for accessing dependencies
+    and managing container configuration.
+    """
+
+    def __init__(self):
+        self.container = Container()
+        # Initialize wire
+        self.container.wire(modules=["__main__"])
+
+    def get_data_loader(self) -> IDataLoader:
+        """Get configured data loader"""
+        return self.container.data_loader()
+
+    def get_experiment_tracker(self) -> IExperimentTracker:
+        """Get configured experiment tracker"""
+        return self.container.experiment_tracker()
+
+    def get_storage_client(self) -> StorageClient:
+        """Get configured storage client"""
+        return self.container.storage_client()
+
+    def get_cloud_data_loader(self) -> CloudDataLoader:
+        """Get cloud data loader"""
+        return self.container.cloud_data_loader()
+
+    def get_file_data_loader(self) -> FileDataLoader:
+        """Get file data loader"""
+        return self.container.file_data_loader()
+
+    def reset_configuration(self) -> None:
+        """Reset container configuration to defaults"""
+        self.container.reset_last_provided()
+
+    def shutdown(self) -> None:
+        """Shutdown container and clean up resources"""
+        self.container.shutdown_resources()
+
+
+# Global dependency manager instance
+dependency_manager = DependencyManager()
+
+
+def get_dependency_manager() -> DependencyManager:
+    """Get the global dependency manager instance"""
+    return dependency_manager
+
+
+# Convenience functions for backward compatibility
 def get_data_loader() -> IDataLoader:
-    """
-    Get data loader instance based on configuration.
-
-    Types:
-    - hybrid: Cloud-first with local fallback (default)
-    - cloud: Cloud-only
-    - local: Local files only
-
-    Returns:
-        IDataLoader: Configured data loader
-    """
-    global _data_loader
-
-    if _data_loader is not None:
-        return _data_loader
-
-    try:
-        # Use the factory to create the appropriate data loader
-        _data_loader = DataLoaderFactory.create_data_loader()
-        logger.info(f"Initialized data loader: {type(_data_loader).__name__}")
-
-    except Exception as e:
-        logger.error(f"Failed to initialize data loader: {e}")
-        # Fallback to simple file loader
-        _data_loader = DataLoaderFactory.create_file_loader()
-        logger.info("Using FileDataLoader as fallback")
-
-    return _data_loader
+    """Get configured data loader (convenience function)"""
+    return dependency_manager.get_data_loader()
 
 
-def reset_experiment_tracker() -> None:
-    """Reset the experiment tracker instance (useful for testing)."""
-    global _experiment_tracker
-    _experiment_tracker = None
-    logger.info("Reset experiment tracker instance")
+def get_experiment_tracker() -> IExperimentTracker:
+    """Get configured experiment tracker (convenience function)"""
+    return dependency_manager.get_experiment_tracker()
 
 
-def reset_data_loader() -> None:
-    """Reset the data loader instance (useful for testing)."""
-    global _data_loader
-    _data_loader = None
-    logger.info("Reset data loader instance")
-
-
-def override_experiment_tracker(tracker: IExperimentTracker) -> None:
-    """
-    Override the experiment tracker instance (useful for testing).
-
-    Args:
-        tracker: IExperimentTracker instance to use
-    """
-    global _experiment_tracker
-    _experiment_tracker = tracker
-    logger.info(f"Overridden experiment tracker with {type(tracker).__name__}")
-
-
-def override_data_loader(loader: IDataLoader) -> None:
-    """
-    Override the data loader instance (useful for testing).
-
-    Args:
-        loader: IDataLoader instance to use
-    """
-    global _data_loader
-    _data_loader = loader
-    logger.info(f"Overridden data loader with {type(loader).__name__}")
-
-
-async def health_check_dependencies() -> dict:
-    """
-    Perform health check on all dependencies.
-
-    Returns:
-        dict: Health check results for all dependencies
-    """
-    results = {"experiment_tracker": False, "data_loader": False, "timestamp": None}
-
-    try:
-        # Check experiment tracker
-        tracker = get_experiment_tracker()
-        results["experiment_tracker"] = await tracker.health_check()
-
-        # Check data loader (simple existence check)
-        loader = get_data_loader()
-        results["data_loader"] = loader is not None
-
-        results["timestamp"] = logger.info("Dependency health check completed")
-
-    except Exception as e:
-        logger.error(f"Dependency health check failed: {e}")
-        results["error"] = str(e)
-
-    return results
+def get_storage_client() -> StorageClient:
+    """Get configured storage client (convenience function)"""
+    return dependency_manager.get_storage_client()
 
 
 # FastAPI dependency functions for easy injection
-
-
 async def get_experiment_tracker_dependency() -> IExperimentTracker:
     """FastAPI dependency function for experiment tracker."""
     return get_experiment_tracker()
@@ -185,7 +219,57 @@ async def get_data_loader_dependency() -> IDataLoader:
     return get_data_loader()
 
 
-# Utility functions for dependency information
+async def get_storage_client_dependency() -> StorageClient:
+    """FastAPI dependency function for storage client."""
+    return get_storage_client()
+
+
+# Health check and info functions
+async def health_check_dependencies() -> dict:
+    """
+    Perform health check on all dependencies.
+
+    Returns:
+        dict: Health check results for all dependencies
+    """
+    results = {
+        "experiment_tracker": False,
+        "data_loader": False,
+        "storage_client": False,
+        "timestamp": None,
+    }
+
+    try:
+        # Check experiment tracker
+        tracker = get_experiment_tracker()
+        if hasattr(tracker, "health_check"):
+            results["experiment_tracker"] = await tracker.health_check()
+        else:
+            results["experiment_tracker"] = tracker is not None
+
+        # Check data loader (simple existence check)
+        loader = get_data_loader()
+        results["data_loader"] = loader is not None
+
+        # Check storage client
+        storage_client = get_storage_client()
+        if hasattr(storage_client, "get_storage_info"):
+            try:
+                storage_info = await storage_client.get_storage_info()
+                results["storage_client"] = storage_info is not None
+            except Exception:
+                results["storage_client"] = False
+        else:
+            results["storage_client"] = storage_client is not None
+
+        results["timestamp"] = "Health check completed"
+        logger.info("Dependency health check completed")
+
+    except Exception as e:
+        logger.error(f"Dependency health check failed: {e}")
+        results["error"] = str(e)
+
+    return results
 
 
 def get_dependency_info() -> dict:
@@ -197,20 +281,18 @@ def get_dependency_info() -> dict:
     """
     settings = get_settings()
 
+    data_loader = dependency_manager.get_data_loader()
+    experiment_tracker = dependency_manager.get_experiment_tracker()
+
     info = {
         "experiment_tracker": {
             "type": settings.experiment_tracker_type,
             "fallback": settings.experiment_tracker_fallback,
-            "instance": (
-                type(_experiment_tracker).__name__ if _experiment_tracker else None
-            ),
+            "instance": type(experiment_tracker).__name__,
         },
         "data_loader": {
             "type": settings.data_loader_type,
-            "cloud_enabled": (
-                settings.cloud_enabled if hasattr(settings, "cloud_enabled") else False
-            ),
-            "instance": type(_data_loader).__name__ if _data_loader else None,
+            "instance": type(data_loader).__name__,
         },
         "cloud_storage": {
             "enabled": settings.storage_provider != "local",
@@ -225,3 +307,38 @@ def get_dependency_info() -> dict:
     }
 
     return info
+
+
+# Utility functions for testing and development
+def reset_experiment_tracker() -> None:
+    """Reset the experiment tracker instance (useful for testing)."""
+    dependency_manager.reset_configuration()
+    logger.info("Reset experiment tracker instance")
+
+
+def reset_data_loader() -> None:
+    """Reset the data loader instance (useful for testing)."""
+    dependency_manager.reset_configuration()
+    logger.info("Reset data loader instance")
+
+
+def override_experiment_tracker(tracker: IExperimentTracker) -> None:
+    """
+    Override the experiment tracker instance (useful for testing).
+
+    Args:
+        tracker: IExperimentTracker instance to use
+    """
+    dependency_manager.container.experiment_tracker.override(providers.Object(tracker))
+    logger.info(f"Overridden experiment tracker with {type(tracker).__name__}")
+
+
+def override_data_loader(loader: IDataLoader) -> None:
+    """
+    Override the data loader instance (useful for testing).
+
+    Args:
+        loader: IDataLoader instance to use
+    """
+    dependency_manager.container.data_loader.override(providers.Object(loader))
+    logger.info(f"Overridden data loader with {type(loader).__name__}")
