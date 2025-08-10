@@ -355,12 +355,16 @@ class IExperimentTracker(ABC):
             model_type: Model type
             config: Training configuration
         """
-        params = {
-            "symbol": symbol,
-            "timeframe": timeframe.value,
-            "model_type": model_type.value,
-            **config,
-        }
+        # Import the MLflow utilities here to avoid circular imports
+        from ..adapters.mlflow.mlflow_utils import MLflowParameterDeduplicator
+
+        # Use the parameter deduplicator to create standardized parameters
+        params = MLflowParameterDeduplicator.create_training_params(
+            symbol=symbol,
+            timeframe=timeframe.value,
+            model_type=model_type.value,
+            config=config,
+        )
         await self.log_params(run_id, params)
 
         # Set financial domain tags

@@ -28,6 +28,12 @@ from ..interfaces.experiment_tracker_interface import (
 from ..schemas.enums import TimeFrame, ModelType
 from ..core.config import get_settings
 from common.logger.logger_factory import LoggerFactory
+from .mlflow.mlflow_utils import (
+    get_run_manager,
+    MLflowParameterDeduplicator,
+    MLflowArtifactHelper,
+    MLflowMetricsValidator,
+)
 
 
 class MLflowExperimentTracker(IExperimentTracker):
@@ -201,6 +207,13 @@ class MLflowExperimentTracker(IExperimentTracker):
         """Start a new experiment run."""
 
         def _start():
+            # Ensure any existing run is properly ended first
+            if mlflow.active_run() is not None:
+                self.logger.warning(
+                    "Active MLflow run detected, ending it before starting new run"
+                )
+                mlflow.end_run()
+
             # If no experiment_id provided, use default experiment
             if experiment_id is None:
                 mlflow.set_experiment(self.experiment_name)
@@ -215,6 +228,11 @@ class MLflowExperimentTracker(IExperimentTracker):
             return run.info.run_id
 
         run_id = await self._run_in_executor(_start)
+
+        # Create run state for parameter tracking
+        run_manager = get_run_manager()
+        run_manager.create_run_state(run_id)
+
         self.logger.info(f"Started MLflow run {run_id}")
         return run_id
 
@@ -224,18 +242,46 @@ class MLflowExperimentTracker(IExperimentTracker):
         """End an experiment run."""
 
         def _end():
-            # MLflow uses different status names
-            mlflow_status = {
-                RunStatus.FINISHED: "FINISHED",
-                RunStatus.FAILED: "FAILED",
-                RunStatus.KILLED: "KILLED",
-                RunStatus.RUNNING: "RUNNING",
-            }[status]
+            try:
+                # MLflow uses different status names
+                mlflow_status = {
+                    RunStatus.FINISHED: "FINISHED",
+                    RunStatus.FAILED: "FAILED",
+                    RunStatus.KILLED: "KILLED",
+                    RunStatus.RUNNING: "RUNNING",
+                }[status]
 
-            with mlflow.start_run(run_id=run_id):
-                mlflow.end_run(status=mlflow_status)
+                # Check if there's an active run and if it matches our run_id
+                active_run = mlflow.active_run()
+                if active_run and active_run.info.run_id == run_id:
+                    # End the currently active run
+                    mlflow.end_run(status=mlflow_status)
+                else:
+                    # If no active run or different run_id, end the specific run
+                    # by temporarily starting it and then ending it
+                    if active_run:
+                        # End any other active run first
+                        mlflow.end_run()
+
+                    # Use the MLflow client to update run status directly
+                    client = mlflow.tracking.MlflowClient()
+                    client.set_terminated(run_id, status=mlflow_status)
+
+            except Exception as e:
+                self.logger.warning(f"Error ending MLflow run {run_id}: {e}")
+                # Try to force end any active run as cleanup
+                try:
+                    if mlflow.active_run():
+                        mlflow.end_run(status="FAILED")
+                except Exception:
+                    pass
 
         await self._run_in_executor(_end)
+
+        # Clean up run state
+        run_manager = get_run_manager()
+        run_manager.remove_run_state(run_id)
+
         self.logger.info(f"Ended MLflow run {run_id} with status {status.value}")
 
     async def get_run(self, run_id: str) -> Optional[RunInfo]:
@@ -257,8 +303,23 @@ class MLflowExperimentTracker(IExperimentTracker):
         """Log a parameter for the run."""
 
         def _log():
-            with mlflow.start_run(run_id=run_id):
-                mlflow.log_param(key, value)
+            # Check if parameter was already logged to avoid duplicates
+            run_manager = get_run_manager()
+            run_state = run_manager.get_run_state(run_id)
+
+            if run_state and not run_state.can_log_param(key):
+                self.logger.debug(
+                    f"Parameter {key} already logged for run {run_id}, skipping"
+                )
+                return
+
+            # Use client to log parameter directly without starting run context
+            client = mlflow.tracking.MlflowClient()
+            client.log_param(run_id, key, value)
+
+            # Mark parameter as logged
+            if run_state:
+                run_state.mark_param_logged(key)
 
         await self._run_in_executor(_log)
 
@@ -266,8 +327,29 @@ class MLflowExperimentTracker(IExperimentTracker):
         """Log multiple parameters for the run."""
 
         def _log():
-            with mlflow.start_run(run_id=run_id):
-                mlflow.log_params(params)
+            # Check which parameters can be logged to avoid duplicates
+            run_manager = get_run_manager()
+            run_state = run_manager.get_run_state(run_id)
+
+            params_to_log = {}
+            for key, value in params.items():
+                if not run_state or run_state.can_log_param(key):
+                    params_to_log[key] = value
+                    if run_state:
+                        run_state.mark_param_logged(key)
+                else:
+                    self.logger.debug(
+                        f"Parameter {key} already logged for run {run_id}, skipping"
+                    )
+
+            if not params_to_log:
+                self.logger.debug(f"No new parameters to log for run {run_id}")
+                return
+
+            # Use client to log parameters directly without starting run context
+            client = mlflow.tracking.MlflowClient()
+            for key, value in params_to_log.items():
+                client.log_param(run_id, key, value)
 
         await self._run_in_executor(_log)
 
@@ -282,13 +364,23 @@ class MLflowExperimentTracker(IExperimentTracker):
         """Log a metric for the run."""
 
         def _log():
-            with mlflow.start_run(run_id=run_id):
-                mlflow.log_metric(
-                    key,
-                    value,
-                    step=step,
-                    timestamp=int(timestamp.timestamp() * 1000) if timestamp else None,
-                )
+            # Validate and convert metric value
+            validated_key, validated_value = (
+                MLflowMetricsValidator.validate_and_convert_metric(key, value)
+            )
+
+            if validated_value is None:
+                return
+
+            # Use client to log metric directly without starting run context
+            client = mlflow.tracking.MlflowClient()
+            client.log_metric(
+                run_id,
+                validated_key,
+                validated_value,
+                timestamp=int(timestamp.timestamp() * 1000) if timestamp else None,
+                step=step,
+            )
 
         await self._run_in_executor(_log)
 
@@ -298,9 +390,17 @@ class MLflowExperimentTracker(IExperimentTracker):
         """Log multiple metrics for the run."""
 
         def _log():
-            with mlflow.start_run(run_id=run_id):
-                for key, value in metrics.items():
-                    mlflow.log_metric(key, value, step=step)
+            # Validate all metrics
+            validated_metrics = MLflowMetricsValidator.validate_metrics_dict(metrics)
+
+            if not validated_metrics:
+                self.logger.warning(f"No valid metrics to log for run {run_id}")
+                return
+
+            # Use client to log metrics directly without starting run context
+            client = mlflow.tracking.MlflowClient()
+            for key, value in validated_metrics.items():
+                client.log_metric(run_id, key, value, step=step)
 
         await self._run_in_executor(_log)
 
@@ -310,8 +410,9 @@ class MLflowExperimentTracker(IExperimentTracker):
         """Set a tag for the run."""
 
         def _set():
-            with mlflow.start_run(run_id=run_id):
-                mlflow.set_tag(key, value)
+            # Use client to set tag directly without starting run context
+            client = mlflow.tracking.MlflowClient()
+            client.set_tag(run_id, key, value)
 
         await self._run_in_executor(_set)
 
@@ -319,8 +420,10 @@ class MLflowExperimentTracker(IExperimentTracker):
         """Set multiple tags for the run."""
 
         def _set():
-            with mlflow.start_run(run_id=run_id):
-                mlflow.set_tags(tags)
+            # Use client to set tags directly without starting run context
+            client = mlflow.tracking.MlflowClient()
+            for key, value in tags.items():
+                client.set_tag(run_id, key, value)
 
         await self._run_in_executor(_set)
 
@@ -335,8 +438,9 @@ class MLflowExperimentTracker(IExperimentTracker):
         """Log an artifact for the run."""
 
         def _log():
-            with mlflow.start_run(run_id=run_id):
-                mlflow.log_artifact(str(local_path), artifact_path)
+            # Use client to log artifact directly without starting run context
+            client = mlflow.tracking.MlflowClient()
+            client.log_artifact(run_id, str(local_path), artifact_path)
 
         await self._run_in_executor(_log)
 
@@ -349,8 +453,9 @@ class MLflowExperimentTracker(IExperimentTracker):
         """Log multiple artifacts from a directory."""
 
         def _log():
-            with mlflow.start_run(run_id=run_id):
-                mlflow.log_artifacts(str(local_dir), artifact_path)
+            # Use client to log artifacts directly without starting run context
+            client = mlflow.tracking.MlflowClient()
+            client.log_artifacts(run_id, str(local_dir), artifact_path)
 
         await self._run_in_executor(_log)
 

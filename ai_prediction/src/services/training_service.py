@@ -477,31 +477,41 @@ class TrainingService:
 
             # Stage 0: Initialize experiment tracking
             await progress_callback(
-                TrainingJobStatus.INITIALIZING, 0.05, "Starting experiment tracking"
+                TrainingJobStatus.INITIALIZING,
+                0.05,
+                "Starting experiment tracking (5.0%)",
             )
 
-            # Start experiment run
+            # Start experiment run with error handling
             run_name = f"{request.symbol}_{request.timeframe.value}_{request.model_type.value}_{int(time.time())}"
-            run_id = await experiment_tracker.start_run(run_name=run_name)
+            try:
+                run_id = await experiment_tracker.start_run(run_name=run_name)
+                self.logger.info(f"Started experiment run: {run_id}")
+            except Exception as e:
+                self.logger.error(f"Failed to start experiment run: {e}")
+                # Continue without experiment tracking if it fails
+                run_id = None
 
-            # Log training configuration
-            config_dict = {}
-            if hasattr(request.config, "model_dump"):
-                config_dict = request.config.model_dump()
-            elif hasattr(request.config, "_asdict"):
-                config_dict = request.config._asdict()
-            elif hasattr(request.config, "__dict__"):
-                config_dict = vars(request.config)
+            # Log training configuration if run was started successfully
+            if run_id:
+                try:
+                    config_dict = {}
+                    if hasattr(request.config, "model_dump"):
+                        config_dict = request.config.model_dump()
+                    elif hasattr(request.config, "_asdict"):
+                        config_dict = request.config._asdict()
+                    elif hasattr(request.config, "__dict__"):
+                        config_dict = vars(request.config)
 
-            await experiment_tracker.log_training_config(
-                run_id=run_id,
-                symbol=request.symbol,
-                timeframe=request.timeframe,
-                model_type=request.model_type,
-                config=config_dict,
-            )
-
-            self.logger.info(f"Started experiment run: {run_id}")
+                    await experiment_tracker.log_training_config(
+                        run_id=run_id,
+                        symbol=request.symbol,
+                        timeframe=request.timeframe,
+                        model_type=request.model_type,
+                        config=config_dict,
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Failed to log training config: {e}")
 
             # Stage 1: Initialize
             await progress_callback(
@@ -519,7 +529,12 @@ class TrainingService:
 
             if not data_availability.get("exists", False):
                 if run_id:
-                    await experiment_tracker.end_run(run_id, RunStatus.FAILED)
+                    try:
+                        await experiment_tracker.end_run(run_id, RunStatus.FAILED)
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Failed to end run on data availability error: {e}"
+                        )
                 return {
                     "success": False,
                     "error": "No dataset available for the specified symbol and timeframe",
@@ -540,21 +555,24 @@ class TrainingService:
                 config=request.config,
             )
 
-            # Log data statistics
-            if "train_data" in data_result and "val_data" in data_result:
-                train_data = data_result["train_data"]
-                val_data = data_result["val_data"]
+            # Log data statistics if run tracking is enabled
+            if run_id and "train_data" in data_result and "val_data" in data_result:
+                try:
+                    train_data = data_result["train_data"]
+                    val_data = data_result["val_data"]
 
-                await experiment_tracker.log_params(
-                    run_id,
-                    {
-                        "train_samples": len(train_data),
-                        "val_samples": len(val_data),
-                        "total_samples": len(train_data) + len(val_data),
-                        "train_ratio": len(train_data)
-                        / (len(train_data) + len(val_data)),
-                    },
-                )
+                    await experiment_tracker.log_params(
+                        run_id,
+                        {
+                            "train_samples": len(train_data),
+                            "val_samples": len(val_data),
+                            "total_samples": len(train_data) + len(val_data),
+                            "train_ratio": len(train_data)
+                            / (len(train_data) + len(val_data)),
+                        },
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Failed to log data statistics: {e}")
 
             # Stage 4: Feature preparation
             await progress_callback(
@@ -579,7 +597,12 @@ class TrainingService:
 
             if not train_result.get("success", False):
                 if run_id:
-                    await experiment_tracker.end_run(run_id, RunStatus.FAILED)
+                    try:
+                        await experiment_tracker.end_run(run_id, RunStatus.FAILED)
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Failed to end run on training failure: {e}"
+                        )
                 return {
                     "success": False,
                     "error": train_result.get("error", "Training failed"),
@@ -587,16 +610,19 @@ class TrainingService:
                     "run_id": run_id,
                 }
 
-            # Log training and validation metrics
+            # Log training and validation metrics if run tracking is enabled
             training_metrics = train_result.get("training_metrics", {})
             validation_metrics = train_result.get("validation_metrics", {})
 
-            if training_metrics or validation_metrics:
-                await experiment_tracker.log_model_performance(
-                    run_id=run_id,
-                    training_metrics=training_metrics,
-                    validation_metrics=validation_metrics,
-                )
+            if run_id and (training_metrics or validation_metrics):
+                try:
+                    await experiment_tracker.log_model_performance(
+                        run_id=run_id,
+                        training_metrics=training_metrics,
+                        validation_metrics=validation_metrics,
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Failed to log model performance metrics: {e}")
 
             # Stage 6: Validation
             await progress_callback(
@@ -608,12 +634,12 @@ class TrainingService:
                 TrainingJobStatus.SAVING_MODEL, 0.95, "Saving trained model"
             )
 
-            # Log model artifacts and register model
+            # Log model artifacts and register model if run tracking is enabled
             model_size_bytes = None
             model_version = None
             model_path = train_result.get("model_path")
 
-            if model_path:
+            if run_id and model_path:
                 try:
                     from pathlib import Path
 
@@ -621,49 +647,69 @@ class TrainingService:
                     if model_file.exists():
                         # Get model file size
                         model_size_bytes = model_file.stat().st_size
-                        await experiment_tracker.log_param(
-                            run_id, "model_size_bytes", model_size_bytes
-                        )
-
-                        # Log model artifacts
-                        if model_file.is_file():
-                            # Log single model file
-                            await experiment_tracker.log_artifact(
-                                run_id=run_id,
-                                local_path=model_file,
-                                artifact_path="model",
-                            )
-                        else:
-                            # Log entire model directory
-                            await experiment_tracker.log_artifacts(
-                                run_id=run_id,
-                                local_dir=model_file,
-                                artifact_path="model",
-                            )
-
-                        # Register model in model registry
-                        model_name = f"{request.symbol}_{request.timeframe.value}_{request.model_type.value}"
                         try:
-                            model_version = await experiment_tracker.register_model(
-                                name=model_name,
-                                model_uri="model",  # Relative path in artifacts
-                                run_id=run_id,
-                                description=f"Model trained for {request.symbol} {request.timeframe.value} using {request.model_type.value}",
-                                tags={
-                                    "symbol": request.symbol,
-                                    "timeframe": request.timeframe.value,
-                                    "model_type": request.model_type.value,
-                                    "framework": "pytorch",
-                                },
-                            )
-                            self.logger.info(
-                                f"Registered model {model_name} version {model_version}"
+                            await experiment_tracker.log_param(
+                                run_id, "model_size_bytes", model_size_bytes
                             )
                         except Exception as e:
-                            self.logger.warning(f"Could not register model: {e}")
+                            self.logger.warning(
+                                f"Failed to log model size parameter: {e}"
+                            )
+
+                        # Log model artifacts
+                        artifacts_logged = False
+                        try:
+                            if model_file.is_file():
+                                # Log single model file
+                                await experiment_tracker.log_artifact(
+                                    run_id=run_id,
+                                    local_path=model_file,
+                                    artifact_path="model",
+                                )
+                                artifacts_logged = True
+                            else:
+                                # Log entire model directory
+                                await experiment_tracker.log_artifacts(
+                                    run_id=run_id,
+                                    local_dir=model_file,
+                                    artifact_path="model",
+                                )
+                                artifacts_logged = True
+
+                            self.logger.info(
+                                f"Successfully logged model artifacts for run {run_id}"
+                            )
+                        except Exception as e:
+                            self.logger.warning(f"Failed to log model artifacts: {e}")
+
+                        # Register model in model registry only if artifacts were logged
+                        if artifacts_logged:
+                            model_name = f"{request.symbol}_{request.timeframe.value}_{request.model_type.value}"
+                            try:
+                                model_version = await experiment_tracker.register_model(
+                                    name=model_name,
+                                    model_uri="model",  # Relative path in artifacts
+                                    run_id=run_id,
+                                    description=f"Model trained for {request.symbol} {request.timeframe.value} using {request.model_type.value}",
+                                    tags={
+                                        "symbol": request.symbol,
+                                        "timeframe": request.timeframe.value,
+                                        "model_type": request.model_type.value,
+                                        "framework": "pytorch",
+                                    },
+                                )
+                                self.logger.info(
+                                    f"Registered model {model_name} version {model_version}"
+                                )
+                            except Exception as e:
+                                self.logger.warning(f"Could not register model: {e}")
+                        else:
+                            self.logger.warning(
+                                "Skipping model registration due to artifact logging failure"
+                            )
 
                 except Exception as e:
-                    self.logger.warning(f"Could not log model artifacts: {e}")
+                    self.logger.warning(f"Could not process model artifacts: {e}")
 
             # Stage 8: Completed
             await progress_callback(
@@ -672,7 +718,10 @@ class TrainingService:
 
             # End experiment run successfully
             if run_id:
-                await experiment_tracker.end_run(run_id, RunStatus.FINISHED)
+                try:
+                    await experiment_tracker.end_run(run_id, RunStatus.FINISHED)
+                except Exception as e:
+                    self.logger.warning(f"Failed to end run successfully: {e}")
 
             return {
                 "success": True,
@@ -689,8 +738,10 @@ class TrainingService:
             if run_id:
                 try:
                     await experiment_tracker.end_run(run_id, RunStatus.FAILED)
-                except Exception:
-                    pass  # Don't fail if we can't end the run
+                except Exception as end_run_error:
+                    self.logger.warning(
+                        f"Failed to end run on exception: {end_run_error}"
+                    )
             return {
                 "success": False,
                 "error": str(e),

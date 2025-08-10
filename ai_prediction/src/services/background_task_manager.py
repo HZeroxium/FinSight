@@ -521,13 +521,10 @@ class BackgroundTaskManager:
                         f"Error in progress callback for job {job_id}: {e}"
                     )
 
-            # Execute training function
-            result = await asyncio.get_event_loop().run_in_executor(
-                self.executor,
-                lambda: asyncio.run(
-                    training_function(request, wrapped_progress_callback)
-                ),
-            )
+            # Execute training function with proper async context
+            # Note: We run the training function directly in the current async context
+            # to avoid MLflow run conflicts between different executors/threads
+            result = await training_function(request, wrapped_progress_callback)
 
             # Calculate duration
             duration = time.time() - start_time
