@@ -51,7 +51,6 @@ class MLflowExperimentTracker(IExperimentTracker):
         self,
         tracking_uri: Optional[str] = None,
         experiment_name: Optional[str] = None,
-        artifact_root: Optional[str] = None,
     ):
         """
         Initialize MLflow experiment tracker.
@@ -59,7 +58,6 @@ class MLflowExperimentTracker(IExperimentTracker):
         Args:
             tracking_uri: MLflow tracking server URI
             experiment_name: Default experiment name
-            artifact_root: Root location for artifacts
         """
         if not MLFLOW_AVAILABLE:
             raise ImportError(
@@ -74,13 +72,8 @@ class MLflowExperimentTracker(IExperimentTracker):
             tracking_uri or self.settings.mlflow_tracking_uri or "sqlite:///mlflow.db"
         )
         self.experiment_name = experiment_name or self.settings.mlflow_experiment_name
-        self.artifact_root = artifact_root or self.settings.mlflow_artifact_root
 
         mlflow.set_tracking_uri(self.tracking_uri)
-
-        if self.artifact_root:
-            # Set default artifact root if specified
-            self.settings.mlflow_default_artifact_root = self.artifact_root
 
         self.logger.info(
             f"MLflow experiment tracker initialized with URI: {self.tracking_uri}"
@@ -96,7 +89,6 @@ class MLflowExperimentTracker(IExperimentTracker):
         except Exception:
             await self.create_experiment(
                 name=self.experiment_name,
-                artifact_location=self.artifact_root,
                 tags={"type": "default", "domain": "finance"},
             )
 

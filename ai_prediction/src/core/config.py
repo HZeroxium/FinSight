@@ -10,8 +10,6 @@ from ..schemas.enums import (
     StorageProviderType,
     TimeFrame,
     CryptoSymbol,
-    ModelType,
-    TaskType,
     ServingAdapterType,
 )
 
@@ -192,12 +190,6 @@ class Settings(BaseSettings):
         "http://localhost:5000", env="MLFLOW_TRACKING_URI"
     )
     mlflow_experiment_name: str = Field("finsight-ml", env="MLFLOW_EXPERIMENT_NAME")
-    mlflow_artifact_root: Optional[str] = Field(
-        "s3://mlflow/", env="MLFLOW_ARTIFACT_ROOT"
-    )
-    mlflow_default_artifact_root: Optional[str] = Field(
-        "s3://mlflow/", env="MLFLOW_DEFAULT_ARTIFACT_ROOT"
-    )
 
     # Model saving configuration
     save_multiple_formats: bool = Field(True, env="SAVE_MULTIPLE_FORMATS")

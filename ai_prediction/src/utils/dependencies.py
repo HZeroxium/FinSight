@@ -72,7 +72,6 @@ def _create_experiment_tracker(
             tracker = MLflowExperimentTracker(
                 tracking_uri=settings.mlflow_tracking_uri,
                 experiment_name=settings.mlflow_experiment_name,
-                artifact_root=settings.mlflow_artifact_root,
             )
             logger.info("Initialized MLflow experiment tracker")
             return tracker
@@ -302,7 +301,6 @@ def get_dependency_info() -> dict:
         "mlflow": {
             "tracking_uri": settings.mlflow_tracking_uri,
             "experiment_name": settings.mlflow_experiment_name,
-            "artifact_root": settings.mlflow_artifact_root,
         },
     }
 
