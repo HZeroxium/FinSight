@@ -9,6 +9,7 @@ from .adapters.transformer_adapter import TransformerAdapter
 from .adapters.enhanced_transformer_adapter import (
     EnhancedTransformerAdapter,
 )  # New import
+from ..utils.device_manager import create_device_manager_from_settings
 from common.logger.logger_factory import LoggerFactory
 
 
@@ -46,19 +47,35 @@ class ModelFactory:
                 f"Available models: {available_models}"
             )
 
+        # Ensure device configuration is consistent
+        device_manager = create_device_manager_from_settings()
+        model_config = config.copy()
+
+        # Add device configuration if not explicitly set
+        if "device" not in model_config:
+            model_config["device"] = device_manager.device
+            logger.debug(f"Added device configuration: {device_manager.device}")
+        elif model_config["device"] != device_manager.device:
+            logger.warning(
+                f"Model config device '{model_config['device']}' differs from "
+                f"settings device '{device_manager.device}'"
+            )
+
         model_class = cls._model_registry[model_type]
-        logger.info(f"Creating model of type: {model_type}")
-        logger.debug(f"Model config: {config}")
+        logger.info(
+            f"Creating model of type: {model_type} on device: {model_config.get('device', 'default')}"
+        )
+        logger.debug(f"Model config: {model_config}")
 
         try:
-            model = model_class(config)
+            model = model_class(model_config)
             if model is None:
                 raise ValueError(f"Model class {model_class.__name__} returned None")
             logger.info(f"Successfully created model: {model_class.__name__}")
             return model
         except Exception as e:
             logger.error(f"Failed to create model {model_type}: {e}")
-            logger.error(f"Config that caused error: {config}")
+            logger.error(f"Config that caused error: {model_config}")
             raise ValueError(f"Failed to create model {model_type}: {e}")
 
     @classmethod

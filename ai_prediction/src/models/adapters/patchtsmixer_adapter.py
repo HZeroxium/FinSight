@@ -193,7 +193,7 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
             train_ds = PatchTSMixerDataset(train_sequences, train_targets)
             val_ds = PatchTSMixerDataset(val_sequences, val_targets)
 
-            # Training arguments
+            # Training arguments with device configuration
             training_args = TrainingArguments(
                 output_dir="./tmp_trainer",
                 learning_rate=kwargs.get("learning_rate", 1e-3),
@@ -207,6 +207,10 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
                 load_best_model_at_end=False,  # Disable since eval_loss is not computed
                 report_to=None,  # Disable wandb
                 remove_unused_columns=False,
+                # Force device configuration based on our centralized settings
+                no_cuda=self.device_manager.force_cpu
+                or not self.device_manager.is_gpu_enabled(),
+                use_cpu=self.device_manager.force_cpu,
             )
 
             # Create trainer
@@ -220,6 +224,12 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
 
             # Train
             self.logger.info("Starting PatchTSMixer training...")
+            self.logger.info("Device Configuration:")
+            self.logger.info(f"  device: {self.device}")
+            self.logger.info(f"  force_cpu: {self.device_manager.force_cpu}")
+            self.logger.info(f"  no_cuda: {training_args.no_cuda}")
+            self.logger.info(f"  use_cpu: {training_args.use_cpu}")
+
             self.logger.info("Hyperparameters:")
             arguments_dict = training_args.to_dict()
             # Print some hyperparameters
@@ -250,8 +260,14 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
     def _model_predict(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """Make prediction with PatchTSMixer model"""
         try:
-            # Ensure model is in eval mode
+            # Ensure model is in eval mode and on correct device
             self.model.eval()
+            self.model = self.to_device(self.model)
+
+            # Ensure input tensor is on the same device as model
+            input_tensor = self.to_device(input_tensor)
+
+            self.logger.debug(f"Making prediction on device: {self.device}")
 
             with torch.no_grad():
                 # PatchTSMixer expects past_values
@@ -370,8 +386,12 @@ class PatchTSMixerAdapter(BaseTimeSeriesAdapter):
                         "No model state dict found, using initialized weights"
                     )
 
-            self.model.to(self.device)
+            # Move model to the configured device using centralized device manager
+            self.model = self.to_device(self.model)
             self.model.eval()
+            self.logger.info(
+                f"PatchTSMixer model loaded and moved to device: {self.device}"
+            )
 
             # Load trainer info if available
             trainer_info_path = model_dir / "trainer_info.json"

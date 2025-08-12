@@ -25,6 +25,7 @@ from ..interfaces.serving_interface import (
 )
 from ..schemas.enums import ModelType, TimeFrame
 from ..core.config import get_settings
+from ..utils.device_manager import create_device_manager_from_settings
 from common.logger.logger_factory import LoggerFactory
 
 
@@ -47,6 +48,9 @@ class SimpleServingAdapter(IModelServingAdapter):
         super().__init__(config)
         self.settings = get_settings()
 
+        # Initialize device manager
+        self.device_manager = create_device_manager_from_settings()
+
         # In-memory model storage
         self._loaded_models: Dict[str, Any] = {}
         self._model_info: Dict[str, ModelInfo] = {}
@@ -59,7 +63,8 @@ class SimpleServingAdapter(IModelServingAdapter):
         self.model_timeout_seconds = config.get("model_timeout_seconds", 3600)  # 1 hour
 
         self.logger.info(
-            f"SimpleServingAdapter initialized with max_models={self.max_models_in_memory}"
+            f"SimpleServingAdapter initialized with max_models={self.max_models_in_memory}, "
+            f"device={self.device_manager.device}, force_cpu={self.device_manager.force_cpu}"
         )
 
     async def initialize(self) -> bool:

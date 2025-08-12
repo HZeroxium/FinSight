@@ -16,6 +16,7 @@ import json
 from sklearn.preprocessing import StandardScaler
 
 from ...interfaces.model_interface import ITimeSeriesModel
+from ...utils.device_manager import create_device_manager_from_settings
 from common.logger.logger_factory import LoggerFactory
 from ...utils.metrics_utils import MetricUtils
 
@@ -55,11 +56,18 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
 
         self.config = config
 
-        # Device management
+        # Device management using centralized device manager
+        self.device_manager = create_device_manager_from_settings()
         if device is None:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            # Use centralized device configuration
+            self.device = self.device_manager.get_torch_device()
         else:
+            # Respect explicit device parameter but warn if inconsistent with settings
             self.device = torch.device(device)
+            if device != self.device_manager.device:
+                self.logger.warning(
+                    f"Explicit device '{device}' differs from configured device '{self.device_manager.device}'"
+                )
 
         # Model and scalers (to be set by subclasses)
         self.model = None
@@ -85,6 +93,21 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
             f"  feature_columns: {self.feature_columns} (count: {len(self.feature_columns)})"
         )
         self.logger.debug(f"  device: {self.device}")
+        self.logger.debug(f"  force_cpu: {self.device_manager.force_cpu}")
+        self.logger.debug(f"  gpu_enabled: {self.device_manager.is_gpu_enabled()}")
+
+    def to_device(self, tensor_or_model, device: Optional[str] = None):
+        """
+        Move tensor or model to the configured device.
+
+        Args:
+            tensor_or_model: PyTorch tensor or model to move
+            device: Optional device override
+
+        Returns:
+            Tensor or model on the appropriate device
+        """
+        return self.device_manager.move_to_device(tensor_or_model, device)
 
     # ================================
     # Experiment Tracking Support
@@ -292,6 +315,13 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
                 sequences_tensor = torch.FloatTensor(np.array(sequences))
                 targets_tensor = torch.FloatTensor(np.array(targets))
 
+                # Move tensors to the configured device
+                sequences_tensor = self.to_device(sequences_tensor)
+                targets_tensor = self.to_device(targets_tensor)
+
+                self.logger.debug(
+                    f"Created training sequences on device: {self.device}"
+                )
                 return sequences_tensor, targets_tensor
 
             else:
@@ -306,6 +336,12 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
                     0
                 )  # Add batch dimension
 
+                # Move tensor to the configured device
+                sequence_tensor = self.to_device(sequence_tensor)
+
+                self.logger.debug(
+                    f"Created inference sequence on device: {self.device}"
+                )
                 return sequence_tensor, None
 
         except Exception as e:
@@ -408,8 +444,11 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
                 self.logger.error(error_msg)
                 return {"success": False, "error": error_msg}
 
-            # Move model to device
-            self.model.to(self.device)
+            # Move model to device using centralized device manager
+            self.model = self.to_device(self.model)
+            self.logger.info(
+                f"Model moved to device: {self.device} (force_cpu: {self.device_manager.force_cpu})"
+            )
 
             # Train model (implementation specific)
             training_result = self._train_model(

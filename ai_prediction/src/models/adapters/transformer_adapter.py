@@ -326,11 +326,19 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
                 val_ds, batch_size=batch_size, shuffle=False, num_workers=0
             )
 
-            # Create trainer with improved configuration
+            # Create trainer with improved configuration and device management
+            # Use centralized device configuration
+            if self.device_manager.force_cpu:
+                accelerator = "cpu"
+                devices = None
+            else:
+                accelerator = "auto"
+                devices = 1 if self.device_manager.is_gpu_enabled() else None
+
             trainer = pl.Trainer(
                 max_epochs=num_epochs,
-                accelerator="auto",
-                devices=1 if torch.cuda.is_available() else None,
+                accelerator=accelerator,
+                devices=devices,
                 enable_progress_bar=True,
                 logger=False,  # Disable built-in logger to avoid conflicts
                 enable_checkpointing=False,
@@ -341,6 +349,12 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
 
             # Train
             self.logger.info("Starting PyTorch Lightning training...")
+            self.logger.info("Device Configuration:")
+            self.logger.info(f"  device: {self.device}")
+            self.logger.info(f"  force_cpu: {self.device_manager.force_cpu}")
+            self.logger.info(f"  accelerator: {accelerator}")
+            self.logger.info(f"  devices: {devices}")
+
             self.logger.info("Hyperparameters:")
             self.logger.info(f"  learning_rate: {learning_rate}")
             self.logger.info(f"  num_train_epochs: {num_epochs}")
@@ -350,7 +364,7 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
 
             # After training, ensure model is properly configured for inference
             self.model.eval()
-            self.model.to(self.device)
+            self.model = self.to_device(self.model)
 
             # Get validation metrics
             val_results = trainer.validate(self.model, val_loader, verbose=False)
@@ -375,12 +389,14 @@ class TransformerAdapter(BaseTimeSeriesAdapter):
     def _model_predict(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """Make prediction with PyTorch Lightning Time Series Transformer model"""
         try:
-            # Ensure model is in eval mode
+            # Ensure model is in eval mode and on correct device
             self.model.eval()
+            self.model = self.to_device(self.model)
 
-            # Ensure both model and input are on the same device
-            model_device = next(self.model.parameters()).device
-            input_tensor = input_tensor.to(model_device)
+            # Ensure input tensor is on the same device as model
+            input_tensor = self.to_device(input_tensor)
+
+            self.logger.debug(f"Making prediction on device: {self.device}")
 
             with torch.no_grad():
                 # Model expects [batch, seq_len, features]

@@ -40,6 +40,7 @@ from ..interfaces.serving_interface import (
 )
 from ..schemas.enums import ModelType, TimeFrame
 from ..core.config import get_settings
+from ..utils.device_manager import create_device_manager_from_settings
 from common.logger.logger_factory import LoggerFactory
 
 
@@ -72,8 +73,21 @@ class TorchScriptServingAdapter(IModelServingAdapter):
         super().__init__(config)
         self.settings = get_settings()
 
+        # Initialize device manager
+        self.device_manager = create_device_manager_from_settings()
+
         # TorchScript-specific configuration
-        self.device = config.get("device", "cpu")
+        # Use centralized device configuration unless explicitly overridden
+        config_device = config.get("device")
+        if config_device is None:
+            self.device = self.device_manager.device
+        else:
+            self.device = config_device
+            if config_device != self.device_manager.device:
+                self.logger.warning(
+                    f"Config device '{config_device}' differs from settings device '{self.device_manager.device}'"
+                )
+
         self.optimize_for_inference = config.get("optimize_for_inference", True)
         self.enable_fusion = config.get("enable_fusion", True)
         self.compile_mode = config.get("compile_mode", "trace")  # "trace" or "script"
@@ -85,13 +99,14 @@ class TorchScriptServingAdapter(IModelServingAdapter):
         self._model_info: Dict[str, ModelInfo] = {}
         self._model_configs: Dict[str, Dict[str, Any]] = {}
 
-        # Ensure device is available
+        # Validate device availability
         if self.device != "cpu" and not torch.cuda.is_available():
             self.logger.warning("CUDA not available, falling back to CPU")
             self.device = "cpu"
 
         self.logger.info(
             f"TorchScriptServingAdapter initialized - Device: {self.device}, "
+            f"Force CPU: {self.device_manager.force_cpu}, "
             f"Max models: {self.max_models_in_memory}"
         )
 
@@ -159,7 +174,7 @@ class TorchScriptServingAdapter(IModelServingAdapter):
 
             # Try to load pre-converted TorchScript model first
             torchscript_path = await self._load_existing_torchscript(model_path_obj)
-            
+
             if not torchscript_path:
                 # Fall back to converting the model
                 torchscript_path = await self._convert_to_torchscript(
@@ -463,9 +478,9 @@ class TorchScriptServingAdapter(IModelServingAdapter):
             # Convert to TorchScript
             if self.compile_mode == "trace":
                 scripted_model = torch.jit.trace(
-                    original_model, 
-                    example_input, 
-                    strict=False  # Allow dict outputs from models like PatchTSMixer
+                    original_model,
+                    example_input,
+                    strict=False,  # Allow dict outputs from models like PatchTSMixer
                 )
             else:  # script mode
                 scripted_model = torch.jit.script(original_model)
@@ -502,10 +517,10 @@ class TorchScriptServingAdapter(IModelServingAdapter):
     async def _load_existing_torchscript(self, model_path: Path) -> Optional[Path]:
         """
         Check if a pre-converted TorchScript model exists and return its path.
-        
+
         Args:
             model_path: Path to the model directory
-            
+
         Returns:
             Path to TorchScript model if found, None otherwise
         """
@@ -513,18 +528,20 @@ class TorchScriptServingAdapter(IModelServingAdapter):
             # List of possible TorchScript file names (in order of preference)
             torchscript_names = [
                 "model_torchscript.pt",
-                "scripted_model.pt", 
-                "model.pt"
+                "scripted_model.pt",
+                "model.pt",
             ]
-            
+
             for torchscript_name in torchscript_names:
                 torchscript_path = model_path / torchscript_name
                 if torchscript_path.exists():
-                    self.logger.info(f"Found existing TorchScript model: {torchscript_path}")
+                    self.logger.info(
+                        f"Found existing TorchScript model: {torchscript_path}"
+                    )
                     return torchscript_path
-                    
+
             return None
-            
+
         except Exception as e:
             self.logger.warning(f"Error checking for existing TorchScript model: {e}")
             return None
@@ -564,21 +581,21 @@ class TorchScriptServingAdapter(IModelServingAdapter):
             model_instance.load_model(model_path)
 
             # Return the underlying PyTorch model for TorchScript conversion
-            if hasattr(model_instance, 'model') and model_instance.model is not None:
+            if hasattr(model_instance, "model") and model_instance.model is not None:
                 # Ensure the model is on CPU for TorchScript conversion
                 pytorch_model = model_instance.model
-                if hasattr(pytorch_model, 'cpu'):
+                if hasattr(pytorch_model, "cpu"):
                     pytorch_model = pytorch_model.cpu()
                 # Also move any sub-modules to CPU
-                if hasattr(pytorch_model, 'to'):
-                    pytorch_model = pytorch_model.to('cpu')
+                if hasattr(pytorch_model, "to"):
+                    pytorch_model = pytorch_model.to("cpu")
                 return pytorch_model
             else:
                 # For models without a separate .model attribute
-                if hasattr(model_instance, 'cpu'):
+                if hasattr(model_instance, "cpu"):
                     model_instance = model_instance.cpu()
-                if hasattr(model_instance, 'to'):
-                    model_instance = model_instance.to('cpu')
+                if hasattr(model_instance, "to"):
+                    model_instance = model_instance.to("cpu")
                 return model_instance
 
         except Exception as e:
@@ -615,7 +632,9 @@ class TorchScriptServingAdapter(IModelServingAdapter):
                 if "close" in input_data:
                     df = pd.DataFrame([input_data])
                 else:
-                    raise ValueError("Invalid input data format - dict must contain 'close' key")
+                    raise ValueError(
+                        "Invalid input data format - dict must contain 'close' key"
+                    )
             elif isinstance(input_data, np.ndarray):
                 # Convert numpy array to DataFrame with appropriate column names
                 if input_data.ndim == 1:
@@ -624,17 +643,30 @@ class TorchScriptServingAdapter(IModelServingAdapter):
                     if input_data.shape[1] >= 5:
                         columns = ["open", "high", "low", "close", "volume"]
                         if input_data.shape[1] > 5:
-                            columns.extend([f"feature_{i}" for i in range(5, input_data.shape[1])])
-                        df = pd.DataFrame(input_data, columns=columns[:input_data.shape[1]])
+                            columns.extend(
+                                [f"feature_{i}" for i in range(5, input_data.shape[1])]
+                            )
+                        df = pd.DataFrame(
+                            input_data, columns=columns[: input_data.shape[1]]
+                        )
                     else:
-                        df = pd.DataFrame(input_data, columns=[f"feature_{i}" for i in range(input_data.shape[1])])
+                        df = pd.DataFrame(
+                            input_data,
+                            columns=[
+                                f"feature_{i}" for i in range(input_data.shape[1])
+                            ],
+                        )
                 else:
-                    raise ValueError(f"Unsupported numpy array dimensions: {input_data.ndim}")
+                    raise ValueError(
+                        f"Unsupported numpy array dimensions: {input_data.ndim}"
+                    )
             else:
                 raise ValueError(f"Unsupported input data type: {type(input_data)}")
 
             # Apply feature engineering to match the TorchScript model's expected input
-            feature_engineering = self._get_model_feature_engineering(model_info.model_id)
+            feature_engineering = self._get_model_feature_engineering(
+                model_info.model_id
+            )
             if feature_engineering is not None:
                 try:
                     # Apply feature engineering transform
@@ -649,23 +681,27 @@ class TorchScriptServingAdapter(IModelServingAdapter):
                     )
                     # Continue with original DataFrame
             else:
-                self.logger.warning("No feature engineering found for TorchScript model")
-            
+                self.logger.warning(
+                    "No feature engineering found for TorchScript model"
+                )
+
             # Get the expected input format from the model configuration
             model_config = self._model_configs.get(model_info.model_id, {})
             context_length = model_config.get("context_length", 64)
-            
+
             # Ensure we have enough data for the context window
             if len(df) < context_length:
                 # Repeat the data if we don't have enough
                 repeat_count = (context_length // len(df)) + 1
                 df = pd.concat([df] * repeat_count, ignore_index=True)
                 df = df.tail(context_length)
-                self.logger.info(f"TorchScript: Repeated data to meet context length: {len(df)}")
+                self.logger.info(
+                    f"TorchScript: Repeated data to meet context length: {len(df)}"
+                )
             else:
                 # Use the last context_length rows
                 df = df.tail(context_length)
-                
+
             self.logger.info(f"TorchScript: Using {len(df)} rows for context window")
 
             # Clean the DataFrame (drop non-numeric columns)
@@ -723,15 +759,19 @@ class TorchScriptServingAdapter(IModelServingAdapter):
 
             # Convert to numpy array
             data_array = df.values.astype(np.float32)
-            
-            self.logger.info(f"TorchScript: Final data shape for model: {data_array.shape}")
+
+            self.logger.info(
+                f"TorchScript: Final data shape for model: {data_array.shape}"
+            )
 
             # Ensure correct shape for TorchScript model (batch_size, sequence_length, features)
             if data_array.ndim == 1:
                 data_array = data_array.reshape(1, 1, -1)  # (1, 1, features)
             elif data_array.ndim == 2:
                 # Assume shape is (sequence_length, features)
-                data_array = data_array.reshape(1, data_array.shape[0], data_array.shape[1])  # (1, seq_len, features)
+                data_array = data_array.reshape(
+                    1, data_array.shape[0], data_array.shape[1]
+                )  # (1, seq_len, features)
 
             # Convert to tensor
             input_tensor = torch.from_numpy(data_array).float()
@@ -756,7 +796,7 @@ class TorchScriptServingAdapter(IModelServingAdapter):
             if isinstance(predictions, dict):
                 # TorchScript model returns dict (from strict=False tracing)
                 self.logger.info("TorchScript: Processing dict output from model")
-                
+
                 # Extract prediction tensor from dict
                 if "prediction" in predictions:
                     pred_tensor = predictions["prediction"]
@@ -767,21 +807,27 @@ class TorchScriptServingAdapter(IModelServingAdapter):
                 else:
                     # Take the first tensor value from the dict
                     pred_tensor = next(iter(predictions.values()))
-                    self.logger.warning(f"Using first dict value as prediction: {list(predictions.keys())}")
-                
+                    self.logger.warning(
+                        f"Using first dict value as prediction: {list(predictions.keys())}"
+                    )
+
                 # Convert tensor to numpy
                 pred_array = pred_tensor.detach().cpu().numpy()
-                
+
             else:
                 # Direct tensor output
                 pred_array = predictions.detach().cpu().numpy()
 
             # Extract predictions (assume last n_steps are the predictions)
-            self.logger.info(f"TorchScript: Prediction tensor shape: {pred_array.shape}")
-            
+            self.logger.info(
+                f"TorchScript: Prediction tensor shape: {pred_array.shape}"
+            )
+
             if pred_array.ndim > 2:
                 # Handle 3D tensors: (batch, sequence, features) -> take last n_steps of sequence
-                predictions_array = pred_array[0, -n_steps:, 0]  # First batch, last n_steps, first feature
+                predictions_array = pred_array[
+                    0, -n_steps:, 0
+                ]  # First batch, last n_steps, first feature
             elif pred_array.ndim == 2:
                 # Handle 2D tensors: (batch, sequence) or (sequence, features)
                 if pred_array.shape[0] == 1:
@@ -793,10 +839,10 @@ class TorchScriptServingAdapter(IModelServingAdapter):
             else:
                 # Handle 1D tensors: (sequence,) - take last n_steps
                 predictions_array = pred_array[-n_steps:]
-            
+
             # Ensure we have scalar values for predictions
             predictions_list = predictions_array.flatten().tolist()
-            
+
             # Make sure we have exactly n_steps predictions
             if len(predictions_list) > n_steps:
                 predictions_list = predictions_list[:n_steps]
@@ -804,8 +850,10 @@ class TorchScriptServingAdapter(IModelServingAdapter):
                 # Pad with the last prediction if we don't have enough
                 last_pred = predictions_list[-1] if predictions_list else 0.0
                 predictions_list.extend([last_pred] * (n_steps - len(predictions_list)))
-                
-            self.logger.info(f"TorchScript: Final predictions ({len(predictions_list)}): {predictions_list}")
+
+            self.logger.info(
+                f"TorchScript: Final predictions ({len(predictions_list)}): {predictions_list}"
+            )
 
             # Calculate current price and change percentage
             current_price = None
@@ -829,7 +877,9 @@ class TorchScriptServingAdapter(IModelServingAdapter):
                             (first_prediction - current_price) / current_price
                         ) * 100
                     except (ValueError, TypeError, IndexError) as e:
-                        self.logger.warning(f"Could not calculate change percentage: {e}")
+                        self.logger.warning(
+                            f"Could not calculate change percentage: {e}"
+                        )
                         predicted_change_pct = None
 
             # Simple confidence score (can be improved)
@@ -853,51 +903,69 @@ class TorchScriptServingAdapter(IModelServingAdapter):
             if model_id in self._model_info:
                 model_info = self._model_info[model_id]
                 model_path = Path(model_info.model_path)
-                
+
                 # Try to load feature engineering from pickle file
                 fe_path = model_path / "feature_engineering.pkl"
                 if fe_path.exists():
                     try:
                         import pickle
+
                         with open(fe_path, "rb") as f:
                             feature_engineering = pickle.load(f)
                         return feature_engineering
                     except Exception as e:
-                        self.logger.warning(f"Could not load pickled feature engineering: {e}")
-                
+                        self.logger.warning(
+                            f"Could not load pickled feature engineering: {e}"
+                        )
+
                 # Try to recreate from config
                 fe_config_path = model_path / "feature_engineering_config.json"
                 if fe_config_path.exists():
                     try:
                         import json
+
                         with open(fe_config_path, "r") as f:
                             fe_config = json.load(f)
-                        
+
                         # Recreate feature engineering from config
                         from ..data.feature_engineering import BasicFeatureEngineering
-                        
+
                         feature_engineering = BasicFeatureEngineering(
                             feature_columns=fe_config.get("feature_columns", []),
                             target_column=fe_config.get("target_column", "close"),
-                            add_technical_indicators=fe_config.get("add_technical_indicators", True),
-                            add_datetime_features=fe_config.get("add_datetime_features", False),
-                            normalize_features=fe_config.get("normalize_features", True),
+                            add_technical_indicators=fe_config.get(
+                                "add_technical_indicators", True
+                            ),
+                            add_datetime_features=fe_config.get(
+                                "add_datetime_features", False
+                            ),
+                            normalize_features=fe_config.get(
+                                "normalize_features", True
+                            ),
                         )
-                        
+
                         # Set fitted state
-                        feature_engineering.fitted_feature_names = fe_config.get("fitted_feature_names", [])
+                        feature_engineering.fitted_feature_names = fe_config.get(
+                            "fitted_feature_names", []
+                        )
                         feature_engineering.is_fitted = True
-                        
-                        self.logger.info("Recreated feature engineering from config for TorchScript")
+
+                        self.logger.info(
+                            "Recreated feature engineering from config for TorchScript"
+                        )
                         return feature_engineering
-                        
+
                     except Exception as fe_error:
-                        self.logger.warning(f"Could not recreate feature engineering: {fe_error}")
-            
+                        self.logger.warning(
+                            f"Could not recreate feature engineering: {fe_error}"
+                        )
+
             return None
-            
+
         except Exception as e:
-            self.logger.warning(f"Failed to get feature engineering for model {model_id}: {e}")
+            self.logger.warning(
+                f"Failed to get feature engineering for model {model_id}: {e}"
+            )
             return None
 
     def _estimate_model_memory_usage(self, model: Any) -> float:

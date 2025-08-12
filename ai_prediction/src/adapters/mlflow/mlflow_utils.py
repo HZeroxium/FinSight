@@ -143,6 +143,22 @@ class MLflowParameterDeduplicator:
             "model_type": model_type,
         }
 
+        # Add device information
+        try:
+            from ...utils.device_manager import create_device_manager_from_settings
+
+            device_manager = create_device_manager_from_settings()
+            base_params.update(
+                {
+                    "device": device_manager.device,
+                    "force_cpu": device_manager.force_cpu,
+                    "gpu_enabled": device_manager.is_gpu_enabled(),
+                }
+            )
+        except Exception:
+            # Fallback if device manager is not available
+            base_params["device"] = "unknown"
+
         # Add config parameters with prefix to avoid conflicts
         config_params = {}
         for key, value in config.items():
