@@ -19,6 +19,7 @@ from ..data.file_data_loader import FileDataLoader
 from ..utils.storage_client import StorageClient
 from ..core.config import get_settings, Settings
 from ..schemas.enums import DataLoaderType, ExperimentTrackerType, StorageProviderType
+from .device_manager import create_device_manager_from_settings, DeviceManager
 from common.logger.logger_factory import LoggerFactory
 
 # Initialize logger
@@ -106,6 +107,9 @@ class Container(containers.DeclarativeContainer):
     # Core utilities
     logger_factory = providers.Singleton(LoggerFactory)
 
+    # Device manager for consistent CPU/GPU handling
+    device_manager = providers.Singleton(lambda: create_device_manager_from_settings())
+
     # Storage client for cloud operations - we'll create it manually in a factory
     storage_client = providers.Factory(
         lambda: StorageClient(**get_settings().get_storage_config())
@@ -173,6 +177,10 @@ class DependencyManager:
         """Get file data loader"""
         return self.container.file_data_loader()
 
+    def get_device_manager(self) -> DeviceManager:
+        """Get device manager"""
+        return self.container.device_manager()
+
     def reset_configuration(self) -> None:
         """Reset container configuration to defaults"""
         self.container.reset_last_provided()
@@ -207,6 +215,11 @@ def get_storage_client() -> StorageClient:
     return dependency_manager.get_storage_client()
 
 
+def get_device_manager() -> DeviceManager:
+    """Get configured device manager (convenience function)"""
+    return dependency_manager.get_device_manager()
+
+
 # FastAPI dependency functions for easy injection
 async def get_experiment_tracker_dependency() -> IExperimentTracker:
     """FastAPI dependency function for experiment tracker."""
@@ -223,6 +236,11 @@ async def get_storage_client_dependency() -> StorageClient:
     return get_storage_client()
 
 
+async def get_device_manager_dependency() -> DeviceManager:
+    """FastAPI dependency function for device manager."""
+    return get_device_manager()
+
+
 # Health check and info functions
 async def health_check_dependencies() -> dict:
     """
@@ -235,6 +253,7 @@ async def health_check_dependencies() -> dict:
         "experiment_tracker": False,
         "data_loader": False,
         "storage_client": False,
+        "device_manager": False,
         "timestamp": None,
     }
 
@@ -261,6 +280,10 @@ async def health_check_dependencies() -> dict:
         else:
             results["storage_client"] = storage_client is not None
 
+        # Check device manager
+        device_manager = get_device_manager()
+        results["device_manager"] = device_manager is not None
+
         results["timestamp"] = "Health check completed"
         logger.info("Dependency health check completed")
 
@@ -282,6 +305,7 @@ def get_dependency_info() -> dict:
 
     data_loader = dependency_manager.get_data_loader()
     experiment_tracker = dependency_manager.get_experiment_tracker()
+    device_manager = dependency_manager.get_device_manager()
 
     info = {
         "experiment_tracker": {
@@ -292,6 +316,12 @@ def get_dependency_info() -> dict:
         "data_loader": {
             "type": settings.data_loader_type,
             "instance": type(data_loader).__name__,
+        },
+        "device_manager": {
+            "device": device_manager.device,
+            "force_cpu": device_manager.force_cpu,
+            "gpu_enabled": device_manager.is_gpu_enabled(),
+            "torch_available": device_manager.torch_available,
         },
         "cloud_storage": {
             "enabled": settings.storage_provider != "local",

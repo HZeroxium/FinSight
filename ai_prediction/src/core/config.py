@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     default_batch_size: int = Field(32, env="DEFAULT_BATCH_SIZE")
     default_learning_rate: float = Field(1e-3, env="DEFAULT_LEARNING_RATE")
 
+    # Device configuration
+    force_cpu: bool = Field(
+        True,
+        env="FORCE_CPU",
+        description="Force CPU usage even when GPU is available. When True, all training and inference will use CPU regardless of GPU availability.",
+    )
+
     # Model limits
     max_context_length: int = Field(512, env="MAX_CONTEXT_LENGTH")
     max_prediction_length: int = Field(24, env="MAX_PREDICTION_LENGTH")
@@ -377,6 +384,40 @@ class Settings(BaseSettings):
             Base storage prefix (e.g., "datasets")
         """
         return self.storage_prefix
+
+    def get_device_config(self) -> str:
+        """
+        Get the appropriate device configuration for PyTorch models.
+
+        Returns:
+            str: Device string ('cpu' or 'cuda')
+        """
+        if self.force_cpu:
+            return "cpu"
+
+        try:
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            return "cpu"
+
+    def is_gpu_enabled(self) -> bool:
+        """
+        Check if GPU is enabled and available.
+
+        Returns:
+            bool: True if GPU is available and not forced to CPU
+        """
+        if self.force_cpu:
+            return False
+
+        try:
+            import torch
+
+            return torch.cuda.is_available()
+        except ImportError:
+            return False
 
     def build_storage_path(self, *parts: str) -> str:
         """

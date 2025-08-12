@@ -1,11 +1,12 @@
 # routers/models.py
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Dict, Any, Optional
 
 from ..services.model_service import ModelService
 from ..schemas.base_schemas import ModelInfoResponse, BaseResponse
 from ..schemas.enums import ModelType, TimeFrame
+from ..utils.dependencies import get_device_manager_dependency
 from common.logger.logger_factory import LoggerFactory
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -217,4 +218,34 @@ async def get_model_performance(
         raise
     except Exception as e:
         logger.error(f"Error getting model performance: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/device-info", response_model=Dict[str, Any])
+async def get_device_info(
+    device_manager=Depends(get_device_manager_dependency)
+) -> Dict[str, Any]:
+    """
+    Get detailed device information including CPU/GPU availability and configuration.
+    
+    Returns information about:
+    - Current device being used (CPU/GPU)
+    - Force CPU configuration setting
+    - PyTorch availability and version
+    - CUDA availability and GPU details
+    - Memory usage information
+    """
+    try:
+        logger.info("Getting device information")
+        
+        device_info = device_manager.get_device_info()
+        
+        return {
+            "success": True,
+            "message": "Device information retrieved successfully",
+            "data": device_info,
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting device information: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

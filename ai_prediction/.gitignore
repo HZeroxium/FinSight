@@ -3,3 +3,5 @@ models/*
 model_experiments
 tmp_trainer
 lightning_logs
+mlruns
+common_module
