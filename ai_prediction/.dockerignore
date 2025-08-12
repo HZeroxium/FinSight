@@ -1,4 +1,5 @@
-# Python cache files
+# ===== Build Performance Optimization =====
+# Python cache and compiled files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -21,15 +22,33 @@ wheels/
 *.egg
 MANIFEST
 
-# PyTorch models and data
+# ===== Large Data Files and Models =====
+# ML models and training artifacts (exclude to reduce build context)
 models/
-data/
+mlruns/
+mlflow.db
 *.pt
 *.pth
 *.bin
 *.safetensors
+*.onnx
+*.tflite
+wandb/
+tensorboard_logs/
+checkpoints/
+ckpt/
 
-# Virtual environments
+# Training data and cache (exclude to reduce build context) 
+data/
+tmp/
+tmp_trainer/
+*.csv
+*.json
+*.parquet
+*.h5
+*.hdf5
+
+# ===== Virtual Environments =====
 .env
 .venv/
 env/
@@ -38,88 +57,19 @@ ENV/
 env.bak/
 venv.bak/
 
-# IDE
+# ===== Development Tools =====
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# pipenv
-Pipfile.lock
-
-# PEP 582
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
 .spyderproject
 .spyproject
-
-# Rope project settings
 .ropeproject
 
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
-# PyCharm
-.idea/
-
-# Logs
-logs/
-*.log
-*.log.*
-
-# Temporary files
-temp/
-tmp/
-.tmp/
-
-# OS files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Testing
+# ===== Development and Testing =====
+# Testing frameworks
 .pytest_cache/
 .coverage
 .coverage.*
@@ -128,59 +78,98 @@ coverage.xml
 .hypothesis/
 .tox/
 .nox/
-
-# Docker
-Dockerfile*
-.dockerignore
-docker-compose*.yml
-
-# Git
-.git/
-.gitignore
-
-# Documentation
-docs/
-*.md
-README*
-
-# Config files that might contain secrets
-*.env*
-.secrets
-secrets/
-
-# Build artifacts
-*.tar.gz
-*.zip
-
-# Machine learning artifacts
-wandb/
-mlruns/
-tensorboard_logs/
-
-# Backup files
-*.backup
-*.bak
-
-# Scripts (will be copied separately)
-scripts/
-
-# Test files
 test_*.py
 *_test.py
 tests/
 
-# Development files
+# Python development tools
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+cython_debug/
+
+# ===== Documentation and Examples =====
+docs/
+*.md
+README*
+*.ipynb
+examples/
+demo/
+
+# ===== Version Control =====
+.git/
+.gitignore
+.gitattributes
+
+# ===== Build and Deployment =====
+# Docker files (exclude to prevent recursive copy)
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Build artifacts
+*.tar.gz
+*.zip
+*.whl
+build/
+dist/
+
+# ===== Logs and Temporary Files =====
+logs/
+*.log
+*.log.*
+temp/
+.tmp/
+*.backup
+*.bak
+.cache/
+cache/
+
+# ===== OS and Editor Files =====
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===== Configuration and Secrets =====
+# Exclude environment files that might contain secrets
+*.env*
+.secrets
+secrets/
+config.local.*
+
+# ===== Python Environment =====
+# Python version management
+.python-version
+Pipfile.lock
+__pypackages__/
+
+# ===== Jupyter and Notebooks =====
+.ipynb_checkpoints
+
+# ===== Task Scheduling =====
+celerybeat-schedule
+celerybeat.pid
+
+# ===== Documentation Build =====
+/site
+
+# ===== Development Scripts =====
+# Keep only docker-entrypoint.py, exclude other scripts
+scripts/*
+!scripts/docker-entrypoint.py
+
+# ===== Development Files =====
 dev/
 development/
 local/
+misc/
 
-# Checkpoint files
-checkpoints/
-ckpt/
-
-# Notebooks
-*.ipynb
-
-# Cache directories
-.cache/
-cache/
+# ===== Postman and API Testing =====
+postman_collection.json
+openapi.json

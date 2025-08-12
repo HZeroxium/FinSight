@@ -49,6 +49,7 @@ fastapi==0.115.13
 feedparser==6.0.11
 filelock==3.13.1
 filetype==1.2.0
+-e git+https://github.com/HZeroxium/FinSight.git@b5c1621ede6eeb6b9b9efcb147ae0cb090d3dc8d#egg=finsight_common&subdirectory=common
 fonttools==4.58.4
 frozenlist==1.7.0
 fsspec==2024.6.1
@@ -79,8 +80,9 @@ googleapis-common-protos==1.70.0
 graphviz==0.21
 greenlet==3.2.3
 grpc-google-iam-v1==0.14.2
-grpcio==1.73.1
+grpcio==1.74.0
 grpcio-status==1.71.2
+grpcio-tools==1.74.0
 h11==0.16.0
 httpcore==1.0.9
 httplib2==0.22.0
@@ -152,7 +154,7 @@ pluggy==1.6.0
 prompt_toolkit==3.0.51
 propcache==0.3.2
 proto-plus==1.26.1
-protobuf==5.29.5
+protobuf==6.31.1
 psutil==7.0.0
 pure_eval==0.2.3
 pyarrow==20.0.0

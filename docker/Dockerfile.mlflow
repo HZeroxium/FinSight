@@ -1,3 +1,6 @@
 FROM ghcr.io/mlflow/mlflow:latest
 
-RUN pip install psycopg2-binary
+RUN pip install psycopg2-binary boto3
+
+# Install curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*

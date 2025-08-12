@@ -1,6 +1,7 @@
-# Dockerfile
-
 # Multi-stage Dockerfile for FinSight AI Prediction Service
+# Optimized for minimal size and fast builds
+
+# Build stage for dependencies
 FROM python:3.12-slim AS builder
 
 # Set build arguments
@@ -8,61 +9,85 @@ ARG BUILD_DATE
 ARG VERSION="1.0.0"
 ARG VCS_REF
 
-# Set environment variables for build
+# Add image metadata
+LABEL maintainer="FinSight Team" \
+  version="${VERSION}" \
+  description="FinSight AI Prediction Service" \
+  build-date="${BUILD_DATE}" \
+  vcs-ref="${VCS_REF}"
+
+# Set environment variables for build optimization
 ENV PYTHONUNBUFFERED=1 \
   PYTHONDONTWRITEBYTECODE=1 \
   PIP_NO_CACHE_DIR=1 \
   PIP_DISABLE_PIP_VERSION_CHECK=1 \
-  DEBIAN_FRONTEND=noninteractive
+  PIP_DEFAULT_TIMEOUT=100 \
+  DEBIAN_FRONTEND=noninteractive \
+  # PyTorch specific optimizations
+  TORCH_CUDA_ARCH_LIST="" \
+  FORCE_CUDA=0
 
-# Install system dependencies for building
+# Install only essential system dependencies for building
 RUN apt-get update && apt-get install -y --no-install-recommends \
   build-essential \
   curl \
-  git \
-  && rm -rf /var/lib/apt/lists/*
+  ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && apt-get clean \
+  && rm -rf /var/cache/apt/archives/*
 
-# Create virtual environment
+# Create virtual environment with optimizations
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Upgrade pip and install wheel
-RUN pip install --upgrade pip setuptools wheel
+# Upgrade pip with cache optimization
+RUN pip install --upgrade pip==24.2 setuptools==70.3.0 wheel==0.44.0
 
-# Copy and install common module first
-COPY common /opt/common
+# Copy and install common module first (leverage Docker layer caching)
+# Note: Assumes common module is copied to build context as 'common_module'
+COPY common_module /opt/common
 WORKDIR /opt/common
-RUN pip install -e .
+RUN pip install --no-deps -e .
 
-# Copy requirements and install Python dependencies
-COPY ai_prediction/requirements-docker-minimal.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt
+# Install Python dependencies with CPU-only PyTorch
+COPY requirements-docker-minimal.txt /tmp/requirements.txt
+RUN pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+  -r /tmp/requirements.txt
 
 
-# Production stage
+# Production stage - minimal runtime image
 FROM python:3.12-slim AS production
 
-# Set runtime environment variables
+# Set optimized runtime environment variables
 ENV PYTHONUNBUFFERED=1 \
   PYTHONDONTWRITEBYTECODE=1 \
   PATH="/opt/venv/bin:$PATH" \
+  # Application settings
   APP_ENV=production \
-  HOST=0.0.0.0 \
-  PORT=8000 \
   API_HOST=0.0.0.0 \
   API_PORT=8000 \
-  DEBUG=false
+  DEBUG=false \
+  # Performance optimizations
+  FORCE_CPU=true \
+  MALLOC_TRIM_THRESHOLD_=100000 \
+  MALLOC_MMAP_THRESHOLD_=100000 \
+  # Security
+  PYTHONHASHSEED=random \
+  # Disable telemetry
+  PYTHONDONTWARNMETRYDISTANCE=1
 
-# Create non-root user for security
-RUN groupadd --gid 1000 appuser && \
-  useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home appuser
+# Create non-root user for security (use numeric ID for better compatibility)
+RUN groupadd --gid 1001 --system appuser && \
+  useradd --uid 1001 --gid 1001 --system --shell /bin/bash --create-home appuser
 
-# Install runtime system dependencies
+# Install minimal runtime dependencies only
 RUN apt-get update && apt-get install -y --no-install-recommends \
   curl \
   ca-certificates \
+  tini \
   && rm -rf /var/lib/apt/lists/* \
-  && apt-get clean
+  && apt-get clean \
+  && rm -rf /var/cache/apt/archives/* /tmp/* /var/tmp/*
 
 # Copy virtual environment from builder stage
 COPY --from=builder /opt/venv /opt/venv
@@ -70,29 +95,25 @@ COPY --from=builder /opt/venv /opt/venv
 # Copy common module source to maintain editable installation
 COPY --from=builder /opt/common /opt/common
 
-# Create application directory and set permissions
+# Create application directory with proper permissions
 WORKDIR /app
-RUN chown -R appuser:appuser /app
+RUN mkdir -p /app/logs /app/data /app/models /app/tmp \
+  && chown -R appuser:appuser /app
+
+# Copy application code and entrypoint script
+COPY --chown=appuser:appuser src/ /app/src/
+COPY --chown=appuser:appuser scripts/docker-entrypoint.py /app/docker-entrypoint.py
 
 # Switch to non-root user
 USER appuser
 
-# Copy application code with proper ownership
-COPY --chown=appuser:appuser ai_prediction/src/ /app/src/
-COPY --chown=appuser:appuser ai_prediction/requirements.txt /app/
-COPY --chown=appuser:appuser ai_prediction/scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
-
-# Create required directories and set permissions
-RUN mkdir -p /app/logs /app/data /app/models && \
-  chmod +x /app/docker-entrypoint.sh
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# Health check with better error handling
+HEALTHCHECK --interval=30s --timeout=15s --start-period=45s --retries=3 \
   CMD curl -f http://localhost:${API_PORT}/health || exit 1
 
 # Expose port
 EXPOSE ${API_PORT}
 
-# Default commands
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+# Use tini for proper signal handling and PID 1
+ENTRYPOINT ["tini", "--", "python", "/app/docker-entrypoint.py"]
 CMD ["server"]
