@@ -161,10 +161,12 @@ class Container(containers.DeclarativeContainer):
     )
 
     # Cross-repository timeframe conversion pipeline
+    # Note: This is a default configuration that will be overridden by the router
+    # based on the actual source_format and target_format parameters
     cross_repository_pipeline = providers.Singleton(
         CrossRepositoryTimeFramePipeline,
-        source_repository=csv_repository,
-        target_repository=parquet_repository,
+        source_repository=csv_repository,  # Default source, will be overridden
+        target_repository=csv_repository,  # Default target, will be overridden
     )
 
     # Job management service for market data collection jobs

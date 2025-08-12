@@ -15,12 +15,18 @@ Based on the storage service layer and cross-repository pipeline logic.
 
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
 from datetime import datetime
 
 from ..services.market_data_storage_service import MarketDataStorageService
 from ..misc.timeframe_load_convert_save import CrossRepositoryTimeFramePipeline
 from ..schemas.enums import Exchange, TimeFrame, CryptoSymbol, RepositoryType
+from ..schemas.storage_schema import (
+    DatasetUploadRequest,
+    DatasetDownloadRequest,
+    FormatConversionRequest,
+    BulkOperationRequest,
+    StorageStatsResponse,
+)
 from ..utils.dependencies import (
     require_admin_access,
     get_storage_service,
@@ -39,145 +45,6 @@ logger = LoggerFactory.get_logger(
 
 # Create router
 router = APIRouter(prefix="/storage", tags=["market-data-storage"])
-
-
-# Request/Response schemas with user-friendly defaults
-class DatasetUploadRequest(BaseModel):
-    """Request schema for dataset upload operations with smart defaults."""
-
-    exchange: Optional[str] = Field(
-        default=Exchange.BINANCE.value,
-        description="Exchange name (defaults to binance)",
-    )
-    symbol: Optional[str] = Field(
-        default=CryptoSymbol.BTCUSDT.value,
-        description="Trading symbol (defaults to BTCUSDT)",
-    )
-    timeframe: Optional[str] = Field(
-        default=TimeFrame.HOUR_1.value, description="Time interval (defaults to 1h)"
-    )
-    start_date: Optional[str] = Field(
-        default=None,
-        description="Start date in ISO format (defaults to dataset's first date)",
-    )
-    end_date: Optional[str] = Field(
-        default=None,
-        description="End date in ISO format (defaults to dataset's last date)",
-    )
-    source_format: Optional[str] = Field(
-        default=RepositoryType.CSV.value,
-        description="Source data format (csv or parquet, defaults to csv)",
-    )
-    target_format: Optional[str] = Field(
-        default=RepositoryType.PARQUET.value,
-        description="Target format for upload (csv or parquet, defaults to parquet)",
-    )
-    compress: Optional[bool] = Field(
-        default=True, description="Whether to compress the dataset (defaults to True)"
-    )
-    include_metadata: Optional[bool] = Field(
-        default=True, description="Whether to include metadata files (defaults to True)"
-    )
-
-
-class DatasetDownloadRequest(BaseModel):
-    """Request schema for dataset download operations with smart defaults."""
-
-    object_key: Optional[str] = Field(
-        default=None,
-        description="Object storage key for the dataset (auto-generated if not provided)",
-    )
-    symbol: Optional[str] = Field(
-        default="BTCUSDT",
-        description="Trading symbol for auto-generating object key (defaults to BTCUSDT)",
-    )
-    timeframe: Optional[str] = Field(
-        default=TimeFrame.HOUR_1.value,
-        description="Timeframe for auto-generating object key (defaults to 1h)",
-    )
-    exchange: Optional[str] = Field(
-        default=Exchange.BINANCE.value,
-        description="Exchange for auto-generating object key (defaults to binance)",
-    )
-    extract_archive: Optional[bool] = Field(
-        default=False,
-        description="Whether to extract archive files (defaults to False)",
-    )
-    target_directory: Optional[str] = Field(
-        default=None, description="Target directory for extraction"
-    )
-
-
-class FormatConversionRequest(BaseModel):
-    """Request schema for data format conversion with smart defaults."""
-
-    exchange: Optional[str] = Field(
-        default=Exchange.BINANCE.value,
-        description="Exchange name (defaults to binance)",
-    )
-    symbol: Optional[str] = Field(
-        default=CryptoSymbol.BTCUSDT.value,
-        description="Trading symbol (defaults to BTCUSDT)",
-    )
-    timeframe: Optional[str] = Field(
-        default=TimeFrame.HOUR_1.value, description="Source timeframe (defaults to 1h)"
-    )
-    start_date: Optional[str] = Field(
-        default=None,
-        description="Start date in ISO format (defaults to dataset's first date)",
-    )
-    end_date: Optional[str] = Field(
-        default=None,
-        description="End date in ISO format (defaults to dataset's last date)",
-    )
-    source_format: Optional[str] = Field(
-        default=RepositoryType.CSV.value,
-        description="Source repository format (csv or parquet, defaults to csv)",
-    )
-    target_format: Optional[str] = Field(
-        default=RepositoryType.PARQUET.value,
-        description="Target repository format (csv or parquet, defaults to parquet)",
-    )
-    target_timeframes: Optional[List[str]] = Field(
-        default=[TimeFrame.HOUR_4.value, TimeFrame.DAY_1.value],
-        description="Target timeframes for conversion (optional)",
-    )
-    overwrite_existing: Optional[bool] = Field(
-        default=False, description="Whether to overwrite existing data"
-    )
-
-
-class BulkOperationRequest(BaseModel):
-    """Request schema for bulk storage operations."""
-
-    operations: List[Dict[str, Any]] = Field(
-        description="List of operations to perform"
-    )
-    max_concurrent: int = Field(
-        default=5, ge=1, le=20, description="Maximum concurrent operations"
-    )
-    continue_on_error: bool = Field(
-        default=True, description="Whether to continue on individual operation errors"
-    )
-
-
-class StorageStatsResponse(BaseModel):
-    """Response schema for storage statistics."""
-
-    total_objects: int
-    total_size_bytes: int
-    datasets_by_format: Dict[str, int]
-    datasets_by_exchange: Dict[str, int]
-    storage_health: Dict[str, Any]
-    last_updated: str
-
-
-# Dependency functions
-# Note: get_storage_service() and get_cross_repository_pipeline() are now imported from dependencies.py
-# This ensures all components use the centralized dependency injection system
-
-
-# User-friendly shortcut endpoints
 
 
 @router.get("/query/{symbol}")
@@ -525,10 +392,10 @@ async def upload_dataset(
     try:
         # Apply smart defaults
         exchange = request.exchange or Exchange.BINANCE.value
-        symbol = request.symbol or "BTCUSDT"
+        symbol = request.symbol or CryptoSymbol.BTCUSDT.value
         timeframe = request.timeframe or TimeFrame.HOUR_1.value
-        source_format = request.source_format or "csv"
-        target_format = request.target_format or "parquet"
+        source_format = request.source_format or RepositoryType.CSV.value
+        target_format = request.target_format or RepositoryType.PARQUET.value
         compress = request.compress if request.compress is not None else True
         include_metadata = (
             request.include_metadata if request.include_metadata is not None else True
@@ -618,7 +485,7 @@ async def download_dataset(
         # Auto-generate object key if not provided
         if not request.object_key:
             exchange = request.exchange or Exchange.BINANCE.value
-            symbol = request.symbol or "BTCUSDT"
+            symbol = request.symbol or CryptoSymbol.BTCUSDT.value
             timeframe = request.timeframe or TimeFrame.HOUR_1.value
             object_key = f"{exchange}/{symbol}/{timeframe}/data.csv"
         else:
@@ -847,6 +714,25 @@ async def convert_timeframes(
             f"for {exchange}/{symbol}"
         )
 
+        # Validate format parameters
+        if source_format not in [
+            RepositoryType.CSV.value,
+            RepositoryType.PARQUET.value,
+        ]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported source format: {source_format}. Supported formats: csv, parquet",
+            )
+
+        if target_format not in [
+            RepositoryType.CSV.value,
+            RepositoryType.PARQUET.value,
+        ]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported target format: {target_format}. Supported formats: csv, parquet",
+            )
+
         # Handle date defaults with auto-detection
         actual_start_date = start_date
         actual_end_date = end_date
@@ -860,9 +746,9 @@ async def convert_timeframes(
                 ParquetMarketDataRepository,
             )
 
-            if source_format == "csv":
+            if source_format == RepositoryType.CSV.value:
                 source_repo = CSVMarketDataRepository()
-            elif source_format == "parquet":
+            elif source_format == RepositoryType.PARQUET.value:
                 source_repo = ParquetMarketDataRepository()
             else:
                 raise HTTPException(
@@ -894,9 +780,39 @@ async def convert_timeframes(
                 )
 
         # Configure pipeline repositories based on formats
-        if source_format != target_format:
+        logger.info(
+            f"Configuring repositories for {source_format} to {target_format} conversion"
+        )
+
+        if source_format == target_format:
+            # Same format conversion (e.g., CSV to CSV, Parquet to Parquet)
+            if source_format == RepositoryType.CSV.value:
+                from ..adapters.csv_market_data_repository import (
+                    CSVMarketDataRepository,
+                )
+
+                pipeline.source_repository = CSVMarketDataRepository()
+                pipeline.target_repository = CSVMarketDataRepository()
+                logger.info("Using CSV repository for both source and target")
+            elif source_format == RepositoryType.PARQUET.value:
+                from ..adapters.parquet_market_data_repository import (
+                    ParquetMarketDataRepository,
+                )
+
+                pipeline.source_repository = ParquetMarketDataRepository()
+                pipeline.target_repository = ParquetMarketDataRepository()
+                logger.info("Using Parquet repository for both source and target")
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported format for same-format conversion: {source_format}",
+                )
+        else:
             # Cross-repository conversion
-            if source_format == "csv" and target_format == "parquet":
+            if (
+                source_format == RepositoryType.CSV.value
+                and target_format == RepositoryType.PARQUET.value
+            ):
                 from ..adapters.csv_market_data_repository import (
                     CSVMarketDataRepository,
                 )
@@ -906,7 +822,13 @@ async def convert_timeframes(
 
                 pipeline.source_repository = CSVMarketDataRepository()
                 pipeline.target_repository = ParquetMarketDataRepository()
-            elif source_format == "parquet" and target_format == "csv":
+                logger.info(
+                    "Using CSV repository as source, Parquet repository as target"
+                )
+            elif (
+                source_format == RepositoryType.PARQUET.value
+                and target_format == RepositoryType.CSV.value
+            ):
                 from ..adapters.parquet_market_data_repository import (
                     ParquetMarketDataRepository,
                 )
@@ -916,9 +838,31 @@ async def convert_timeframes(
 
                 pipeline.source_repository = ParquetMarketDataRepository()
                 pipeline.target_repository = CSVMarketDataRepository()
+                logger.info(
+                    "Using Parquet repository as source, CSV repository as target"
+                )
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported format combination: {source_format} to {target_format}",
+                )
 
         # Configure target timeframes
         pipeline.target_timeframes = target_timeframes
+
+        # Validate pipeline configuration
+        if not pipeline.source_repository or not pipeline.target_repository:
+            raise HTTPException(
+                status_code=500,
+                detail="Pipeline repositories not properly configured",
+            )
+
+        logger.info(
+            f"Pipeline configured with source: {type(pipeline.source_repository).__name__}"
+        )
+        logger.info(
+            f"Pipeline configured with target: {type(pipeline.target_repository).__name__}"
+        )
 
         # Run the conversion pipeline
         result = await pipeline.run_cross_repository_pipeline(
@@ -929,7 +873,7 @@ async def convert_timeframes(
             overwrite_existing=overwrite_existing,
         )
 
-        success = result.get("success", False)
+        success = result.get("errors", []) == []
         if success:
             logger.info(f"Timeframe conversion completed for {symbol}")
         else:
@@ -943,8 +887,8 @@ async def convert_timeframes(
             "symbol": symbol,
             "source_timeframe": source_timeframe,
             "target_timeframes": target_timeframes,
-            "statistics": result.get("statistics", {}),
-            "converted_records": result.get("total_converted", 0),
+            "statistics": result.get("timeframe_statistics", {}),
+            "converted_records": result.get("total_conversions", 0),
             "auto_detected_range": not (start_date and end_date),
             "actual_start_date": actual_start_date,
             "actual_end_date": actual_end_date,
@@ -1080,7 +1024,10 @@ async def storage_service_info() -> Dict[str, Any]:
             "stats": "GET /storage/stats - Storage statistics",
             "health": "GET /storage/health - Health check",
         },
-        "supported_formats": ["csv", "parquet"],
+        "supported_formats": [
+            RepositoryType.CSV.value,
+            RepositoryType.PARQUET.value,
+        ],
         "supported_operations": [
             "upload",
             "download",
@@ -1100,11 +1047,11 @@ async def storage_service_info() -> Dict[str, Any]:
             "Smart defaults for common parameters",
         ],
         "smart_defaults": {
-            "exchange": "binance",
-            "symbol": "BTCUSDT",
-            "timeframe": "1h",
-            "source_format": "csv",
-            "target_format": "parquet",
+            "exchange": Exchange.BINANCE.value,
+            "symbol": CryptoSymbol.BTCUSDT.value,
+            "timeframe": TimeFrame.HOUR_1.value,
+            "source_format": RepositoryType.CSV.value,
+            "target_format": RepositoryType.PARQUET.value,
             "compress": True,
             "include_metadata": True,
         },

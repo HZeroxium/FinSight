@@ -104,6 +104,8 @@ class CrossRepositoryTimeFramePipeline:
         self.logger.info(f"Source timeframe: {self.source_timeframe}")
         self.logger.info(f"Target timeframes: {self.target_timeframes}")
         self.logger.info(f"Date range: {start_date} to {end_date}")
+        self.logger.info(f"Source repository: {type(self.source_repository).__name__}")
+        self.logger.info(f"Target repository: {type(self.target_repository).__name__}")
 
         # Validate source timeframe and target timeframes compatibility
         for target_tf in self.target_timeframes:

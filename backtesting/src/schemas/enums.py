@@ -196,3 +196,12 @@ class BacktestingEngineType(str, Enum):
     PANDAS = "pandas"
     CACTUS = "cactus"
     BACKTESTR = "backtestr"
+
+
+class StorageProviderType(str, Enum):
+    """Supported storage provider types"""
+
+    MINIO = "minio"
+    DIGITALOCEAN = "digitalocean"
+    AWS = "aws"
+    S3 = "s3"

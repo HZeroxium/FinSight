@@ -8,6 +8,7 @@ Centralized configuration using Pydantic settings with environment variable supp
 from typing import Dict, Any, List
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import SettingsConfigDict, BaseSettings
+from ..schemas.enums import StorageProviderType, CryptoSymbol, TimeFrame, RepositoryType
 
 
 class Settings(BaseSettings):
@@ -26,7 +27,9 @@ class Settings(BaseSettings):
     )
 
     # Storage prefix configuration for object storage
-    storage_prefix: str = Field(default="datasets", env="STORAGE_PREFIX")
+    storage_prefix: str = Field(
+        default="finsight/market_data/datasets", env="STORAGE_PREFIX"
+    )
     storage_separator: str = Field(default="/", env="STORAGE_SEPARATOR")
 
     # MongoDB configuration
@@ -38,7 +41,7 @@ class Settings(BaseSettings):
     # Object Storage Configuration (S3-compatible: MinIO, DigitalOcean Spaces, AWS S3)
     # Storage provider selection
     storage_provider: str = Field(
-        default="minio", env="STORAGE_PROVIDER"
+        default=StorageProviderType.MINIO.value, env="STORAGE_PROVIDER"
     )  # minio, digitalocean, aws
 
     # S3-compatible storage settings
@@ -71,11 +74,20 @@ class Settings(BaseSettings):
 
     # Data collection configuration (environment variable support)
     default_symbols: List[str] = Field(
-        default_factory=lambda: ["BTC/USDT", "ETH/USDT", "BNB/USDT"],
+        default_factory=lambda: [
+            CryptoSymbol.BTCUSDT.value,
+            CryptoSymbol.ETHUSDT.value,
+            CryptoSymbol.BNBUSDT.value,
+        ],
         env="DEFAULT_SYMBOLS",
     )
     default_timeframes: List[str] = Field(
-        default_factory=lambda: ["1h", "4h", "1d"], env="DEFAULT_TIMEFRAMES"
+        default_factory=lambda: [
+            TimeFrame.HOUR_1.value,
+            TimeFrame.HOUR_4.value,
+            TimeFrame.DAY_1.value,
+        ],
+        env="DEFAULT_TIMEFRAMES",
     )
 
     # Rate limiting
@@ -94,14 +106,28 @@ class Settings(BaseSettings):
     binance_secret_key: str = Field(default="", env="BINANCE_SECRET_KEY")
 
     # Repository configuration
-    repository_type: str = Field(default="csv", env="REPOSITORY_TYPE")
+    repository_type: str = Field(
+        default=RepositoryType.CSV.value, env="REPOSITORY_TYPE"
+    )
 
     # Cross-repository configuration
-    source_repository_type: str = Field(default="csv", env="SOURCE_REPOSITORY_TYPE")
-    source_timeframe: str = Field(default="1h", env="SOURCE_TIMEFRAME")
-    target_repository_type: str = Field(default="csv", env="TARGET_REPOSITORY_TYPE")
+    source_repository_type: str = Field(
+        default=RepositoryType.CSV.value, env="SOURCE_REPOSITORY_TYPE"
+    )
+    source_timeframe: str = Field(
+        default=TimeFrame.HOUR_1.value, env="SOURCE_TIMEFRAME"
+    )
+    target_repository_type: str = Field(
+        default=RepositoryType.CSV.value, env="TARGET_REPOSITORY_TYPE"
+    )
     target_timeframes: List[str] = Field(
-        default_factory=lambda: ["2h", "4h", "12h", "1d"], env="TARGET_TIMEFRAMES"
+        default_factory=lambda: [
+            TimeFrame.HOUR_2.value,
+            TimeFrame.HOUR_4.value,
+            TimeFrame.HOUR_12.value,
+            TimeFrame.DAY_1.value,
+        ],
+        env="TARGET_TIMEFRAMES",
     )
     enable_parallel_conversion: bool = Field(
         default=True, env="ENABLE_PARALLEL_CONVERSION"
@@ -188,7 +214,12 @@ class Settings(BaseSettings):
     @field_validator("storage_provider")
     @classmethod
     def validate_storage_provider(cls, v):
-        allowed_providers = {"minio", "digitalocean", "aws", "s3"}
+        allowed_providers = {
+            StorageProviderType.MINIO.value,
+            StorageProviderType.DIGITALOCEAN.value,
+            StorageProviderType.AWS.value,
+            StorageProviderType.S3.value,
+        }
         if v.lower() not in allowed_providers:
             raise ValueError(
                 f"storage_provider must be one of {sorted(allowed_providers)}"
@@ -202,7 +233,7 @@ class Settings(BaseSettings):
         Returns:
             Dictionary with storage configuration parameters
         """
-        if self.storage_provider == "minio":
+        if self.storage_provider == StorageProviderType.MINIO.value:
             return {
                 "endpoint_url": self.s3_endpoint_url,
                 "access_key": self.s3_access_key,
@@ -214,7 +245,7 @@ class Settings(BaseSettings):
                 "signature_version": self.s3_signature_version,
                 "max_pool_connections": self.s3_max_pool_connections,
             }
-        elif self.storage_provider == "digitalocean":
+        elif self.storage_provider == StorageProviderType.DIGITALOCEAN.value:
             return {
                 "endpoint_url": self.spaces_endpoint_url,
                 "access_key": self.spaces_access_key,
@@ -226,7 +257,10 @@ class Settings(BaseSettings):
                 "signature_version": "s3v4",
                 "max_pool_connections": self.s3_max_pool_connections,
             }
-        elif self.storage_provider in ["aws", "s3"]:
+        elif self.storage_provider in [
+            StorageProviderType.AWS.value,
+            StorageProviderType.S3.value,
+        ]:
             return {
                 "endpoint_url": None,  # Use AWS default endpoint
                 "access_key": self.aws_access_key_id or self.s3_access_key,
