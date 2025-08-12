@@ -36,7 +36,7 @@ class Settings(BaseSettings):
         default="http://localhost:8761", description="Eureka server URL"
     )
     eureka_app_name: str = Field(
-        default="news-crawler-service",
+        default="news-service",
         description="Application name for Eureka registration",
     )
     eureka_instance_id: Optional[str] = Field(
@@ -91,6 +91,33 @@ class Settings(BaseSettings):
     )
     eureka_heartbeat_interval_seconds: int = Field(
         default=30, description="Heartbeat interval in seconds"
+    )
+
+    # Eureka Retry Configuration
+    eureka_registration_retry_attempts: int = Field(
+        default=3, description="Number of retry attempts for registration"
+    )
+    eureka_registration_retry_delay_seconds: int = Field(
+        default=5, description="Initial delay between registration retries in seconds"
+    )
+    eureka_heartbeat_retry_attempts: int = Field(
+        default=3, description="Number of retry attempts for heartbeat"
+    )
+    eureka_heartbeat_retry_delay_seconds: int = Field(
+        default=2, description="Initial delay between heartbeat retries in seconds"
+    )
+    eureka_retry_backoff_multiplier: float = Field(
+        default=2.0, description="Multiplier for exponential backoff"
+    )
+    eureka_max_retry_delay_seconds: int = Field(
+        default=60, description="Maximum delay between retries in seconds"
+    )
+    eureka_enable_auto_re_registration: bool = Field(
+        default=True,
+        description="Enable automatic re-registration after server restart",
+    )
+    eureka_re_registration_delay_seconds: int = Field(
+        default=10, description="Delay before attempting re-registration in seconds"
     )
 
     # Tavily API configuration
@@ -239,6 +266,31 @@ class Settings(BaseSettings):
             )
         return v
 
+    @field_validator("eureka_registration_retry_attempts")
+    @classmethod
+    def validate_eureka_registration_retry_attempts(cls, v):
+        if v < 1 or v > 10:
+            raise ValueError(
+                "eureka_registration_retry_attempts must be between 1 and 10"
+            )
+        return v
+
+    @field_validator("eureka_heartbeat_retry_attempts")
+    @classmethod
+    def validate_eureka_heartbeat_retry_attempts(cls, v):
+        if v < 1 or v > 10:
+            raise ValueError("eureka_heartbeat_retry_attempts must be between 1 and 10")
+        return v
+
+    @field_validator("eureka_retry_backoff_multiplier")
+    @classmethod
+    def validate_eureka_retry_backoff_multiplier(cls, v):
+        if v < 1.0 or v > 5.0:
+            raise ValueError(
+                "eureka_retry_backoff_multiplier must be between 1.0 and 5.0"
+            )
+        return v
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -307,6 +359,14 @@ class Settings(BaseSettings):
             "instance_info_replication_interval_seconds": self.eureka_instance_info_replication_interval_seconds,
             "initial_instance_info_replication_interval_seconds": self.eureka_initial_instance_info_replication_interval_seconds,
             "heartbeat_interval_seconds": self.eureka_heartbeat_interval_seconds,
+            "registration_retry_attempts": self.eureka_registration_retry_attempts,
+            "registration_retry_delay_seconds": self.eureka_registration_retry_delay_seconds,
+            "heartbeat_retry_attempts": self.eureka_heartbeat_retry_attempts,
+            "heartbeat_retry_delay_seconds": self.eureka_heartbeat_retry_delay_seconds,
+            "retry_backoff_multiplier": self.eureka_retry_backoff_multiplier,
+            "max_retry_delay_seconds": self.eureka_max_retry_delay_seconds,
+            "enable_auto_re_registration": self.eureka_enable_auto_re_registration,
+            "re_registration_delay_seconds": self.eureka_re_registration_delay_seconds,
         }
 
 

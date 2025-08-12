@@ -48,6 +48,16 @@ async def get_eureka_status() -> Dict[str, Any]:
                 "lease_renewal_interval_in_seconds": settings.eureka_lease_renewal_interval_in_seconds,
                 "lease_expiration_duration_in_seconds": settings.eureka_lease_expiration_duration_in_seconds,
                 "heartbeat_interval_seconds": settings.eureka_heartbeat_interval_seconds,
+                "retry_config": {
+                    "registration_retry_attempts": settings.eureka_registration_retry_attempts,
+                    "registration_retry_delay_seconds": settings.eureka_registration_retry_delay_seconds,
+                    "heartbeat_retry_attempts": settings.eureka_heartbeat_retry_attempts,
+                    "heartbeat_retry_delay_seconds": settings.eureka_heartbeat_retry_delay_seconds,
+                    "retry_backoff_multiplier": settings.eureka_retry_backoff_multiplier,
+                    "max_retry_delay_seconds": settings.eureka_max_retry_delay_seconds,
+                    "enable_auto_re_registration": settings.eureka_enable_auto_re_registration,
+                    "re_registration_delay_seconds": settings.eureka_re_registration_delay_seconds,
+                },
             },
         }
 
@@ -139,6 +149,51 @@ async def deregister_from_eureka(
         logger.error(f"Failed to deregister from Eureka: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to deregister from Eureka: {str(e)}"
+        )
+
+
+@router.post("/re-register")
+async def re_register_with_eureka(
+    admin_access: bool = Depends(require_admin_access),
+) -> Dict[str, Any]:
+    """
+    Manually trigger re-registration with Eureka server.
+
+    Args:
+        admin_access: Admin access verification
+
+    Returns:
+        Dict[str, Any]: Re-registration result
+    """
+    if not settings.enable_eureka_client:
+        raise HTTPException(status_code=400, detail="Eureka client is disabled")
+
+    try:
+        eureka_service = get_eureka_client_service()
+
+        # Get local IP address
+        ip_address = (
+            settings.eureka_ip_address or eureka_service._get_local_ip_address()
+        )
+
+        # Trigger re-registration
+        success = await eureka_service._re_register_with_eureka(ip_address)
+
+        if success:
+            return {
+                "success": True,
+                "message": "Service re-registered successfully with Eureka",
+                "instance_id": eureka_service.get_instance_id(),
+            }
+        else:
+            raise HTTPException(
+                status_code=500, detail="Failed to re-register with Eureka server"
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to re-register with Eureka: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to re-register with Eureka: {str(e)}"
         )
 
 

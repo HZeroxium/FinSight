@@ -8,7 +8,8 @@ import socket
 import uuid
 import threading
 import time
-from typing import Optional, Dict, Any
+import random
+from typing import Optional, Dict, Any, Callable
 from contextlib import asynccontextmanager
 
 import requests
@@ -22,9 +23,10 @@ class EurekaClientService:
 
     This service handles:
     - Service registration with Eureka server
-    - Heartbeat management
+    - Heartbeat management with retry logic
     - Service deregistration on shutdown
     - Health check URL management
+    - Automatic re-registration after server restart
     """
 
     def __init__(self):
@@ -42,6 +44,9 @@ class EurekaClientService:
         self._instance_id: Optional[str] = None
         self._heartbeat_thread: Optional[threading.Thread] = None
         self._stop_heartbeat: bool = False
+        self._consecutive_heartbeat_failures: int = 0
+        self._last_registration_time: float = 0
+        self._registration_lock = threading.Lock()
 
     async def start(self) -> bool:
         """
@@ -57,17 +62,14 @@ class EurekaClientService:
         try:
             self.logger.info("🚀 Starting Eureka client service...")
 
-            # Generate instance ID if not provided
-            if not settings.eureka_instance_id:
-                self._instance_id = f"{settings.eureka_app_name}:{settings.host}:{settings.port}:{uuid.uuid4().hex[:8]}"
-            else:
-                self._instance_id = settings.eureka_instance_id
+            # Generate new instance ID for fresh registration
+            self._generate_new_instance_id()
 
             # Get local IP address if not provided
             ip_address = settings.eureka_ip_address or self._get_local_ip_address()
 
-            # Register with Eureka server
-            success = await self._register_with_eureka(ip_address)
+            # Register with Eureka server with retry logic
+            success = await self._register_with_eureka_with_retry(ip_address)
 
             if success:
                 # Start heartbeat thread
@@ -75,7 +77,9 @@ class EurekaClientService:
                 self.logger.info("✅ Eureka client service started successfully")
                 return True
             else:
-                self.logger.warning("⚠️ Failed to register with Eureka server")
+                self.logger.warning(
+                    "⚠️ Failed to register with Eureka server after all retry attempts"
+                )
                 return False
 
         except Exception as e:
@@ -124,6 +128,18 @@ class EurekaClientService:
         """
         return self._instance_id
 
+    def _generate_new_instance_id(self) -> None:
+        """
+        Generate a new instance ID for fresh registration.
+        This ensures proper re-registration after server restart.
+        """
+        with self._registration_lock:
+            # Generate new instance ID with timestamp to ensure uniqueness
+            timestamp = int(time.time())
+            random_suffix = uuid.uuid4().hex[:8]
+            self._instance_id = f"{settings.eureka_app_name}:{settings.host}:{settings.port}:{timestamp}_{random_suffix}"
+            self.logger.info(f"🆔 Generated new instance ID: {self._instance_id}")
+
     def _get_local_ip_address(self) -> str:
         """
         Get the local IP address of the machine.
@@ -140,6 +156,106 @@ class EurekaClientService:
         except Exception:
             # Fallback to localhost
             return "127.0.0.1"
+
+    def _calculate_retry_delay(self, attempt: int, base_delay: int) -> float:
+        """
+        Calculate retry delay with exponential backoff and jitter.
+
+        Args:
+            attempt: Current retry attempt (1-based)
+            base_delay: Base delay in seconds
+
+        Returns:
+            float: Delay in seconds
+        """
+        # Exponential backoff: base_delay * (multiplier ^ (attempt - 1))
+        delay = base_delay * (settings.eureka_retry_backoff_multiplier ** (attempt - 1))
+
+        # Cap at maximum delay
+        delay = min(delay, settings.eureka_max_retry_delay_seconds)
+
+        # Add jitter (±25% random variation)
+        jitter = delay * 0.25 * (2 * random.random() - 1)
+        delay += jitter
+
+        return max(0.1, delay)  # Minimum 0.1 seconds
+
+    async def _execute_with_retry(
+        self,
+        operation: Callable,
+        operation_name: str,
+        max_attempts: int,
+        base_delay: int,
+        *args,
+        **kwargs,
+    ) -> bool:
+        """
+        Execute an operation with retry logic and exponential backoff.
+
+        Args:
+            operation: Function to execute
+            operation_name: Name of operation for logging
+            max_attempts: Maximum number of retry attempts
+            base_delay: Base delay between retries in seconds
+            *args: Arguments to pass to operation
+            **kwargs: Keyword arguments to pass to operation
+
+        Returns:
+            bool: True if operation succeeded, False otherwise
+        """
+        last_exception = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                if asyncio.iscoroutinefunction(operation):
+                    result = await operation(*args, **kwargs)
+                else:
+                    result = operation(*args, **kwargs)
+
+                if result:
+                    if attempt > 1:
+                        self.logger.info(
+                            f"✅ {operation_name} succeeded on attempt {attempt}"
+                        )
+                    return True
+                else:
+                    raise Exception(f"{operation_name} returned False")
+
+            except Exception as e:
+                last_exception = e
+
+                if attempt < max_attempts:
+                    delay = self._calculate_retry_delay(attempt, base_delay)
+                    self.logger.warning(
+                        f"⚠️ {operation_name} failed on attempt {attempt}/{max_attempts}: {e}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    self.logger.error(
+                        f"❌ {operation_name} failed after {max_attempts} attempts. "
+                        f"Last error: {e}"
+                    )
+
+        return False
+
+    async def _register_with_eureka_with_retry(self, ip_address: str) -> bool:
+        """
+        Register with Eureka server using retry logic.
+
+        Args:
+            ip_address: IP address for registration
+
+        Returns:
+            bool: True if registration successful, False otherwise
+        """
+        return await self._execute_with_retry(
+            self._register_with_eureka,
+            "Eureka registration",
+            settings.eureka_registration_retry_attempts,
+            settings.eureka_registration_retry_delay_seconds,
+            ip_address,
+        )
 
     async def _register_with_eureka(self, ip_address: str) -> bool:
         """
@@ -208,6 +324,7 @@ class EurekaClientService:
 
             if response.status_code in [200, 204]:
                 self._is_registered = True
+                self._last_registration_time = time.time()
                 self.logger.info(
                     f"✅ Successfully registered with Eureka server. Instance ID: {self._instance_id}"
                 )
@@ -247,6 +364,81 @@ class EurekaClientService:
         except Exception as e:
             self.logger.error(f"❌ Failed to deregister from Eureka server: {e}")
 
+    async def _re_register_with_eureka(self, ip_address: str) -> bool:
+        """
+        Re-register with Eureka server after connection issues.
+
+        Args:
+            ip_address: IP address for registration
+
+        Returns:
+            bool: True if re-registration successful, False otherwise
+        """
+        try:
+            self.logger.info("🔄 Attempting to re-register with Eureka server...")
+
+            # Generate new instance ID for re-registration
+            self._generate_new_instance_id()
+
+            # Reset registration state
+            self._is_registered = False
+            self._consecutive_heartbeat_failures = 0
+
+            # Attempt re-registration with retry
+            success = await self._register_with_eureka_with_retry(ip_address)
+
+            if success:
+                self.logger.info("✅ Successfully re-registered with Eureka server")
+                return True
+            else:
+                self.logger.error("❌ Failed to re-register with Eureka server")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"❌ Error during re-registration: {e}")
+            return False
+
+    def _send_heartbeat_with_retry(self, ip_address: str) -> bool:
+        """
+        Send heartbeat to Eureka server with retry logic.
+
+        Args:
+            ip_address: IP address for heartbeat
+
+        Returns:
+            bool: True if heartbeat successful, False otherwise
+        """
+        try:
+            # Send heartbeat
+            response = requests.put(
+                f"{settings.eureka_server_url}/eureka/apps/{settings.eureka_app_name}/{self._instance_id}",
+                headers={"Content-Type": "application/json"},
+                timeout=5,
+            )
+
+            if response.status_code in [200, 204]:
+                if self._consecutive_heartbeat_failures > 0:
+                    self.logger.info(
+                        f"✅ Heartbeat restored after {self._consecutive_heartbeat_failures} failures"
+                    )
+                    self._consecutive_heartbeat_failures = 0
+                return True
+            else:
+                self._consecutive_heartbeat_failures += 1
+                self.logger.warning(
+                    f"⚠️ Heartbeat failed. Status: {response.status_code}. "
+                    f"Consecutive failures: {self._consecutive_heartbeat_failures}"
+                )
+                return False
+
+        except Exception as e:
+            self._consecutive_heartbeat_failures += 1
+            self.logger.error(
+                f"❌ Error in heartbeat: {e}. "
+                f"Consecutive failures: {self._consecutive_heartbeat_failures}"
+            )
+            return False
+
     def _start_heartbeat_thread(self, ip_address: str) -> None:
         """
         Start the heartbeat thread to maintain registration.
@@ -258,20 +450,52 @@ class EurekaClientService:
             return
 
         def heartbeat_loop():
-            """Heartbeat loop to maintain Eureka registration."""
+            """Heartbeat loop to maintain Eureka registration with retry logic."""
             while not self._stop_heartbeat and self._is_registered:
                 try:
-                    # Send heartbeat
-                    response = requests.put(
-                        f"{settings.eureka_server_url}/eureka/apps/{settings.eureka_app_name}/{self._instance_id}",
-                        headers={"Content-Type": "application/json"},
-                        timeout=5,
-                    )
+                    # Send heartbeat with retry logic
+                    success = self._send_heartbeat_with_retry(ip_address)
 
-                    if response.status_code not in [200, 204]:
+                    if (
+                        not success
+                        and self._consecutive_heartbeat_failures
+                        >= settings.eureka_heartbeat_retry_attempts
+                    ):
+                        # Try to re-register if too many consecutive failures
                         self.logger.warning(
-                            f"⚠️ Heartbeat failed. Status: {response.status_code}"
+                            f"⚠️ Too many consecutive heartbeat failures ({self._consecutive_heartbeat_failures}). "
+                            "Attempting to re-register..."
                         )
+
+                        # Attempt re-registration if enabled
+                        if settings.eureka_enable_auto_re_registration:
+                            self.logger.info(
+                                f"⏳ Waiting {settings.eureka_re_registration_delay_seconds}s before re-registration..."
+                            )
+                            time.sleep(settings.eureka_re_registration_delay_seconds)
+
+                            # Attempt re-registration in a separate thread to avoid blocking
+                            def re_register_task():
+                                try:
+                                    # Create new event loop for async operation
+                                    loop = asyncio.new_event_loop()
+                                    asyncio.set_event_loop(loop)
+                                    loop.run_until_complete(
+                                        self._re_register_with_eureka(ip_address)
+                                    )
+                                    loop.close()
+                                except Exception as e:
+                                    self.logger.error(f"❌ Re-registration failed: {e}")
+
+                            re_register_thread = threading.Thread(
+                                target=re_register_task, daemon=True
+                            )
+                            re_register_thread.start()
+                        else:
+                            self.logger.warning("🔄 Auto re-registration is disabled")
+
+                        # Reset failure counter after attempting re-registration
+                        self._consecutive_heartbeat_failures = 0
 
                     # Wait for next heartbeat
                     time.sleep(settings.eureka_heartbeat_interval_seconds)
@@ -282,7 +506,7 @@ class EurekaClientService:
 
         self._heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
         self._heartbeat_thread.start()
-        self.logger.info("💓 Heartbeat thread started")
+        self.logger.info("💓 Heartbeat thread started with retry logic")
 
     @asynccontextmanager
     async def lifecycle(self):
