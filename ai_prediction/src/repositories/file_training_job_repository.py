@@ -29,8 +29,8 @@ class FileTrainingJobRepository(TrainingJobRepositoryInterface):
         self.logger = LoggerFactory.get_logger("FileTrainingJobRepository")
         self.settings = get_settings()
 
-        # Create jobs directory
-        self.jobs_dir = self.settings.base_dir / "jobs"
+        # Use jobs_dir from settings (which respects environment variables)
+        self.jobs_dir = self.settings.jobs_dir
         self.jobs_dir.mkdir(exist_ok=True, parents=True)
 
         # Create subdirectories

@@ -1,3 +1,4 @@
+# requirements-docker-minimal.txt
 # Docker minimal requirements for ai_prediction
 # This file contains only the essential dependencies for containerized deployment
 

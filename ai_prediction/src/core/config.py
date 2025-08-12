@@ -28,7 +28,8 @@ class Settings(BaseSettings):
 
     # Directory paths
     base_dir: Path = Field(
-        default_factory=lambda: Path(__file__).parent.parent.parent.parent
+        default_factory=lambda: Path(__file__).parent.parent.parent.parent,
+        env="BASE_DIR",
     )
     data_dir: Path = Field(
         default_factory=lambda: Path(__file__).parent.parent.parent.parent / "data",
@@ -41,6 +42,10 @@ class Settings(BaseSettings):
     logs_dir: Path = Field(
         default_factory=lambda: Path(__file__).parent.parent.parent.parent / "logs",
         env="LOGS_DIR",
+    )
+    jobs_dir: Path = Field(
+        default_factory=lambda: Path(__file__).parent.parent.parent.parent / "jobs",
+        env="JOBS_DIR",
     )
 
     # Model management settings
@@ -312,6 +317,7 @@ class Settings(BaseSettings):
             self.data_dir,
             self.models_dir,
             self.logs_dir,
+            self.jobs_dir,
             self.cloud_data_cache_dir,
         ]:
             directory.mkdir(parents=True, exist_ok=True)
