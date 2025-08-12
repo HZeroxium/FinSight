@@ -72,8 +72,11 @@ class InfluxMarketDataRepository(MarketDataRepository):
             self.logger.error(f"Failed to connect to InfluxDB: {str(e)}")
             raise RepositoryError(f"Failed to connect to InfluxDB: {str(e)}")
 
-    def _create_point_from_schema(self, schema: OHLCVSchema) -> Point:
+    def _create_point_from_schema(self, schema: OHLCVSchema):
         """Create InfluxDB Point from OHLCV schema"""
+        if not INFLUXDB_AVAILABLE:
+            raise RepositoryError("InfluxDB client not available")
+
         return (
             Point("ohlcv")
             .tag("exchange", schema.exchange)

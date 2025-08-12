@@ -199,13 +199,17 @@ class MarketDataRepositoryFactory:
             try:
                 from ..adapters.influx_market_data_repository import (
                     InfluxMarketDataRepository,
+                    INFLUXDB_AVAILABLE,
                 )
 
-                self._registry[RepositoryType.INFLUXDB] = InfluxMarketDataRepository
-            except ImportError:
-                self.logger.warning(
-                    "InfluxDB repository not available (influxdb-client not installed)"
-                )
+                if INFLUXDB_AVAILABLE:
+                    self._registry[RepositoryType.INFLUXDB] = InfluxMarketDataRepository
+                else:
+                    self.logger.warning(
+                        "InfluxDB repository not available (influxdb-client not installed)"
+                    )
+            except (ImportError, NameError) as e:
+                self.logger.warning(f"InfluxDB repository not available: {e}")
 
             # TimescaleDB Repository would be added here when implemented
             # self._registry[RepositoryType.TIMESCALEDB] = TimescaleDBMarketDataRepository

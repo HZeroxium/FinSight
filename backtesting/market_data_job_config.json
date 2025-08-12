@@ -1,24 +1,16 @@
 {
-  "cron_schedule": "*/15 * * * *",
+  "cron_schedule": "*/1 * * * *",
   "timezone": "UTC",
   "exchange": "binance",
   "max_lookback_days": 30,
   "update_existing": true,
   "max_concurrent_symbols": 5,
-  "repository_type": "mongodb",
+  "repository_type": "csv",
   "repository_config": {},
   "max_symbols_per_run": 50,
   "max_timeframes_per_run": 10,
-  "priority_symbols": [
-    "BTCUSDT",
-    "ETHUSDT",
-    "BNBUSDT"
-  ],
-  "priority_timeframes": [
-    "1h",
-    "4h",
-    "1d"
-  ],
+  "priority_symbols": [],
+  "priority_timeframes": ["1h"],
   "max_retries": 3,
   "retry_delay_minutes": 5,
   "skip_failed_symbols": true,
