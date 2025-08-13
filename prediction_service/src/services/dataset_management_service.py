@@ -50,7 +50,7 @@ class DatasetManagementService:
     and caching strategies.
     """
 
-    def __init__(self):
+    def __init__(self, storage_client: Optional[StorageClient] = None):
         """Initialize the dataset management service."""
         self.settings = get_settings()
 
@@ -61,10 +61,18 @@ class DatasetManagementService:
             log_file="logs/dataset_management.log",
         )
 
-        # Initialize components
-        self.cloud_loader = CloudDataLoader()
+        # Initialize components - now with injected storage_client
+        self.cloud_loader = CloudDataLoader(storage_client=storage_client)
         self.file_loader = FileDataLoader()
-        self.storage_client = StorageClient(**self.settings.get_storage_config())
+
+        # Use injected storage_client or create one if not provided
+        if storage_client is not None:
+            self.storage_client = storage_client
+            self.logger.info("Using injected storage client")
+        else:
+            # Fallback to creating storage client if not injected (for backward compatibility)
+            self.storage_client = StorageClient(**self.settings.get_storage_config())
+            self.logger.info("Created storage client (fallback)")
 
         # Cache directory
         self.cache_dir = self.settings.cloud_data_cache_dir

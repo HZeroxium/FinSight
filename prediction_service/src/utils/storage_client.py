@@ -5,8 +5,8 @@ Object Storage Client for S3-compatible storage systems.
 Supports MinIO, DigitalOcean Spaces, AWS S3, and other S3-compatible storage.
 """
 
-import os
 import asyncio
+import functools
 from typing import Optional, Dict, Any, List, Union
 from pathlib import Path
 import boto3
@@ -58,8 +58,8 @@ class StorageClient:
             max_pool_connections: Maximum connection pool size
         """
         self.endpoint_url = endpoint_url
-        self.access_key = access_key or os.getenv("S3_ACCESS_KEY")
-        self.secret_key = secret_key or os.getenv("S3_SECRET_KEY")
+        self.access_key = access_key
+        self.secret_key = secret_key
         self.region_name = region_name
         self.bucket_name = bucket_name
         self.use_ssl = use_ssl
@@ -111,6 +111,12 @@ class StorageClient:
             self.logger.error(f"Failed to initialize storage client: {e}")
             raise StorageClientError(f"Storage client initialization failed: {e}")
 
+    async def _call(self, func, *args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(func, *args, **kwargs)
+        )
+
     async def create_bucket(self, bucket_name: Optional[str] = None) -> bool:
         """
         Create a bucket if it doesn't exist.
@@ -125,45 +131,30 @@ class StorageClient:
             StorageClientError: If bucket creation fails
         """
         bucket = bucket_name or self.bucket_name
-
         try:
-            # Check if bucket exists
-            await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.s3_client.head_bucket(Bucket=bucket)
-            )
+            # check tồn tại
+            await self._call(self.s3_client.head_bucket, Bucket=bucket)
             self.logger.info(f"Bucket '{bucket}' already exists")
             return True
-
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            if error_code == "404":
-                # Bucket doesn't exist, create it
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("404", "NoSuchBucket"):
                 try:
                     if self.region_name == "us-east-1":
-                        # us-east-1 doesn't need location constraint
-                        await asyncio.get_event_loop().run_in_executor(
-                            None, self.s3_client.create_bucket, {"Bucket": bucket}
-                        )
+                        await self._call(self.s3_client.create_bucket, Bucket=bucket)
                     else:
-                        await asyncio.get_event_loop().run_in_executor(
-                            None,
+                        await self._call(
                             self.s3_client.create_bucket,
-                            {
-                                "Bucket": bucket,
-                                "CreateBucketConfiguration": {
-                                    "LocationConstraint": self.region_name
-                                },
+                            Bucket=bucket,
+                            CreateBucketConfiguration={
+                                "LocationConstraint": self.region_name
                             },
                         )
-
                     self.logger.info(f"Created bucket '{bucket}'")
                     return True
-
-                except ClientError as create_error:
-                    self.logger.error(
-                        f"Failed to create bucket '{bucket}': {create_error}"
-                    )
-                    raise StorageClientError(f"Failed to create bucket: {create_error}")
+                except ClientError as ce:
+                    self.logger.error(f"Failed to create bucket '{bucket}': {ce}")
+                    raise StorageClientError(f"Failed to create bucket: {ce}")
             else:
                 self.logger.error(f"Error checking bucket '{bucket}': {e}")
                 raise StorageClientError(f"Error checking bucket: {e}")
@@ -388,17 +379,12 @@ class StorageClient:
             StorageClientError: If deletion fails
         """
         bucket = bucket_name or self.bucket_name
-
         try:
-            await asyncio.get_event_loop().run_in_executor(
-                None,
-                self.s3_client.delete_object,
-                {"Bucket": bucket, "Key": object_key},
+            await self._call(
+                self.s3_client.delete_object, Bucket=bucket, Key=object_key
             )
-
             self.logger.info(f"Deleted object '{bucket}/{object_key}'")
             return True
-
         except Exception as e:
             self.logger.error(f"Failed to delete '{bucket}/{object_key}': {e}")
             raise StorageClientError(f"Delete failed: {e}")

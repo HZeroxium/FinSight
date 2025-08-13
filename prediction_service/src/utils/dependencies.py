@@ -16,8 +16,8 @@ from ..interfaces.data_loader_interface import IDataLoader
 from ..adapters.simple_experiment_tracker import SimpleExperimentTracker
 from ..data.cloud_data_loader import CloudDataLoader
 from ..data.file_data_loader import FileDataLoader
-from ..services.dataset_management_service import DatasetManagementService
 from ..utils.storage_client import StorageClient
+from ..utils.model_utils import ModelUtils
 from ..core.config import get_settings, Settings
 from ..schemas.enums import DataLoaderType, ExperimentTrackerType, StorageProviderType
 from .device_manager import create_device_manager_from_settings, DeviceManager
@@ -99,6 +99,28 @@ def _create_experiment_tracker(
     return simple_tracker
 
 
+def _create_storage_client() -> StorageClient:
+    """Factory function to create storage client with configuration"""
+    settings = get_settings()
+    storage_config = settings.get_storage_config()
+
+    # Filter out unsupported parameters
+    supported_params = {
+        "endpoint_url",
+        "access_key",
+        "secret_key",
+        "region_name",
+        "bucket_name",
+        "use_ssl",
+        "verify_ssl",
+        "signature_version",
+        "max_pool_connections",
+    }
+
+    filtered_config = {k: v for k, v in storage_config.items() if k in supported_params}
+    return StorageClient(**filtered_config)
+
+
 class Container(containers.DeclarativeContainer):
     """Main dependency injection container for AI Prediction module"""
 
@@ -111,22 +133,22 @@ class Container(containers.DeclarativeContainer):
     # Device manager for consistent CPU/GPU handling
     device_manager = providers.Singleton(lambda: create_device_manager_from_settings())
 
-    # Storage client for cloud operations - we'll create it manually in a factory
-    storage_client = providers.Factory(
-        lambda: StorageClient(**get_settings().get_storage_config())
-    )
+    # Storage client for cloud operations - now initialized with centralized config
+    storage_client = providers.Singleton(_create_storage_client)
 
-    # Data loaders
+    # Model utilities, now injected with storage_client
+    model_utils = providers.Singleton(ModelUtils, storage_client=storage_client)
+
+    # Data loaders, now injected with storage_client
     cloud_data_loader = providers.Singleton(
-        CloudDataLoader, data_dir=config.provided.data_dir
+        CloudDataLoader,
+        data_dir=config.provided.data_dir,
+        storage_client=storage_client,
     )
 
     file_data_loader = providers.Singleton(
         FileDataLoader, data_dir=config.provided.data_dir
     )
-
-    # Services
-    dataset_management_service = providers.Singleton(DatasetManagementService)
 
     # Experiment trackers
     simple_experiment_tracker = providers.Singleton(SimpleExperimentTracker)
@@ -159,7 +181,7 @@ class DependencyManager:
     def __init__(self):
         self.container = Container()
         # Initialize wire
-        self.container.wire(modules=["__main__"])
+        self.container.wire(modules=[__name__])
 
     def get_data_loader(self) -> IDataLoader:
         """Get configured data loader"""
@@ -181,13 +203,19 @@ class DependencyManager:
         """Get file data loader"""
         return self.container.file_data_loader()
 
-    def get_dataset_management_service(self) -> DatasetManagementService:
-        """Get dataset management service"""
-        return self.container.dataset_management_service()
+    def get_dataset_management_service(self):
+        """Get dataset management service - lazy import to avoid circular dependency"""
+        from ..services.dataset_management_service import DatasetManagementService
+
+        return DatasetManagementService(storage_client=self.get_storage_client())
 
     def get_device_manager(self) -> DeviceManager:
         """Get device manager"""
         return self.container.device_manager()
+
+    def get_model_utils(self) -> ModelUtils:
+        """Get model utilities"""
+        return self.container.model_utils()
 
     def reset_configuration(self) -> None:
         """Reset container configuration to defaults"""
@@ -223,7 +251,7 @@ def get_storage_client() -> StorageClient:
     return dependency_manager.get_storage_client()
 
 
-def get_dataset_management_service() -> DatasetManagementService:
+def get_dataset_management_service():
     """Get dataset management service (convenience function)"""
     return dependency_manager.get_dataset_management_service()
 
@@ -231,6 +259,11 @@ def get_dataset_management_service() -> DatasetManagementService:
 def get_device_manager() -> DeviceManager:
     """Get configured device manager (convenience function)"""
     return dependency_manager.get_device_manager()
+
+
+def get_model_utils() -> ModelUtils:
+    """Get model utilities (convenience function)"""
+    return dependency_manager.get_model_utils()
 
 
 # FastAPI dependency functions for easy injection
@@ -249,7 +282,7 @@ async def get_storage_client_dependency() -> StorageClient:
     return get_storage_client()
 
 
-async def get_dataset_management_service_dependency() -> DatasetManagementService:
+async def get_dataset_management_service_dependency():
     """FastAPI dependency function for dataset management service."""
     return get_dataset_management_service()
 
@@ -257,6 +290,11 @@ async def get_dataset_management_service_dependency() -> DatasetManagementServic
 async def get_device_manager_dependency() -> DeviceManager:
     """FastAPI dependency function for device manager."""
     return get_device_manager()
+
+
+async def get_model_utils_dependency() -> ModelUtils:
+    """FastAPI dependency function for model utilities."""
+    return get_model_utils()
 
 
 # Health check and info functions
@@ -273,6 +311,7 @@ async def health_check_dependencies() -> dict:
         "storage_client": False,
         "dataset_management_service": False,
         "device_manager": False,
+        "model_utils": False,
         "timestamp": None,
     }
 
@@ -300,12 +339,19 @@ async def health_check_dependencies() -> dict:
             results["storage_client"] = storage_client is not None
 
         # Check dataset management service
-        dataset_service = get_dataset_management_service()
-        results["dataset_management_service"] = dataset_service is not None
+        try:
+            dataset_service = get_dataset_management_service()
+            results["dataset_management_service"] = dataset_service is not None
+        except Exception:
+            results["dataset_management_service"] = False
 
         # Check device manager
         device_manager = get_device_manager()
         results["device_manager"] = device_manager is not None
+
+        # Check model utils
+        model_utils = get_model_utils()
+        results["model_utils"] = model_utils is not None
 
         results["timestamp"] = "Health check completed"
         logger.info("Dependency health check completed")
@@ -328,8 +374,8 @@ def get_dependency_info() -> dict:
 
     data_loader = dependency_manager.get_data_loader()
     experiment_tracker = dependency_manager.get_experiment_tracker()
-    dataset_service = dependency_manager.get_dataset_management_service()
     device_manager = dependency_manager.get_device_manager()
+    model_utils = dependency_manager.get_model_utils()
 
     info = {
         "experiment_tracker": {
@@ -341,10 +387,6 @@ def get_dependency_info() -> dict:
             "type": settings.data_loader_type,
             "instance": type(data_loader).__name__,
         },
-        "dataset_management_service": {
-            "instance": type(dataset_service).__name__,
-            "cache_directory": str(dataset_service.cache_dir),
-        },
         "device_manager": {
             "device": device_manager.device,
             "force_cpu": device_manager.force_cpu,
@@ -352,13 +394,24 @@ def get_dependency_info() -> dict:
             "torch_available": device_manager.torch_available,
         },
         "cloud_storage": {
-            "enabled": settings.storage_provider != "local",
+            "enabled": settings.enable_cloud_storage,
             "provider": settings.storage_provider,
             "bucket": settings.get_storage_config().get("bucket_name", "unknown"),
+            "model_storage_prefix": settings.model_storage_prefix,
+            "dataset_storage_prefix": settings.dataset_storage_prefix,
+            "endpoint_url": settings.get_storage_config().get(
+                "endpoint_url", "unknown"
+            ),
+            "region": settings.get_storage_config().get("region_name", "unknown"),
+            "use_ssl": settings.get_storage_config().get("use_ssl", False),
         },
         "mlflow": {
             "tracking_uri": settings.mlflow_tracking_uri,
             "experiment_name": settings.mlflow_experiment_name,
+        },
+        "model_utils": {
+            "instance": type(model_utils).__name__,
+            "storage_client_injected": model_utils.storage_client is not None,
         },
     }
 

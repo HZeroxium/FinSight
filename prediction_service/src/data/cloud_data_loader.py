@@ -24,7 +24,11 @@ class CloudDataLoader(IDataLoader):
     caching to improve performance and updates local storage for fallback scenarios.
     """
 
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        data_dir: Optional[Path] = None,
+        storage_client: Optional[StorageClient] = None,
+    ):
         settings = get_settings()
 
         if data_dir is None:
@@ -43,20 +47,27 @@ class CloudDataLoader(IDataLoader):
             log_file="logs/cloud_data_loader.log",
         )
 
-        # Initialize storage client
-        self.storage_client = None
+        # Initialize storage client - now injected via dependency injection
+        self.storage_client = storage_client
         self.cloud_enabled = False
 
-        try:
-            storage_config = settings.get_storage_config()
-            self.storage_client = StorageClient(**storage_config)
+        if self.storage_client is not None:
             self.cloud_enabled = True
             self.logger.info(
-                f"Cloud storage initialized: {storage_config['bucket_name']}"
+                f"Cloud storage initialized with injected client: {self.storage_client.bucket_name}"
             )
-        except Exception as e:
-            self.logger.warning(f"Failed to initialize cloud storage: {e}")
-            self.cloud_enabled = False
+        else:
+            # Fallback to creating storage client if not injected (for backward compatibility)
+            try:
+                storage_config = settings.get_storage_config()
+                self.storage_client = StorageClient(**storage_config)
+                self.cloud_enabled = True
+                self.logger.info(
+                    f"Cloud storage initialized (fallback): {storage_config['bucket_name']}"
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize cloud storage: {e}")
+                self.cloud_enabled = False
 
     async def load_data(
         self, symbol: str, timeframe: TimeFrame, data_path: Optional[Path] = None

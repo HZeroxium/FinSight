@@ -80,7 +80,9 @@ class Settings(BaseSettings):
     max_cached_models: int = Field(5, env="MAX_CACHED_MODELS")
 
     # Serving adapter settings
-    serving_adapter_type: str = Field("simple", env="SERVING_ADAPTER_TYPE")
+    serving_adapter_type: str = Field(
+        ServingAdapterType.SIMPLE.value, env="SERVING_ADAPTER_TYPE"
+    )
 
     # Simple adapter settings
     simple_max_models_in_memory: int = Field(5, env="SIMPLE_MAX_MODELS_IN_MEMORY")
@@ -155,11 +157,41 @@ class Settings(BaseSettings):
     aws_region_name: str = Field(default="us-east-1", env="AWS_REGION_NAME")
     aws_bucket_name: str = Field(default="finsight-market-data", env="AWS_BUCKET_NAME")
 
+    # ===== Unified (provider-agnostic) storage settings =====
+    storage_endpoint_url: Optional[str] = Field(
+        default=None, env="STORAGE_ENDPOINT_URL"
+    )
+    storage_access_key: Optional[str] = Field(default=None, env="STORAGE_ACCESS_KEY")
+    storage_secret_key: Optional[str] = Field(default=None, env="STORAGE_SECRET_KEY")
+    storage_region_name: Optional[str] = Field(default=None, env="STORAGE_REGION")
+    storage_bucket_name: Optional[str] = Field(default=None, env="STORAGE_BUCKET")
+    storage_use_ssl: Optional[bool] = Field(default=None, env="STORAGE_USE_SSL")
+    storage_verify_ssl: Optional[bool] = Field(default=None, env="STORAGE_VERIFY_SSL")
+    storage_signature_version: Optional[str] = Field(
+        default=None, env="STORAGE_SIGNATURE_VERSION"
+    )
+    storage_max_pool_connections: Optional[int] = Field(
+        default=None, env="STORAGE_MAX_POOL_CONNECTIONS"
+    )
+    storage_addressing_style: Optional[str] = Field(
+        default=None, env="STORAGE_ADDRESSING_STYLE"
+    )  # auto|path|virtual
+
     # Storage prefix configuration for object storage
-    storage_prefix: str = Field(
+    dataset_storage_prefix: str = Field(
         default="finsight/market_data/datasets", env="STORAGE_PREFIX"
     )
+    model_storage_prefix: str = Field(
+        default="finsight/models", env="MODEL_STORAGE_PREFIX"
+    )
     storage_separator: str = Field(default="/", env="STORAGE_SEPARATOR")
+
+    # Cloud storage enablement flags
+    enable_cloud_storage: bool = Field(False, env="ENABLE_CLOUD_STORAGE")
+    enable_model_cloud_sync: bool = Field(True, env="ENABLE_MODEL_CLOUD_SYNC")
+    cloud_storage_fallback_enabled: bool = Field(
+        True, env="CLOUD_STORAGE_FALLBACK_ENABLED"
+    )
 
     # Data loading settings
     data_loader_type: str = Field(
@@ -324,65 +356,138 @@ class Settings(BaseSettings):
         ]:
             directory.mkdir(parents=True, exist_ok=True)
 
-    def get_storage_config(self) -> Dict[str, Any]:
-        """
-        Get storage configuration based on the selected provider.
+    @staticmethod
+    def _pick(*vals, default=None):
+        for v in vals:
+            if v is not None and v != "":
+                return v
+        return default
 
-        Returns:
-            Dictionary with storage configuration parameters
-        """
-        if self.storage_provider == StorageProviderType.MINIO.value:
-            return {
-                "endpoint_url": self.s3_endpoint_url,
-                "access_key": self.s3_access_key,
-                "secret_key": self.s3_secret_key,
-                "region_name": self.s3_region_name,
-                "bucket_name": self.s3_bucket_name,
-                "use_ssl": self.s3_use_ssl,
-                "verify_ssl": self.s3_verify_ssl,
-                "signature_version": self.s3_signature_version,
-                "max_pool_connections": self.s3_max_pool_connections,
-            }
-        elif self.storage_provider == StorageProviderType.DIGITALOCEAN.value:
-            return {
-                "endpoint_url": self.spaces_endpoint_url,
-                "access_key": self.spaces_access_key,
-                "secret_key": self.spaces_secret_key,
-                "region_name": self.spaces_region_name,
-                "bucket_name": self.spaces_bucket_name,
-                "use_ssl": True,  # DigitalOcean Spaces always uses SSL
-                "verify_ssl": True,
-                "signature_version": "s3v4",
-                "max_pool_connections": self.s3_max_pool_connections,
-            }
-        elif self.storage_provider in [
+    def get_storage_config(self) -> Dict[str, Any]:
+        provider = self.storage_provider
+
+        # SSL policy theo provider
+        force_ssl = provider in [
+            StorageProviderType.DIGITALOCEAN.value,
             StorageProviderType.AWS.value,
             StorageProviderType.S3.value,
-        ]:
-            return {
-                "endpoint_url": None,  # Use AWS default endpoint
-                "access_key": self.aws_access_key_id or self.s3_access_key,
-                "secret_key": self.aws_secret_access_key or self.s3_secret_key,
-                "region_name": self.aws_region_name,
-                "bucket_name": self.aws_bucket_name,
-                "use_ssl": True,  # AWS S3 always uses SSL
-                "verify_ssl": True,
-                "signature_version": "s3v4",
-                "max_pool_connections": self.s3_max_pool_connections,
-            }
-        else:
-            # Default to MinIO configuration
-            return {
-                "endpoint_url": self.s3_endpoint_url,
-                "access_key": self.s3_access_key,
-                "secret_key": self.s3_secret_key,
-                "region_name": self.s3_region_name,
-                "bucket_name": self.s3_bucket_name,
-                "use_ssl": self.s3_use_ssl,
-                "verify_ssl": self.s3_verify_ssl,
-                "signature_version": self.s3_signature_version,
-                "max_pool_connections": self.s3_max_pool_connections,
-            }
+        ]
+
+        endpoint = self._pick(
+            self.storage_endpoint_url,
+            # provider-specific fallback
+            (
+                self.spaces_endpoint_url
+                if provider == StorageProviderType.DIGITALOCEAN.value
+                else None
+            ),
+            (
+                self.s3_endpoint_url
+                if provider == StorageProviderType.MINIO.value
+                else None
+            ),
+            None,  # AWS default endpoint nếu None
+        )
+
+        access_key = self._pick(
+            self.storage_access_key,
+            (
+                self.spaces_access_key
+                if provider == StorageProviderType.DIGITALOCEAN.value
+                else None
+            ),
+            (
+                self.aws_access_key_id
+                if provider
+                in [StorageProviderType.AWS.value, StorageProviderType.S3.value]
+                else None
+            ),
+            self.s3_access_key,
+        )
+
+        secret_key = self._pick(
+            self.storage_secret_key,
+            (
+                self.spaces_secret_key
+                if provider == StorageProviderType.DIGITALOCEAN.value
+                else None
+            ),
+            (
+                self.aws_secret_access_key
+                if provider
+                in [StorageProviderType.AWS.value, StorageProviderType.S3.value]
+                else None
+            ),
+            self.s3_secret_key,
+        )
+
+        region = self._pick(
+            self.storage_region_name,
+            (
+                self.spaces_region_name
+                if provider == StorageProviderType.DIGITALOCEAN.value
+                else None
+            ),
+            (
+                self.aws_region_name
+                if provider
+                in [StorageProviderType.AWS.value, StorageProviderType.S3.value]
+                else None
+            ),
+            self.s3_region_name,
+        )
+
+        bucket = self._pick(
+            self.storage_bucket_name,
+            (
+                self.spaces_bucket_name
+                if provider == StorageProviderType.DIGITALOCEAN.value
+                else None
+            ),
+            (
+                self.aws_bucket_name
+                if provider
+                in [StorageProviderType.AWS.value, StorageProviderType.S3.value]
+                else None
+            ),
+            self.s3_bucket_name,
+        )
+
+        use_ssl = force_ssl or bool(
+            self._pick(self.storage_use_ssl, self.s3_use_ssl, default=False)
+        )
+        verify_ssl = (
+            True
+            if force_ssl
+            else bool(
+                self._pick(self.storage_verify_ssl, self.s3_verify_ssl, default=True)
+            )
+        )
+        signature_version = self._pick(
+            self.storage_signature_version, self.s3_signature_version, default="s3v4"
+        )
+        max_pool = int(
+            self._pick(
+                self.storage_max_pool_connections,
+                self.s3_max_pool_connections,
+                default=50,
+            )
+        )
+        addressing_style = self._pick(self.storage_addressing_style, default="auto")
+
+        return {
+            "endpoint_url": endpoint,  # None => boto3 dùng endpoint AWS mặc định
+            "access_key": access_key,
+            "secret_key": secret_key,
+            "region_name": region,
+            "bucket_name": bucket,
+            "use_ssl": use_ssl,
+            "verify_ssl": verify_ssl,
+            "signature_version": signature_version,
+            "max_pool_connections": max_pool,
+            "addressing_style": addressing_style,  # thêm cho boto3 Config nếu muốn
+            "provider": provider,
+        }
 
     def get_storage_prefix(self) -> str:
         """
@@ -391,7 +496,16 @@ class Settings(BaseSettings):
         Returns:
             Base storage prefix (e.g., "datasets")
         """
-        return self.storage_prefix
+        return self.dataset_storage_prefix
+
+    def get_model_storage_prefix(self) -> str:
+        """
+        Get the model storage prefix for object storage.
+
+        Returns:
+            Model storage prefix (e.g., "finsight/models")
+        """
+        return self.model_storage_prefix
 
     def get_device_config(self) -> str:
         """
@@ -437,7 +551,20 @@ class Settings(BaseSettings):
         Returns:
             Complete storage path
         """
-        all_parts = [self.storage_prefix] + list(parts)
+        all_parts = [self.dataset_storage_prefix] + list(parts)
+        return self.storage_separator.join(filter(None, all_parts))
+
+    def build_model_storage_path(self, *parts: str) -> str:
+        """
+        Build a model storage path using the configured model prefix and separator.
+
+        Args:
+            *parts: Path components to join
+
+        Returns:
+            Complete model storage path
+        """
+        all_parts = [self.model_storage_prefix] + list(parts)
         return self.storage_separator.join(filter(None, all_parts))
 
     def build_dataset_path(
