@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     debug: bool = Field(False, env="DEBUG")
 
     # API settings
-    api_host: str = Field("0.0.0.0", env="API_HOST")
-    api_port: int = Field(8000, env="API_PORT")
+    host: str = Field("0.0.0.0", env="API_HOST")
+    port: int = Field(8000, env="API_PORT")
 
     # Eureka Client configuration
     enable_eureka_client: bool = Field(

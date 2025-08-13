@@ -18,8 +18,8 @@ def main():
 
     uvicorn.run(
         app,
-        host=settings.api_host,
-        port=settings.api_port,
+        host=settings.host,
+        port=settings.port,
         reload=settings.debug,
         log_level="info" if not settings.debug else "debug",
     )

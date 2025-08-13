@@ -39,7 +39,7 @@ class EurekaClientService:
             level=LogLevel.INFO,
             console_level=LogLevel.INFO,
             use_colors=True,
-            log_file=f"{settings.log_file_path}eureka_client.log",
+            log_file=f"{settings.logs_dir}eureka_client.log",
         )
 
         self._is_registered: bool = False

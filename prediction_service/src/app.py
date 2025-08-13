@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"🚀 Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"📊 Environment: {getattr(settings, 'environment', 'development')}")
-    logger.info(f"🌐 FastAPI Host: {settings.api_host}:{settings.api_port}")
+    logger.info(f"🌐 FastAPI Host: {settings.host}:{settings.port}")
     logger.info(f"📁 Data directory: {settings.data_dir}")
     logger.info(f"📁 Models directory: {settings.models_dir}")
     logger.info(f"📁 Logs directory: {settings.logs_dir}")
@@ -295,5 +295,5 @@ async def health_check():
 if __name__ == "__main__":
     settings = get_settings()
     uvicorn.run(
-        "app:app", host=settings.api_host, port=settings.api_port, reload=settings.debug
+        "app:app", host=settings.host, port=settings.port, reload=settings.debug
     )
