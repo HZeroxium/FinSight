@@ -23,6 +23,7 @@ from starlette.responses import Response
 from .routers import admin_router
 from .routers import market_data_router, backtesting_router
 from .routers import market_data_storage_router, market_data_job_router
+from .routers.eureka_router import router as eureka_router
 from .core.config import settings
 from common.logger import LoggerFactory
 from .interfaces.errors import (
@@ -31,6 +32,7 @@ from .interfaces.errors import (
     CollectionError,
     BacktestingServiceError,
 )
+from .utils.dependencies import get_eureka_client_service
 
 
 # Initialize configuration and logging
@@ -40,19 +42,91 @@ logger = LoggerFactory.get_logger(name="fastapi_app")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Application lifespan manager.
-
-    Handles startup and shutdown events for the FastAPI application.
+    Application lifespan manager with improved error handling and startup sequence.
+    Includes both REST API and Eureka client initialization.
     """
     # Startup
-    logger.info("Starting FinSight Backtesting API server")
-    logger.info(f"Environment: {settings.environment}")
-    logger.info(f"Debug mode: {settings.debug}")
+    logger.info("🚀 Starting FinSight Backtesting API server")
+    logger.info(f"📊 Environment: {settings.environment}")
+    logger.info(f"🌐 FastAPI Host: {settings.host}:{settings.port}")
+    logger.info(f"🔧 Debug mode: {settings.debug}")
+
+    # Check if Eureka client is enabled
+    eureka_enabled = getattr(settings, "enable_eureka_client", True)
+    if eureka_enabled:
+        logger.info(f"🔗 Eureka Client: {settings.eureka_server_url}")
+
+    startup_errors = []
+
+    try:
+        # Step 1: Initialize core services
+        logger.info("📋 Step 1: Initializing core services...")
+
+        # Initialize dependency manager
+        from .utils.dependencies import get_dependency_manager
+
+        dependency_manager = get_dependency_manager()
+        logger.info("✅ Dependency manager initialized successfully")
+
+        # Step 2: Initialize Eureka client service
+        if eureka_enabled:
+            logger.info("📋 Step 2: Initializing Eureka client service...")
+            try:
+                eureka_service = get_eureka_client_service()
+                success = await eureka_service.start()
+                if success:
+                    logger.info("✅ Eureka client service initialized successfully")
+                else:
+                    logger.warning("⚠️ Eureka client service initialization failed")
+                    startup_errors.append("Eureka client service initialization failed")
+            except Exception as eureka_error:
+                logger.error(f"⚠️ Failed to start Eureka client service: {eureka_error}")
+                startup_errors.append(
+                    f"Eureka client service error: {str(eureka_error)}"
+                )
+        else:
+            logger.info("🔄 Eureka client service is disabled")
+
+        # Final startup validation
+        if startup_errors:
+            logger.warning(f"⚠️ Service started with warnings: {startup_errors}")
+            logger.info("🔧 Service is operational but some components may be degraded")
+        else:
+            if eureka_enabled:
+                logger.info(
+                    "🎉 FinSight Backtesting API is fully operational (REST + Eureka)!"
+                )
+            else:
+                logger.info(
+                    "🎉 FinSight Backtesting API is fully operational (REST only)!"
+                )
+
+    except Exception as e:
+        logger.error(f"❌ Critical startup error: {str(e)}")
+        # Don't raise the error - let the service start in degraded mode
+        logger.warning("🔧 Starting service in degraded mode due to startup errors")
+        startup_errors.append(f"Critical error: {str(e)}")
 
     yield
 
-    # Shutdown
-    logger.info("Shutting down FinSight Backtesting API server")
+    # Cleanup phase
+    logger.info("🛑 Shutting down services...")
+    try:
+        # Stop Eureka client service first
+        if eureka_enabled:
+            eureka_service = get_eureka_client_service()
+            if eureka_service.is_registered():
+                await eureka_service.stop()
+                logger.info("✅ Eureka client service stopped")
+
+        # Cleanup dependency manager
+        dependency_manager.shutdown()
+        logger.info("✅ Dependency manager cleaned up successfully")
+
+    except Exception as e:
+        logger.error(f"❌ Error during cleanup: {str(e)}")
+
+    logger.info("👋 FinSight Backtesting API shutdown complete")
 
 
 # Create FastAPI application
@@ -241,6 +315,9 @@ async def root():
     """
     API root endpoint with service information.
     """
+    # Check if Eureka client is enabled
+    eureka_enabled = getattr(settings, "enable_eureka_client", True)
+
     return {
         "service": "FinSight Backtesting API",
         "version": "1.0.0",
@@ -252,6 +329,7 @@ async def root():
             "openapi": "/openapi.json",
             "health": "/admin/health",
             "admin": "/admin",
+            "eureka": "/api/v1/eureka" if eureka_enabled else None,
         },
         "features": [
             "Multi-exchange data collection",
@@ -260,6 +338,7 @@ async def root():
             "Extensible strategy framework",
             "Cross-repository data management",
             "Administrative operations",
+            "Eureka service discovery" if eureka_enabled else None,
         ],
         "supported_exchanges": ["binance"],
         "supported_timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"],
@@ -270,6 +349,11 @@ async def root():
             "macd_strategy",
             "simple_buy_hold",
         ],
+        "eureka_client": {
+            "enabled": eureka_enabled,
+            "server_url": settings.eureka_server_url if eureka_enabled else None,
+            "app_name": settings.eureka_app_name if eureka_enabled else None,
+        },
     }
 
 
@@ -282,10 +366,33 @@ async def health_check():
     This is a lightweight health check that doesn't require authentication.
     For detailed system health, use /admin/health.
     """
+    # Add Eureka client status if enabled
+    eureka_enabled = getattr(settings, "enable_eureka_client", True)
+    dependencies = {}
+
+    if eureka_enabled:
+        try:
+            eureka_service = get_eureka_client_service()
+            eureka_status = (
+                "healthy"
+                if eureka_service and eureka_service.is_registered()
+                else "stopped"
+            )
+            dependencies["eureka_client"] = eureka_status
+        except Exception as e:
+            dependencies["eureka_client"] = "error"
+            logger.error(f"Error checking Eureka status: {e}")
+
+    # Determine overall health status
+    overall_status = "healthy"
+    if any(status in ["stopped", "error"] for status in dependencies.values()):
+        overall_status = "degraded"
+
     return {
-        "status": "healthy",
+        "status": overall_status,
         "timestamp": time.time(),
         "service": "backtesting-api",
+        "dependencies": dependencies if dependencies else None,
     }
 
 
@@ -318,6 +425,12 @@ app.include_router(
     market_data_job_router.router,
     prefix="/api/v1",
     tags=["market-data-job-management"],
+)
+
+app.include_router(
+    eureka_router,
+    prefix="/api/v1",
+    tags=["eureka-client-management"],
 )
 
 

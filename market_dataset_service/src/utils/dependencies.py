@@ -30,6 +30,7 @@ from .timeframe_utils import TimeFrameUtils
 from .datetime_utils import DateTimeUtils
 from common.logger import LoggerFactory
 from ..schemas.enums import RepositoryType
+from ..services.eureka_client_service import EurekaClientService
 
 
 def _create_repository(
@@ -177,6 +178,11 @@ class Container(containers.DeclarativeContainer):
         log_file="logs/market_data_job.log",
     )
 
+    # Eureka Client Service
+    eureka_client_service = providers.Singleton(
+        EurekaClientService,
+    )
+
 
 class DependencyManager:
     """
@@ -234,6 +240,10 @@ class DependencyManager:
     def get_cross_repository_pipeline(self) -> CrossRepositoryTimeFramePipeline:
         """Get configured cross-repository timeframe conversion pipeline"""
         return self.container.cross_repository_pipeline()
+
+    def get_eureka_client_service(self) -> EurekaClientService:
+        """Get Eureka client service"""
+        return self.container.eureka_client_service()
 
     def configure_csv_storage(self, base_directory: str = None) -> None:
         """Configure CSV storage"""
@@ -328,6 +338,15 @@ def get_parquet_repository() -> ParquetMarketDataRepository:
 def get_cross_repository_pipeline() -> CrossRepositoryTimeFramePipeline:
     """Get configured cross-repository timeframe conversion pipeline (convenience function)"""
     return dependency_manager.get_cross_repository_pipeline()
+
+
+def get_eureka_client_service() -> EurekaClientService:
+    """Get Eureka client service instance"""
+    try:
+        return dependency_manager.container.eureka_client_service()
+    except Exception as e:
+        print(f"Failed to get Eureka client service: {e}")
+        raise
 
 
 # Security dependencies

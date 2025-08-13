@@ -5,7 +5,7 @@ Configuration management for the backtesting system.
 Centralized configuration using Pydantic settings with environment variable support.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import SettingsConfigDict, BaseSettings
 from ..schemas.enums import StorageProviderType, CryptoSymbol, TimeFrame, RepositoryType
@@ -170,6 +170,98 @@ class Settings(BaseSettings):
     # Demo configuration
     demo_max_symbols: int = Field(default=5, env="DEMO_MAX_SYMBOLS")
     demo_days_back: int = Field(default=7, env="DEMO_DAYS_BACK")
+
+    # Eureka Client configuration
+    enable_eureka_client: bool = Field(
+        default=True, description="Enable Eureka client registration"
+    )
+    eureka_server_url: str = Field(
+        default="http://localhost:8761", description="Eureka server URL"
+    )
+    eureka_app_name: str = Field(
+        default="market-dataset-service",
+        description="Application name for Eureka registration",
+    )
+    eureka_instance_id: Optional[str] = Field(
+        default=None, description="Instance ID for Eureka registration"
+    )
+    eureka_host_name: Optional[str] = Field(
+        default=None, description="Host name for Eureka registration"
+    )
+    eureka_ip_address: Optional[str] = Field(
+        default=None, description="IP address for Eureka registration"
+    )
+    eureka_port: int = Field(default=8000, description="Port for Eureka registration")
+    eureka_secure_port: int = Field(
+        default=8443, description="Secure port for Eureka registration"
+    )
+    eureka_secure_port_enabled: bool = Field(
+        default=False, description="Enable secure port for Eureka registration"
+    )
+    eureka_home_page_url: Optional[str] = Field(
+        default=None, description="Home page URL for Eureka registration"
+    )
+    eureka_status_page_url: Optional[str] = Field(
+        default=None, description="Status page URL for Eureka registration"
+    )
+    eureka_health_check_url: Optional[str] = Field(
+        default=None, description="Health check URL for Eureka registration"
+    )
+    eureka_vip_address: Optional[str] = Field(
+        default=None, description="VIP address for Eureka registration"
+    )
+    eureka_secure_vip_address: Optional[str] = Field(
+        default=None, description="Secure VIP address for Eureka registration"
+    )
+    eureka_prefer_ip_address: bool = Field(
+        default=True,
+        description="Prefer IP address over hostname for Eureka registration",
+    )
+    eureka_lease_renewal_interval_in_seconds: int = Field(
+        default=30, description="Lease renewal interval in seconds"
+    )
+    eureka_lease_expiration_duration_in_seconds: int = Field(
+        default=90, description="Lease expiration duration in seconds"
+    )
+    eureka_registry_fetch_interval_seconds: int = Field(
+        default=30, description="Registry fetch interval in seconds"
+    )
+    eureka_instance_info_replication_interval_seconds: int = Field(
+        default=30, description="Instance info replication interval in seconds"
+    )
+    eureka_initial_instance_info_replication_interval_seconds: int = Field(
+        default=40, description="Initial instance info replication interval in seconds"
+    )
+    eureka_heartbeat_interval_seconds: int = Field(
+        default=30, description="Heartbeat interval in seconds"
+    )
+
+    # Eureka Retry Configuration
+    eureka_registration_retry_attempts: int = Field(
+        default=3, description="Number of retry attempts for registration"
+    )
+    eureka_registration_retry_delay_seconds: int = Field(
+        default=5, description="Initial delay between registration retries in seconds"
+    )
+    eureka_heartbeat_retry_attempts: int = Field(
+        default=3, description="Number of retry attempts for heartbeat"
+    )
+    eureka_heartbeat_retry_delay_seconds: int = Field(
+        default=2, description="Initial delay between heartbeat retries in seconds"
+    )
+    eureka_retry_backoff_multiplier: float = Field(
+        default=2.0, description="Multiplier for exponential backoff"
+    )
+    eureka_max_retry_delay_seconds: int = Field(
+        default=60, description="Maximum delay between retries in seconds"
+    )
+    eureka_enable_auto_re_registration: bool = Field(
+        default=True,
+        description="Enable automatic re-registration after server restart",
+    )
+    eureka_re_registration_delay_seconds: int = Field(
+        default=10, description="Delay before attempting re-registration in seconds"
+    )
 
     @field_validator("default_symbols", mode="before")
     @classmethod
