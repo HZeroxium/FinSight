@@ -156,7 +156,9 @@ class Settings(BaseSettings):
     aws_bucket_name: str = Field(default="finsight-market-data", env="AWS_BUCKET_NAME")
 
     # Storage prefix configuration for object storage
-    storage_prefix: str = Field(default="datasets", env="STORAGE_PREFIX")
+    storage_prefix: str = Field(
+        default="finsight/market_data/datasets", env="STORAGE_PREFIX"
+    )
     storage_separator: str = Field(default="/", env="STORAGE_SEPARATOR")
 
     # Data loading settings

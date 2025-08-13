@@ -11,6 +11,7 @@ from .core.config import get_settings
 from .routers import prediction_router, training_router
 from .routers.models import router as models_router
 from .routers.serving import router as serving_router
+from .routers.dataset_management import router as dataset_management_router
 from .schemas.base_schemas import HealthResponse
 from common.logger import LoggerFactory, LogLevel
 
@@ -142,6 +143,7 @@ app.include_router(
 app.include_router(prediction_router)
 app.include_router(models_router)
 app.include_router(serving_router)  # Model serving management endpoints
+app.include_router(dataset_management_router)  # Dataset management endpoints
 
 
 @app.get("/", response_model=dict)
@@ -157,6 +159,7 @@ async def root():
             "prediction": "/prediction",
             "models": "/models",
             "serving": "/serving",  # Model serving management
+            "datasets": "/datasets",  # Dataset management
             "health": "/health",
         },
     }

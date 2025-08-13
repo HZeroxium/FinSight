@@ -254,44 +254,84 @@ class CloudDataLoader(IDataLoader):
             return []
 
     def _parse_cloud_object_info(self, obj: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Parse cloud object information to extract dataset metadata."""
+        """
+        Parse cloud object information to extract dataset metadata.
+
+        Expected key layout (after the configured storage prefix):
+        {exchange}/{symbol}/{timeframe}/{format}/{date}/{filename}
+
+        This function handles multi-level storage prefixes, e.g.:
+        storage_prefix = "finsight/market_data/datasets"
+        object_key     = "finsight/market_data/datasets/binance/BTCUSDT/1h/parquet/20250809/file.zip"
+
+        It also supports a legacy single-level prefix "datasets/...".
+        """
         try:
-            object_key = obj["key"]
+            object_key = obj.get("key", "")
+            if not object_key:
+                return None
 
-            # Expected format: {storage_prefix}/{exchange}/{symbol}/{timeframe}/{format}/{date}/{filename}
-            # Example: datasets/binance/BTCUSDT/1h/parquet/20250809/binance_BTCUSDT_1h_20250809_123456.zip
-            parts = object_key.split("/")
+            # --- Normalize and split both the key and the configured prefix ---
+            # Strip leading/trailing slashes to avoid empty parts on split.
+            key_parts = object_key.strip("/").split("/")
 
-            if len(parts) >= 6:
-                # Extract metadata from path
-                prefix_idx = 0
-                if parts[0] == self.settings.get_storage_prefix():
-                    prefix_idx = 1
+            # The configured prefix may contain multiple folders (subfolders).
+            prefix_str = self.settings.get_storage_prefix()
+            prefix_parts = prefix_str.strip("/").split("/") if prefix_str else []
 
-                if len(parts) >= prefix_idx + 5:
-                    exchange = parts[prefix_idx]
-                    symbol = parts[prefix_idx + 1]
-                    timeframe = parts[prefix_idx + 2]
-                    format_type = parts[prefix_idx + 3]
-                    date_str = parts[prefix_idx + 4]
-                    filename = parts[-1]
+            # --- Determine the offset after the prefix ---
+            # Case 1: Key starts with the multi-level configured prefix.
+            if prefix_parts and key_parts[: len(prefix_parts)] == prefix_parts:
+                offset = len(prefix_parts)
+            # Case 2: Legacy layout starting with a single-level "datasets".
+            elif key_parts and key_parts[0] == "datasets":
+                offset = 1
+            else:
+                # The object key is not under our expected prefix; ignore it.
+                return None
 
-                    return {
-                        "object_key": object_key,
-                        "exchange": exchange,
-                        "symbol": symbol,
-                        "timeframe": timeframe,
-                        "format": format_type,
-                        "date": date_str,
-                        "filename": filename,
-                        "size": obj.get("size", 0),
-                        "last_modified": obj.get("last_modified", ""),
-                        "is_archive": self._is_archive_file(filename),
-                    }
+            # --- Ensure we have enough parts after the prefix ---
+            # We expect: exchange, symbol, timeframe, format, date, filename  => 6 parts
+            if len(key_parts) < offset + 6:
+                return None
 
-            return None
+            exchange = key_parts[offset + 0]
+            symbol = key_parts[offset + 1]
+            timeframe_str = key_parts[offset + 2]
+            format_type = key_parts[offset + 3]
+            date_str = key_parts[offset + 4]
+            filename = key_parts[-1]  # allow for additional nesting before filename
+
+            # --- Validate timeframe using the TimeFrame enum values ---
+            try:
+                valid_timeframes = {tf.value for tf in TimeFrame}
+                if timeframe_str not in valid_timeframes:
+                    # Not a valid timeframe; skip this object.
+                    self.logger.warning(
+                        f"Invalid timeframe '{timeframe_str}' in object key: {object_key}"
+                    )
+                    return None
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to validate timeframe '{timeframe_str}': {e}"
+                )
+                return None
+
+            return {
+                "object_key": object_key,
+                "exchange": exchange,
+                "symbol": symbol,
+                "timeframe": timeframe_str,
+                "format": format_type,
+                "date": date_str,
+                "filename": filename,
+                "size": obj.get("size", 0),
+                "last_modified": obj.get("last_modified", ""),
+                "is_archive": self._is_archive_file(filename),
+            }
 
         except Exception as e:
+            # Keep the parser resilient: on any unexpected shape, skip and continue.
             self.logger.warning(f"Error parsing object info: {e}")
             return None
 
@@ -448,7 +488,16 @@ class CloudDataLoader(IDataLoader):
         """Cache cloud data locally and update local storage."""
         try:
             symbol = dataset["symbol"]
-            timeframe = TimeFrame(dataset["timeframe"])
+            timeframe_str = dataset["timeframe"]
+
+            # Validate timeframe string before conversion
+            try:
+                timeframe = TimeFrame(timeframe_str)
+            except ValueError as e:
+                self.logger.error(
+                    f"Invalid timeframe '{timeframe_str}' for caching: {e}"
+                )
+                return
 
             # Cache in the standard cache location
             await self._cache_data(symbol, timeframe, data)
