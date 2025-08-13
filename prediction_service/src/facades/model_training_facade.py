@@ -14,6 +14,8 @@ from typing import Dict, Any, Optional, List
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
+import json
+import time
 
 from ..interfaces.model_interface import ITimeSeriesModel
 from ..models.model_factory import ModelFactory
@@ -67,43 +69,24 @@ class ModelTrainingFacade:
         run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Train a model with comprehensive configuration and monitoring.
+        Train a time series model with the specified configuration.
 
         Args:
-            symbol: Trading symbol (e.g., 'BTCUSDT')
+            symbol: Trading symbol
             timeframe: Data timeframe
-            model_type: Model type to train
-            train_data: Training dataset
-            val_data: Validation dataset
+            model_type: Model type
+            train_data: Training data
+            val_data: Validation data
             feature_engineering: Feature engineering instance
             config: Model configuration
+            run_id: Optional experiment run ID
 
         Returns:
-            Dict containing training results, metrics, and metadata
-
-        Raises:
-            ValueError: If input data is invalid
-            RuntimeError: If training fails
+            Training result dictionary
         """
-        training_id = f"{symbol}_{timeframe.value}_{model_type.value}_{int(datetime.now().timestamp())}"
-
         try:
-            self.logger.info(
-                f"Starting training for {model_type.value} model: {symbol} {timeframe.value}"
-            )
-
             # Validate inputs
             self._validate_training_inputs(train_data, val_data, config)
-
-            # Initialize training session tracking
-            self._training_sessions[training_id] = {
-                "symbol": symbol,
-                "timeframe": timeframe.value,
-                "model_type": model_type.value,
-                "start_time": datetime.now(),
-                "status": "initializing",
-                "progress": 0.0,
-            }
 
             # Determine feature configuration
             actual_feature_columns = self._determine_feature_configuration(
@@ -113,75 +96,45 @@ class ModelTrainingFacade:
             # Create adapter configuration
             adapter_config = self._create_adapter_config(config, actual_feature_columns)
 
-            # Create and train model
+            # Create model instance
             model = self._create_model(model_type, adapter_config)
 
-            # Update training session
-            self._training_sessions[training_id]["status"] = "training"
-            self._training_sessions[training_id]["progress"] = 0.1
+            # Set run ID for experiment tracking
+            if run_id:
+                model.set_run_id(run_id)
 
             # Execute training
             training_result = await self._execute_training(
-                model,
-                train_data,
-                val_data,
-                feature_engineering,
-                adapter_config,
-                training_id,
-                run_id,
+                model=model,
+                train_data=train_data,
+                val_data=val_data,
+                feature_engineering=feature_engineering,
+                adapter_config=adapter_config,
+                training_id=f"{symbol}_{timeframe.value}_{model_type.value}_{int(time.time())}",
+                run_id=run_id,
             )
 
+            # Save model if training was successful
             if training_result.get("success", False):
                 # Save model and metadata
-                model_path = self._save_trained_model(
+                model_path = await self._save_trained_model(
                     model, symbol, timeframe, model_type, config, training_result
                 )
 
-                # Update training session
-                self._training_sessions[training_id]["status"] = "completed"
-                self._training_sessions[training_id]["progress"] = 1.0
-                self._training_sessions[training_id]["model_path"] = model_path
+                # Load the trained model
+                model = await self._load_model(symbol, timeframe, model_type)
+                if model is None:
+                    return {"success": False, "error": "Model not found"}
 
-                self.logger.info(f"Training completed successfully: {training_id}")
+                # Add model path to result
+                training_result["model_path"] = model_path
+                training_result["model_loaded"] = True
 
-                return {
-                    "success": True,
-                    "training_id": training_id,
-                    "model_path": model_path,
-                    "metrics": training_result.get("metrics", {}),
-                    "training_time": (
-                        datetime.now()
-                        - self._training_sessions[training_id]["start_time"]
-                    ).total_seconds(),
-                    "config": adapter_config,
-                }
-            else:
-                # Handle training failure
-                self._training_sessions[training_id]["status"] = "failed"
-                error_msg = training_result.get("error", "Unknown training error")
-                self.logger.error(f"Training failed: {error_msg}")
-
-                return {
-                    "success": False,
-                    "training_id": training_id,
-                    "error": error_msg,
-                    "training_time": (
-                        datetime.now()
-                        - self._training_sessions[training_id]["start_time"]
-                    ).total_seconds(),
-                }
+            return training_result
 
         except Exception as e:
-            self.logger.error(f"Training failed with exception: {e}")
-            if training_id in self._training_sessions:
-                self._training_sessions[training_id]["status"] = "failed"
-                self._training_sessions[training_id]["error"] = str(e)
-
-            return {
-                "success": False,
-                "training_id": training_id,
-                "error": str(e),
-            }
+            self.logger.error(f"Training failed: {e}")
+            return {"success": False, "error": str(e)}
 
     def get_training_progress(self, training_id: str) -> Dict[str, Any]:
         """
@@ -245,7 +198,7 @@ class ModelTrainingFacade:
 
         return {"success": True, "message": "Training session cancelled"}
 
-    def evaluate_model(
+    async def evaluate_model(
         self,
         symbol: str,
         timeframe: TimeFrame,
@@ -272,7 +225,7 @@ class ModelTrainingFacade:
             )
 
             # Load the trained model
-            model = self._load_model(symbol, timeframe, model_type)
+            model = await self._load_model(symbol, timeframe, model_type)
             if model is None:
                 return {"success": False, "error": "Model not found"}
 
@@ -446,7 +399,7 @@ class ModelTrainingFacade:
             self.logger.error(f"Training execution failed: {e}")
             return {"success": False, "error": str(e)}
 
-    def _save_trained_model(
+    async def _save_trained_model(
         self,
         model: ITimeSeriesModel,
         symbol: str,
@@ -523,6 +476,86 @@ class ModelTrainingFacade:
                 FacadeConstants.ADAPTER_SIMPLE: True
             }
 
+        # Sync to cloud storage if enabled
+        try:
+            if settings.enable_cloud_storage and settings.enable_model_cloud_sync:
+                self.logger.info(
+                    f"Syncing model to cloud storage: {symbol}_{timeframe.value}_{model_type.value}"
+                )
+
+                # Get run_id from training result if available
+                run_id = training_result.get("run_id")
+
+                # Sync simple format to cloud
+                cloud_sync_result = await self.model_utils.sync_model_to_cloud(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    model_type=model_type,
+                    adapter_type=FacadeConstants.ADAPTER_SIMPLE,
+                    run_id=run_id,
+                    force_upload=True,  # Force upload since this is a new model
+                )
+
+                if cloud_sync_result["success"]:
+                    self.logger.info(
+                        f"Successfully synced model to cloud: {cloud_sync_result.get('action', 'uploaded')}"
+                    )
+                    training_result["cloud_sync"] = {
+                        "simple_adapter": cloud_sync_result,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                else:
+                    self.logger.warning(
+                        f"Failed to sync model to cloud: {cloud_sync_result.get('error')}"
+                    )
+                    training_result["cloud_sync"] = {
+                        "simple_adapter": cloud_sync_result,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+
+                # Also sync other successful adapter formats to cloud
+                for adapter_type, success in conversion_results.items():
+                    if success and adapter_type != FacadeConstants.ADAPTER_SIMPLE:
+                        try:
+                            adapter_sync_result = (
+                                await self.model_utils.sync_model_to_cloud(
+                                    symbol=symbol,
+                                    timeframe=timeframe,
+                                    model_type=model_type,
+                                    adapter_type=adapter_type,
+                                    run_id=run_id,
+                                    force_upload=True,
+                                )
+                            )
+
+                            if adapter_sync_result["success"]:
+                                self.logger.info(
+                                    f"Successfully synced {adapter_type} adapter to cloud"
+                                )
+                                training_result["cloud_sync"][
+                                    adapter_type
+                                ] = adapter_sync_result
+                            else:
+                                self.logger.warning(
+                                    f"Failed to sync {adapter_type} adapter to cloud: {adapter_sync_result.get('error')}"
+                                )
+                                training_result["cloud_sync"][
+                                    adapter_type
+                                ] = adapter_sync_result
+
+                        except Exception as e:
+                            self.logger.error(
+                                f"Error syncing {adapter_type} adapter to cloud: {e}"
+                            )
+                            training_result["cloud_sync"][adapter_type] = {
+                                "success": False,
+                                "error": str(e),
+                            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to sync model to cloud storage: {e}")
+            training_result["cloud_sync"] = {"success": False, "error": str(e)}
+
         return simple_model_path
 
     def _save_model_metadata(
@@ -539,26 +572,25 @@ class ModelTrainingFacade:
             "symbol": symbol,
             "timeframe": timeframe.value,
             "model_type": model_type.value,
-            "config": (
-                config.model_dump() if hasattr(config, "model_dump") else config.dict()
+            "training_config": (
+                config.model_dump() if hasattr(config, "model_dump") else config
             ),
             "training_result": training_result,
-            "model_path": model_path,
             "created_at": datetime.now().isoformat(),
-            "version": "1.0",
+            "model_path": str(model_path),
         }
 
-        # Use proper path construction for metadata
-        metadata_path = Path(model_path) / FacadeConstants.MODEL_METADATA_SUFFIX
-        self.model_utils.save_json(metadata, str(metadata_path))
+        # Save metadata to local storage
+        metadata_path = Path(model_path) / self.model_utils.settings.metadata_filename
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2, default=str)
 
-        # Note: Adapter compatibility is now handled by ModelFormatConverter
-        # in _save_trained_model method, so this legacy call is no longer needed
+        self.logger.info(f"Saved model metadata to {metadata_path}")
 
-    def _load_model(
+    async def _load_model(
         self, symbol: str, timeframe: TimeFrame, model_type: ModelType
     ) -> Optional[ITimeSeriesModel]:
-        """Load a trained model."""
+        """Load a trained model with cloud-first strategy."""
         cache_key = f"{symbol}_{timeframe.value}_{model_type.value}"
 
         # Check cache first
@@ -566,9 +598,22 @@ class ModelTrainingFacade:
             return self._cached_models[cache_key]
 
         try:
-            # Load from disk
-            model_path = self.model_utils.get_model_path(symbol, timeframe, model_type)
+            # Use cloud-first loading strategy
+            load_result = await self.model_utils.load_model_with_cloud_fallback(
+                symbol=symbol,
+                timeframe=timeframe,
+                model_type=model_type,
+                adapter_type="simple",  # Default to simple adapter for loading
+            )
+
+            if not load_result["success"]:
+                self.logger.error(f"Failed to load model: {load_result.get('error')}")
+                return None
+
+            # Load from the determined path
+            model_path = Path(load_result["path"])
             if not model_path.exists():
+                self.logger.error(f"Model path does not exist: {model_path}")
                 return None
 
             # Create model instance and load
@@ -578,6 +623,7 @@ class ModelTrainingFacade:
             # Cache the model
             self._cached_models[cache_key] = model
 
+            self.logger.info(f"Loaded model from {load_result['source']}: {model_path}")
             return model
 
         except Exception as e:

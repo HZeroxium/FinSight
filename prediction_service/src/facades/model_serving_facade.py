@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional, List, Union
 import pandas as pd
 from datetime import datetime
 import asyncio
+from pathlib import Path
 
 from ..interfaces.model_interface import ITimeSeriesModel
 from ..interfaces.serving_interface import (
@@ -667,10 +668,10 @@ class ModelServingFacade:
             "error": getattr(serving_result, "error", None),
         }
 
-    def _load_model(
+    async def _load_model(
         self, symbol: str, timeframe: TimeFrame, model_type: ModelType
     ) -> Optional[ITimeSeriesModel]:
-        """Load a model for legacy prediction."""
+        """Load a model with cloud-first strategy for legacy prediction."""
         cache_key = f"{symbol}_{timeframe.value}_{model_type.value}"
 
         # Check cache first
@@ -678,14 +679,28 @@ class ModelServingFacade:
             return self._cached_models[cache_key]
 
         try:
-            # Load from disk
-            model_path = self.model_utils.get_model_path(symbol, timeframe, model_type)
+            # Use cloud-first loading strategy
+            load_result = await self.model_utils.load_model_with_cloud_fallback(
+                symbol=symbol,
+                timeframe=timeframe,
+                model_type=model_type,
+                adapter_type="simple",  # Default to simple adapter for loading
+            )
+
+            if not load_result["success"]:
+                self.logger.error(f"Failed to load model: {load_result.get('error')}")
+                return None
+
+            # Load from the determined path
+            model_path = Path(load_result["path"])
             if not model_path.exists():
+                self.logger.error(f"Model path does not exist: {model_path}")
                 return None
 
             # Create model instance and load
             model = ModelFactory.create_model(model_type, {})
             if model is None:
+                self.logger.error(f"Failed to create model instance for {model_type}")
                 return None
 
             model.load_model(str(model_path))
@@ -697,6 +712,8 @@ class ModelServingFacade:
                 del self._cached_models[oldest_key]
 
             self._cached_models[cache_key] = model
+
+            self.logger.info(f"Loaded model from {load_result['source']}: {model_path}")
             return model
 
         except Exception as e:

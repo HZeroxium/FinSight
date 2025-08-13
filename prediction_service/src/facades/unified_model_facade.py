@@ -288,11 +288,11 @@ class UnifiedModelFacade:
         """
         return self.serving.list_available_models()
 
-    def model_exists(
+    async def model_exists(
         self, symbol: str, timeframe: TimeFrame, model_type: ModelType
     ) -> bool:
         """
-        Check if a trained model exists.
+        Check if a trained model exists with cloud-first strategy.
 
         Args:
             symbol: Trading symbol
@@ -300,9 +300,35 @@ class UnifiedModelFacade:
             model_type: Model type
 
         Returns:
-            bool: True if model exists
+            bool: True if model exists locally or in cloud
         """
-        return self.serving.model_exists(symbol, timeframe, model_type)
+        try:
+            from ..utils.model_utils import ModelUtils
+            from ..core.config import get_settings
+
+            settings = get_settings()
+            model_utils = ModelUtils()
+
+            # Check local first
+            local_exists = self.serving.model_exists(symbol, timeframe, model_type)
+
+            # If cloud storage is enabled, also check cloud
+            if settings.enable_cloud_storage and model_utils.storage_client:
+                try:
+                    cloud_exists = await model_utils.model_exists_in_cloud(
+                        symbol, timeframe, model_type, "simple"
+                    )
+                    return local_exists or cloud_exists
+                except Exception as e:
+                    self.logger.warning(f"Failed to check cloud model existence: {e}")
+                    # Fallback to local only
+                    return local_exists
+
+            return local_exists
+
+        except Exception as e:
+            self.logger.error(f"Error checking model existence: {e}")
+            return False
 
     def get_model_info(
         self, symbol: str, timeframe: TimeFrame, model_type: ModelType
