@@ -314,7 +314,7 @@ class ModelServingFacade:
         force_reload: bool = False,
     ) -> Dict[str, Any]:
         """
-        Load a model to the serving adapter.
+        Load a model to the serving adapter with cloud-first strategy.
 
         Args:
             symbol: Trading symbol
@@ -330,24 +330,41 @@ class ModelServingFacade:
 
         try:
             model_id = f"{symbol}_{timeframe.value}_{model_type.value}"
-            model_path = self.model_utils.get_model_path(
-                symbol,
-                timeframe,
-                model_type,
+
+            # Use cloud-first loading strategy
+            load_result = await self.model_utils.load_model_for_serving(
+                symbol=symbol,
+                timeframe=timeframe,
+                model_type=model_type,
                 adapter_type=self.serving_config.adapter_type,
+                force_cloud_download=force_reload,  # If force reload, try cloud first
             )
 
-            if not model_path.exists():
-                return {"success": False, "error": "Model not found"}
-
-            # Check if already loaded
-            loaded_models = await self.serving_adapter.list_loaded_models()
-            if not force_reload and any(m.model_id == model_id for m in loaded_models):
+            if not load_result["success"]:
                 return {
-                    "success": True,
-                    "message": "Model already loaded",
-                    "model_id": model_id,
+                    "success": False,
+                    "error": f"Model not found: {load_result.get('error')}",
+                    "source": load_result.get("source", "unknown"),
                 }
+
+            model_path = Path(load_result["path"])
+            if not model_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Model path does not exist: {model_path}",
+                    "source": load_result.get("source", "unknown"),
+                }
+
+            # Check if already loaded (unless force reload)
+            if not force_reload:
+                loaded_models = await self.serving_adapter.list_loaded_models()
+                if any(m.model_id == model_id for m in loaded_models):
+                    return {
+                        "success": True,
+                        "message": "Model already loaded",
+                        "model_id": model_id,
+                        "source": "cache",
+                    }
 
             # Load model using correct serving adapter interface
             model_info = await self.serving_adapter.load_model(
@@ -359,12 +376,36 @@ class ModelServingFacade:
             )
 
             if model_info and model_info.is_loaded:
-                self.logger.info(f"Model loaded to serving adapter: {model_id}")
-                return {"success": True, "model_id": model_id, "model_info": model_info}
+                source = load_result.get("source", "unknown")
+                self.logger.info(
+                    f"🎯 Model successfully loaded to {self.serving_config.adapter_type} serving adapter from {source.upper()}: {model_id}"
+                )
+                if source == "cloud":
+                    downloaded_files = load_result.get("downloaded_files", [])
+                    self.logger.info(
+                        f"📦 Downloaded {len(downloaded_files)} files from cloud for {model_id}"
+                    )
+                    for file in downloaded_files[:5]:  # Show first 5 files
+                        self.logger.debug(f"  📄 {file}")
+                    if len(downloaded_files) > 5:
+                        self.logger.debug(
+                            f"  ... and {len(downloaded_files) - 5} more files"
+                        )
+                elif source == "local":
+                    self.logger.info(f"📁 Used cached local model for {model_id}")
+
+                return {
+                    "success": True,
+                    "model_id": model_id,
+                    "model_info": model_info,
+                    "source": source,
+                    "downloaded_files": load_result.get("downloaded_files"),
+                }
             else:
                 return {
                     "success": False,
                     "error": "Failed to load model to serving adapter",
+                    "source": load_result.get("source", "unknown"),
                 }
 
         except Exception as e:

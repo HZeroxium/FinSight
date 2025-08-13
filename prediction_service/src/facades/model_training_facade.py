@@ -494,6 +494,7 @@ class ModelTrainingFacade:
                     adapter_type=FacadeConstants.ADAPTER_SIMPLE,
                     run_id=run_id,
                     force_upload=True,  # Force upload since this is a new model
+                    enable_upsert=True,  # Enable upsert for training uploads
                 )
 
                 if cloud_sync_result["success"]:
@@ -513,44 +514,63 @@ class ModelTrainingFacade:
                         "timestamp": datetime.now().isoformat(),
                     }
 
-                # Also sync other successful adapter formats to cloud
+                # Sync only specified adapter formats to cloud based on configuration
+                configured_cloud_adapters = set(settings.cloud_sync_adapters)
+                self.logger.info(
+                    f"📤 Configured cloud sync adapters: {configured_cloud_adapters}"
+                )
+
+                adapters_to_sync = []
                 for adapter_type, success in conversion_results.items():
-                    if success and adapter_type != FacadeConstants.ADAPTER_SIMPLE:
-                        try:
-                            adapter_sync_result = (
-                                await self.model_utils.sync_model_to_cloud(
-                                    symbol=symbol,
-                                    timeframe=timeframe,
-                                    model_type=model_type,
-                                    adapter_type=adapter_type,
-                                    run_id=run_id,
-                                    force_upload=True,
-                                )
-                            )
+                    if success and adapter_type in configured_cloud_adapters:
+                        adapters_to_sync.append(adapter_type)
+                    elif success and adapter_type not in configured_cloud_adapters:
+                        self.logger.info(
+                            f"⏭️ Skipping cloud sync for {adapter_type} (not in cloud_sync_adapters configuration)"
+                        )
 
-                            if adapter_sync_result["success"]:
-                                self.logger.info(
-                                    f"Successfully synced {adapter_type} adapter to cloud"
-                                )
-                                training_result["cloud_sync"][
-                                    adapter_type
-                                ] = adapter_sync_result
-                            else:
-                                self.logger.warning(
-                                    f"Failed to sync {adapter_type} adapter to cloud: {adapter_sync_result.get('error')}"
-                                )
-                                training_result["cloud_sync"][
-                                    adapter_type
-                                ] = adapter_sync_result
+                self.logger.info(
+                    f"📦 Syncing {len(adapters_to_sync)} adapters to cloud: {adapters_to_sync}"
+                )
 
-                        except Exception as e:
-                            self.logger.error(
-                                f"Error syncing {adapter_type} adapter to cloud: {e}"
+                for adapter_type in adapters_to_sync:
+                    try:
+                        self.logger.info(
+                            f"🚀 Syncing {adapter_type} adapter to cloud..."
+                        )
+                        adapter_sync_result = await self.model_utils.sync_model_to_cloud(
+                            symbol=symbol,
+                            timeframe=timeframe,
+                            model_type=model_type,
+                            adapter_type=adapter_type,
+                            run_id=run_id,
+                            force_upload=True,
+                            enable_upsert=True,  # Enable upsert for training uploads
+                        )
+
+                        if adapter_sync_result["success"]:
+                            self.logger.info(
+                                f"✅ Successfully synced {adapter_type} adapter to cloud"
                             )
-                            training_result["cloud_sync"][adapter_type] = {
-                                "success": False,
-                                "error": str(e),
-                            }
+                            training_result["cloud_sync"][
+                                adapter_type
+                            ] = adapter_sync_result
+                        else:
+                            self.logger.warning(
+                                f"❌ Failed to sync {adapter_type} adapter to cloud: {adapter_sync_result.get('error')}"
+                            )
+                            training_result["cloud_sync"][
+                                adapter_type
+                            ] = adapter_sync_result
+
+                    except Exception as e:
+                        self.logger.error(
+                            f"💥 Error syncing {adapter_type} adapter to cloud: {e}"
+                        )
+                        training_result["cloud_sync"][adapter_type] = {
+                            "success": False,
+                            "error": str(e),
+                        }
 
         except Exception as e:
             self.logger.error(f"Failed to sync model to cloud storage: {e}")

@@ -19,6 +19,7 @@ class PredictionService:
         self.logger = LoggerFactory.get_logger("PredictionService")
         self.settings = get_settings()
         self.model_facade = get_serving_facade()
+        self.unified_facade = get_unified_facade()  # For cloud-first model checking
         self.data_service = DataService()
 
     async def predict(self, request: PredictionRequest) -> PredictionResponse:
@@ -49,7 +50,7 @@ class PredictionService:
 
             # Auto-select model type if not specified
             if model_type is None:
-                model_type = self._select_best_model(symbol, timeframe)
+                model_type = await self._select_best_model(symbol, timeframe)
                 if model_type is None:
                     return PredictionResponse(
                         success=False,
@@ -57,22 +58,29 @@ class PredictionService:
                         error=f"No trained model available for {symbol} {timeframe}",
                     )
 
-            # Check if model exists
-            if not self.model_facade.model_exists(symbol, timeframe, model_type):
+            # Check if model exists using cloud-first strategy
+            self.logger.info(
+                f"🔍 Checking model existence with cloud-first strategy: {symbol} {timeframe} {model_type}"
+            )
+            model_exists_cloud_first = await self.unified_facade.model_exists(
+                symbol, timeframe, model_type
+            )
+
+            if not model_exists_cloud_first:
                 self.logger.error(
-                    f"Model check failed - looking for: {symbol} {timeframe} {model_type}"
+                    f"❌ Model check failed - looking for: {symbol} {timeframe} {model_type}"
                 )
 
-                # Debug: List what models actually exist
+                # Debug: List what models actually exist locally
                 available_models = self.model_facade.list_available_models()
                 self.logger.error(
-                    f"Available models: {[(m.symbol, m.timeframe, m.model_type) for m in available_models]}"
+                    f"📁 Available local models: {[(m.symbol, m.timeframe, m.model_type) for m in available_models]}"
                 )
 
                 return PredictionResponse(
                     success=False,
                     message="Model not found",
-                    error=f"No trained {model_type.value} model found for {symbol} {timeframe}",
+                    error=f"No trained {model_type.value} model found for {symbol} {timeframe} (checked both cloud and local)",
                 )
 
             # Load recent data for prediction
@@ -87,13 +95,17 @@ class PredictionService:
                     error=f"No data found for {symbol} {timeframe}",
                 )
 
-            # Make prediction using model facade
-            prediction_result = self.model_facade.predict(
+            # Make prediction using async model facade with cloud-first strategy
+            self.logger.info(
+                f"🚀 Making prediction with cloud-first model loading: {symbol} {timeframe} {model_type}"
+            )
+            prediction_result = await self.model_facade.predict_async(
                 symbol=symbol,
                 timeframe=timeframe,
                 model_type=model_type,
                 recent_data=recent_data,
                 n_steps=request.n_steps,
+                use_serving_adapter=True,  # Use serving adapter for better performance
             )
 
             execution_time = time.time() - start_time
@@ -154,10 +166,10 @@ class PredictionService:
             self.logger.error(f"Failed to get available models: {e}")
             return []
 
-    def _select_best_model(
+    async def _select_best_model(
         self, symbol: str, timeframe: TimeFrame
     ) -> Optional[ModelType]:
-        """Select the best available model for given symbol and timeframe"""
+        """Select the best available model for given symbol and timeframe using cloud-first strategy"""
         # Ensure symbol is string
         if hasattr(symbol, "value"):
             symbol = symbol.value
@@ -169,21 +181,33 @@ class PredictionService:
             ModelType.PYTORCH_TRANSFORMER,
         ]
 
+        self.logger.info(
+            f"🔍 Searching for best model with cloud-first strategy: {symbol} {timeframe}"
+        )
+
         for model_type in model_priority:
-            if self.model_facade.model_exists(symbol, timeframe, model_type):
-                self.logger.info(f"Selected model: {symbol} {timeframe} {model_type}")
+            # Use cloud-first model checking
+            model_exists = await self.unified_facade.model_exists(
+                symbol, timeframe, model_type
+            )
+            if model_exists:
+                self.logger.info(
+                    f"✅ Selected model: {symbol} {timeframe} {model_type}"
+                )
                 return model_type
 
-        # Debug: List what models actually exist
+        # Debug: List what models actually exist locally
         available_models = self.model_facade.list_available_models()
         if available_models:
-            self.logger.warning(f"Available models but none match criteria:")
+            self.logger.warning(f"📁 Available local models but none match criteria:")
             for model in available_models:
                 self.logger.warning(
                     f"  - {model.symbol} {model.timeframe} {model.model_type}"
                 )
 
-        self.logger.warning(f"No available model found for {symbol} {timeframe}")
+        self.logger.warning(
+            f"❌ No available model found for {symbol} {timeframe} (checked both cloud and local)"
+        )
         return None
 
     def _generate_prediction_timestamps(
