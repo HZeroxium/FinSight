@@ -174,6 +174,22 @@ class PatchTSTAdapter(BaseTimeSeriesAdapter):
             train_sequences, train_targets = train_dataset
             val_sequences, val_targets = val_dataset
 
+            # CRITICAL FIX: Keep tensors on CPU for dataset creation to avoid pinning errors
+            # The Trainer will handle device placement automatically
+            if train_sequences.device.type != "cpu":
+                self.logger.info(
+                    "Moving training sequences to CPU for dataset creation"
+                )
+                train_sequences = train_sequences.cpu()
+                train_targets = train_targets.cpu()
+
+            if val_sequences.device.type != "cpu":
+                self.logger.info(
+                    "Moving validation sequences to CPU for dataset creation"
+                )
+                val_sequences = val_sequences.cpu()
+                val_targets = val_targets.cpu()
+
             # Create datasets
             train_ds = PatchTSTDataset(train_sequences, train_targets)
             val_ds = PatchTSTDataset(val_sequences, val_targets)
@@ -192,10 +208,11 @@ class PatchTSTAdapter(BaseTimeSeriesAdapter):
                 load_best_model_at_end=False,  # Disable since eval_loss is not computed
                 report_to=None,  # Disable wandb
                 remove_unused_columns=False,
-                # Force device configuration based on our centralized settings
-                no_cuda=self.device_manager.force_cpu
-                or not self.device_manager.is_gpu_enabled(),
+                # Device configuration - let Trainer handle device placement
+                no_cuda=self.device_manager.force_cpu,
                 use_cpu=self.device_manager.force_cpu,
+                # Disable pin memory for GPU tensors to avoid pinning errors
+                dataloader_pin_memory=not self.device_manager.is_gpu_enabled(),
             )
 
             # Create trainer
@@ -204,7 +221,6 @@ class PatchTSTAdapter(BaseTimeSeriesAdapter):
                 args=training_args,
                 train_dataset=train_ds,
                 eval_dataset=val_ds,
-                # Remove early stopping since eval_loss is not properly computed
             )
 
             # Train
@@ -214,6 +230,7 @@ class PatchTSTAdapter(BaseTimeSeriesAdapter):
             self.logger.info(f"  force_cpu: {self.device_manager.force_cpu}")
             self.logger.info(f"  no_cuda: {training_args.no_cuda}")
             self.logger.info(f"  use_cpu: {training_args.use_cpu}")
+            self.logger.info(f"  pin_memory: {training_args.dataloader_pin_memory}")
 
             self.logger.info("Hyperparameters:")
             arguments_dict = training_args.to_dict()
@@ -250,6 +267,9 @@ class PatchTSTAdapter(BaseTimeSeriesAdapter):
 
             # Ensure input tensor is on the same device as model
             input_tensor = self.to_device(input_tensor)
+
+            # Ensure device consistency between model and input
+            self.device_manager.ensure_consistent_device(self.model, input_tensor)
 
             self.logger.debug(f"Making prediction on device: {self.device}")
 
@@ -383,6 +403,10 @@ class PatchTSTAdapter(BaseTimeSeriesAdapter):
             # Move model to the configured device using centralized device manager
             self.model = self.to_device(self.model)
             self.model.eval()
+
+            # Ensure device consistency
+            self.device_manager.ensure_consistent_device(self.model)
+
             self.logger.info(
                 f"PatchTST model loaded and moved to device: {self.device}"
             )

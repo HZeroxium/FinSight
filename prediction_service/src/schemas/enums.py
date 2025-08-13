@@ -85,3 +85,14 @@ class Exchange(str, Enum):
 class DataFormat(str, Enum):
     CSV = "csv"
     PARQUET = "parquet"
+
+
+class DeviceType(str, Enum):
+    """Supported compute device types.
+
+    Use these enum values instead of magic strings like 'cpu' or 'cuda'.
+    """
+
+    CPU = "cpu"
+    CUDA = "cuda"
+    MPS = "mps"  # Apple Silicon Metal Performance Shaders (if available)

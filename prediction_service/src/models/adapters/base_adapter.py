@@ -19,6 +19,7 @@ from ...interfaces.model_interface import ITimeSeriesModel
 from ...utils.device_manager import create_device_manager_from_settings
 from common.logger.logger_factory import LoggerFactory
 from ...utils.metrics_utils import MetricUtils
+from ...schemas.enums import DeviceType
 
 
 class BaseTimeSeriesAdapter(ITimeSeriesModel):
@@ -44,6 +45,8 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
         device: Optional[str] = None,
         **config,
     ):
+        # Initialize logger early (used below)
+        self.logger = LoggerFactory.get_logger(f"{self.__class__.__name__}")
         self.context_length = context_length
         self.prediction_length = prediction_length
         self.target_column = target_column
@@ -64,7 +67,22 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
         else:
             # Respect explicit device parameter but warn if inconsistent with settings
             self.device = torch.device(device)
-            if device != self.device_manager.device:
+            # Normalize for comparison (treat 'cuda' and 'cuda:0' as same family)
+            provided_norm = str(device).strip().lower()
+            if provided_norm.startswith(DeviceType.CUDA.value):
+                provided_norm = DeviceType.CUDA.value
+            elif provided_norm.startswith(DeviceType.MPS.value):
+                provided_norm = DeviceType.MPS.value
+            elif provided_norm == "cpu":
+                provided_norm = DeviceType.CPU.value
+            configured_norm = self.device_manager.device
+            if configured_norm.startswith(DeviceType.CUDA.value):
+                configured_norm = DeviceType.CUDA.value
+            elif configured_norm.startswith(DeviceType.MPS.value):
+                configured_norm = DeviceType.MPS.value
+            else:
+                configured_norm = DeviceType.CPU.value
+            if provided_norm != configured_norm:
                 self.logger.warning(
                     f"Explicit device '{device}' differs from configured device '{self.device_manager.device}'"
                 )
@@ -82,7 +100,7 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
         self._experiment_tracker = None
         self._current_run_id = None
 
-        self.logger = LoggerFactory.get_logger(f"{self.__class__.__name__}")
+        # Logger already initialized above
 
         # Log initialization details
         self.logger.debug(f"Initialized {self.__class__.__name__} with:")
@@ -315,14 +333,28 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
                 sequences_tensor = torch.FloatTensor(np.array(sequences))
                 targets_tensor = torch.FloatTensor(np.array(targets))
 
-                # Move tensors to the configured device
-                sequences_tensor = self.to_device(sequences_tensor)
-                targets_tensor = self.to_device(targets_tensor)
+                # For training sequences, defer device placement to avoid pinning errors
+                # The Trainer will handle device placement automatically
+                if for_training:
+                    # Keep tensors on CPU for now - device placement will be handled by the Trainer
+                    self.logger.debug(
+                        f"Created training sequences on CPU (device placement deferred to Trainer)"
+                    )
+                    return sequences_tensor, targets_tensor
+                else:
+                    # For inference, move to device immediately
+                    sequences_tensor = self.to_device(sequences_tensor)
+                    targets_tensor = self.to_device(targets_tensor)
 
-                self.logger.debug(
-                    f"Created training sequences on device: {self.device}"
-                )
-                return sequences_tensor, targets_tensor
+                    # Ensure both tensors are on the same device
+                    self.device_manager.ensure_consistent_device(
+                        sequences_tensor, targets_tensor
+                    )
+
+                    self.logger.debug(
+                        f"Created inference sequences on device: {self.device}"
+                    )
+                    return sequences_tensor, targets_tensor
 
             else:
                 # Create single sequence from end of data for inference
@@ -904,6 +936,21 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
 
             # Load model-specific components
             self._load_model_specific(path)
+
+            # Ensure model is on the correct device after loading
+            if self.model is not None:
+                self.model = self.to_device(self.model)
+                self.logger.info(f"Model moved to device: {self.device}")
+
+                # Verify device consistency
+                if hasattr(self.model, "device"):
+                    actual_device = str(self.model.device)
+                    if actual_device != self.device:
+                        self.logger.warning(
+                            f"Device mismatch after loading: model on {actual_device}, expected {self.device}"
+                        )
+                        # Force move to correct device
+                        self.model = self.to_device(self.model)
 
             self.logger.info(f"Model loaded from {path}")
 

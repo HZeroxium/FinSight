@@ -26,25 +26,25 @@ class Settings(BaseSettings):
     api_host: str = Field("0.0.0.0", env="API_HOST")
     api_port: int = Field(8000, env="API_PORT")
 
-    # Directory paths
+    # Directory paths - relative to prediction_service root
     base_dir: Path = Field(
-        default_factory=lambda: Path(__file__).parent.parent.parent.parent,
+        default_factory=lambda: Path(__file__).parent.parent.parent,
         env="BASE_DIR",
     )
     data_dir: Path = Field(
-        default_factory=lambda: Path(__file__).parent.parent.parent.parent / "data",
+        default_factory=lambda: Path(__file__).parent.parent.parent / "data",
         env="DATA_DIR",
     )
     models_dir: Path = Field(
-        default_factory=lambda: Path(__file__).parent.parent.parent.parent / "models",
+        default_factory=lambda: Path(__file__).parent.parent.parent / "models",
         env="MODELS_DIR",
     )
     logs_dir: Path = Field(
-        default_factory=lambda: Path(__file__).parent.parent.parent.parent / "logs",
+        default_factory=lambda: Path(__file__).parent.parent.parent / "logs",
         env="LOGS_DIR",
     )
     jobs_dir: Path = Field(
-        default_factory=lambda: Path(__file__).parent.parent.parent.parent / "jobs",
+        default_factory=lambda: Path(__file__).parent.parent.parent / "jobs",
         env="JOBS_DIR",
     )
 
@@ -65,9 +65,28 @@ class Settings(BaseSettings):
 
     # Device configuration
     force_cpu: bool = Field(
-        True,
+        False,
         env="FORCE_CPU",
         description="Force CPU usage even when GPU is available. When True, all training and inference will use CPU regardless of GPU availability.",
+    )
+
+    # Additional device configuration
+    cuda_visible_devices: Optional[str] = Field(
+        None,
+        env="CUDA_VISIBLE_DEVICES",
+        description="CUDA visible devices configuration. Set to empty string to disable GPU, or specific GPU indices like '0,1'",
+    )
+
+    cuda_device_memory_fraction: float = Field(
+        0.8,
+        env="CUDA_DEVICE_MEMORY_FRACTION",
+        description="Fraction of GPU memory to use (0.0 to 1.0)",
+    )
+
+    enable_mixed_precision: bool = Field(
+        True,
+        env="ENABLE_MIXED_PRECISION",
+        description="Enable mixed precision training for better GPU memory efficiency",
     )
 
     # Model limits
@@ -187,7 +206,7 @@ class Settings(BaseSettings):
     storage_separator: str = Field(default="/", env="STORAGE_SEPARATOR")
 
     # Cloud storage enablement flags
-    enable_cloud_storage: bool = Field(False, env="ENABLE_CLOUD_STORAGE")
+    enable_cloud_storage: bool = Field(True, env="ENABLE_CLOUD_STORAGE")
     enable_model_cloud_sync: bool = Field(True, env="ENABLE_MODEL_CLOUD_SYNC")
     cloud_storage_fallback_enabled: bool = Field(
         True, env="CLOUD_STORAGE_FALLBACK_ENABLED"
@@ -225,7 +244,7 @@ class Settings(BaseSettings):
 
     # Experiment Tracker settings
     experiment_tracker_type: str = Field(
-        ExperimentTrackerType.MLFLOW.value, env="EXPERIMENT_TRACKER_TYPE"
+        ExperimentTrackerType.SIMPLE.value, env="EXPERIMENT_TRACKER_TYPE"
     )  # simple, mlflow
     experiment_tracker_fallback: str = Field(
         ExperimentTrackerType.SIMPLE.value, env="EXPERIMENT_TRACKER_FALLBACK"
@@ -242,11 +261,25 @@ class Settings(BaseSettings):
     enabled_adapters: List[str] = Field(
         default_factory=lambda: [
             ServingAdapterType.SIMPLE.value,
-            ServingAdapterType.TORCHSCRIPT.value,
-            ServingAdapterType.TORCHSERVE.value,
-            ServingAdapterType.TRITON.value,
+            # ServingAdapterType.TORCHSCRIPT.value,
+            # ServingAdapterType.TORCHSERVE.value,
+            # ServingAdapterType.TRITON.value,
         ],
         env="ENABLED_ADAPTERS",
+    )
+
+    # Cloud sync configuration for adapters
+    cloud_sync_adapters: List[str] = Field(
+        default_factory=lambda: [
+            ServingAdapterType.SIMPLE.value,  # Always sync simple adapter
+        ],
+        env="CLOUD_SYNC_ADAPTERS",
+        description="List of adapter types to sync to cloud storage during training",
+    )
+    enable_cloud_upsert: bool = Field(
+        True,
+        env="ENABLE_CLOUD_UPSERT",
+        description="Enable overwriting existing files in cloud storage",
     )
 
     # Field validators
@@ -262,6 +295,22 @@ class Settings(BaseSettings):
     @classmethod
     def parse_timeframes(cls, v):
         """Parse comma-separated timeframes from environment variable"""
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",") if s.strip()]
+        return v
+
+    @field_validator("enabled_adapters", mode="before")
+    @classmethod
+    def parse_enabled_adapters(cls, v):
+        """Parse comma-separated enabled adapters from environment variable"""
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",") if s.strip()]
+        return v
+
+    @field_validator("cloud_sync_adapters", mode="before")
+    @classmethod
+    def parse_cloud_sync_adapters(cls, v):
+        """Parse comma-separated cloud sync adapters from environment variable"""
         if isinstance(v, str):
             return [s.strip() for s in v.split(",") if s.strip()]
         return v
@@ -332,6 +381,14 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"storage_provider must be one of {sorted(allowed_providers)}"
             )
+
+    @field_validator("cuda_device_memory_fraction")
+    @classmethod
+    def validate_cuda_memory_fraction(cls, v: float) -> float:
+        """Validate CUDA memory fraction is between 0.0 and 1.0"""
+        if v < 0.0 or v > 1.0:
+            raise ValueError("CUDA device memory fraction must be between 0.0 and 1.0")
+        return v
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -507,22 +564,36 @@ class Settings(BaseSettings):
         """
         return self.model_storage_prefix
 
-    def get_device_config(self) -> str:
-        """
-        Get the appropriate device configuration for PyTorch models.
+    def get_device_config(self) -> Dict[str, Any]:
+        """Get device configuration summary"""
+        return {
+            "force_cpu": self.force_cpu,
+            "cuda_visible_devices": self.cuda_visible_devices,
+            "cuda_device_memory_fraction": self.cuda_device_memory_fraction,
+            "enable_mixed_precision": self.enable_mixed_precision,
+        }
 
-        Returns:
-            str: Device string ('cpu' or 'cuda')
-        """
-        if self.force_cpu:
-            return "cpu"
-
+    def validate_device_config(self) -> bool:
+        """Validate device configuration"""
         try:
-            import torch
+            # Check if CUDA_VISIBLE_DEVICES is set to empty string when force_cpu is False
+            if not self.force_cpu and self.cuda_visible_devices == "":
+                self.logger.warning(
+                    "CUDA_VISIBLE_DEVICES is empty but force_cpu is False. "
+                    "This may cause GPU detection issues."
+                )
 
-            return "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError:
-            return "cpu"
+            # Validate memory fraction
+            if (
+                self.cuda_device_memory_fraction < 0.0
+                or self.cuda_device_memory_fraction > 1.0
+            ):
+                raise ValueError("Invalid CUDA memory fraction")
+
+            return True
+        except Exception as e:
+            self.logger.error(f"Device configuration validation failed: {e}")
+            return False
 
     def is_gpu_enabled(self) -> bool:
         """
