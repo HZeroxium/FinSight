@@ -1,0 +1,4597 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FinSight Backtesting API",
+    "description": "\n    Advanced backtesting system for cryptocurrency trading strategies.\n    \n    ## Features\n    \n    * **Administrative Operations**: Data management, system statistics, maintenance\n    * **Market Data Management**: Fetch, store, and convert OHLCV data across timeframes\n    * **Strategy Backtesting**: Run and analyze trading strategies with multiple engines\n    * **Cross-Repository Support**: MongoDB, CSV, InfluxDB storage adapters\n    \n    ## Authentication\n    \n    Admin endpoints require API key authentication via Bearer token.\n    Set the `ADMIN_API_KEY` environment variable or use the default key.\n    \n    ## Architecture\n    \n    Built with Ports & Adapters (Hexagonal Architecture) for maximum flexibility:\n    - **Service Layer**: Business logic and orchestration\n    - **Repository Layer**: Pluggable storage adapters  \n    - **Strategy Layer**: Extensible trading strategies\n    - **Adapter Layer**: Exchange connectors and backtesting engines\n    ",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root",
+        "description": "API root endpoint with service information.",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Root  Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Simple health check endpoint.\n\nThis is a lightweight health check that doesn't require authentication.\nFor detailed system health, use /admin/health.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/ohlcv": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Ohlcv Data",
+        "description": "Retrieve OHLCV (candlestick) data for specified parameters.\n\nReturns historical price and volume data for the given symbol,\nexchange, and time range.",
+        "operationId": "get_ohlcv_data_api_v1_market_data_ohlcv_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name (e.g., binance)",
+              "title": "Exchange"
+            },
+            "description": "Exchange name (e.g., binance)"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol (e.g., BTCUSDT)",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol (e.g., BTCUSDT)"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Timeframe (e.g., 1h, 1d)",
+              "title": "Timeframe"
+            },
+            "description": "Timeframe (e.g., 1h, 1d)"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Start date (ISO 8601 format)",
+              "title": "Start Date"
+            },
+            "description": "Start date (ISO 8601 format)"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "End date (ISO 8601 format)",
+              "title": "End Date"
+            },
+            "description": "End date (ISO 8601 format)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 10000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum number of records to return",
+              "title": "Limit"
+            },
+            "description": "Maximum number of records to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OHLCVResponseSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/ohlcv/stats": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Ohlcv Stats",
+        "description": "Get statistical information about OHLCV data.\n\nReturns metrics like total records, date range, price ranges,\nand volume statistics for the specified data series.",
+        "operationId": "get_ohlcv_stats_api_v1_market_data_ohlcv_stats_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name",
+              "title": "Exchange"
+            },
+            "description": "Exchange name"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Timeframe",
+              "title": "Timeframe"
+            },
+            "description": "Timeframe"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OHLCVStatsSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/ohlcv/latest-timestamp": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Latest Timestamp",
+        "description": "Get the timestamp of the latest OHLCV record.\n\nUseful for determining data freshness and identifying\nwhere to resume data collection.",
+        "operationId": "get_latest_timestamp_api_v1_market_data_ohlcv_latest_timestamp_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name",
+              "title": "Exchange"
+            },
+            "description": "Exchange name"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Timeframe",
+              "title": "Timeframe"
+            },
+            "description": "Timeframe"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Latest Timestamp Api V1 Market Data Ohlcv Latest Timestamp Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/ohlcv/gaps": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Data Gaps",
+        "description": "Identify gaps in OHLCV data within specified date range.\n\nReturns a list of missing time periods that need to be collected\nto ensure data completeness.",
+        "operationId": "get_data_gaps_api_v1_market_data_ohlcv_gaps_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name",
+              "title": "Exchange"
+            },
+            "description": "Exchange name"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Timeframe",
+              "title": "Timeframe"
+            },
+            "description": "Timeframe"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Start date for gap analysis",
+              "title": "Start Date"
+            },
+            "description": "Start date for gap analysis"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "End date for gap analysis",
+              "title": "End Date"
+            },
+            "description": "End date for gap analysis"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Data Gaps Api V1 Market Data Ohlcv Gaps Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/exchanges": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Available Exchanges",
+        "description": "Get list of available exchanges in the system.\n\nReturns all exchanges that have data stored in the repository.",
+        "operationId": "get_available_exchanges_api_v1_market_data_exchanges_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Available Exchanges Api V1 Market Data Exchanges Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/symbols": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Available Symbols",
+        "description": "Get list of available symbols for an exchange.\n\nReturns all symbols that have data stored for the specified exchange.",
+        "operationId": "get_available_symbols_api_v1_market_data_symbols_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name",
+              "title": "Exchange"
+            },
+            "description": "Exchange name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Available Symbols Api V1 Market Data Symbols Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/timeframes": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Available Timeframes",
+        "description": "Get list of available timeframes for a symbol.\n\nReturns all timeframes that have data stored for the specified\nexchange and symbol combination.",
+        "operationId": "get_available_timeframes_api_v1_market_data_timeframes_get",
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name",
+              "title": "Exchange"
+            },
+            "description": "Exchange name"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Available Timeframes Api V1 Market Data Timeframes Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data/storage-info": {
+      "get": {
+        "tags": ["market-data", "market-data"],
+        "summary": "Get Storage Info",
+        "description": "Get information about the storage backend.\n\nReturns metadata about the underlying storage system,\nincluding type, capacity, and utilization.",
+        "operationId": "get_storage_info_api_v1_market_data_storage_info_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Storage Info Api V1 Market Data Storage Info Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - No data available"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/strategies": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Available Strategies",
+        "description": "Get list of available trading strategies.\n\nReturns all registered strategies with their descriptions,\nparameters, and configuration options.",
+        "operationId": "get_available_strategies_api_v1_backtesting_strategies_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/strategies/{strategy_name}/config": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Strategy Config",
+        "description": "Get configuration schema for a specific strategy.\n\nReturns the parameter definitions, default values,\nand validation rules for the strategy.",
+        "operationId": "get_strategy_config_api_v1_backtesting_strategies__strategy_name__config_get",
+        "parameters": [
+          {
+            "name": "strategy_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Strategy Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyConfigSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/run": {
+      "post": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Run Backtest",
+        "description": "Execute a backtest with specified parameters.\n\nRuns the specified strategy against historical market data\nand returns comprehensive performance metrics and analysis.",
+        "operationId": "run_backtest_api_v1_backtesting_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/results/{backtest_id}": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Backtest Results",
+        "description": "Retrieve results from a previous backtest.\n\nReturns stored backtest results by ID, with options to include\nor exclude detailed trade and equity curve data.",
+        "operationId": "get_backtest_results_api_v1_backtesting_results__backtest_id__get",
+        "parameters": [
+          {
+            "name": "backtest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Backtest Id"
+            }
+          },
+          {
+            "name": "include_trades",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include trade details",
+              "default": true,
+              "title": "Include Trades"
+            },
+            "description": "Include trade details"
+          },
+          {
+            "name": "include_equity_curve",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include equity curve data",
+              "default": true,
+              "title": "Include Equity Curve"
+            },
+            "description": "Include equity curve data"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Delete Backtest Results",
+        "description": "Delete stored backtest results.\n\nRemoves backtest results and associated data from storage.\nThis operation cannot be undone.",
+        "operationId": "delete_backtest_results_api_v1_backtesting_results__backtest_id__delete",
+        "parameters": [
+          {
+            "name": "backtest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Backtest Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestDeletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/history": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Backtest History",
+        "description": "Get history of recent backtests.\n\nReturns a paginated list of recent backtest executions with basic\nmetadata and performance summaries.",
+        "operationId": "get_backtest_history_api_v1_backtesting_history_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number"
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Items per page",
+              "default": 10,
+              "title": "Per Page"
+            },
+            "description": "Items per page"
+          },
+          {
+            "name": "strategy_filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by strategy name",
+              "title": "Strategy Filter"
+            },
+            "description": "Filter by strategy name"
+          },
+          {
+            "name": "symbol_filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by symbol",
+              "title": "Symbol Filter"
+            },
+            "description": "Filter by symbol"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/engines": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Available Engines",
+        "description": "Get list of available backtesting engines.\n\nReturns information about supported backtesting engines\nand their capabilities.",
+        "operationId": "get_available_engines_api_v1_backtesting_engines_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestEnginesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/backtesting/stats": {
+      "get": {
+        "tags": ["backtesting", "backtesting"],
+        "summary": "Get Backtesting Stats",
+        "description": "Get backtesting system statistics.\n\nReturns statistics about stored backtests, performance metrics,\nand system utilization.",
+        "operationId": "get_backtesting_stats_api_v1_backtesting_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Backtesting Stats Api V1 Backtesting Stats Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid parameters"
+          },
+          "404": {
+            "description": "Not found - Strategy or data not available"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/storage/upload": {
+      "post": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Upload Dataset",
+        "description": "Upload a dataset to object storage.\n\nSupports format conversion and compression during upload.",
+        "operationId": "upload_dataset_api_v1_storage_upload_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Upload Dataset Api V1 Storage Upload Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/download": {
+      "post": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Download Dataset",
+        "description": "Download a dataset from object storage.\n\nSupports automatic archive extraction.",
+        "operationId": "download_dataset_api_v1_storage_download_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetDownloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Download Dataset Api V1 Storage Download Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/list": {
+      "get": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "List Datasets",
+        "description": "List available datasets in object storage.",
+        "operationId": "list_datasets_api_v1_storage_list_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "prefix",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Object key prefix for filtering",
+              "title": "Prefix"
+            },
+            "description": "Object key prefix for filtering"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum number of objects to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum number of objects to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Datasets Api V1 Storage List Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/dataset/{object_key}": {
+      "delete": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Delete Dataset",
+        "description": "Delete a dataset from object storage.",
+        "operationId": "delete_dataset_api_v1_storage_dataset__object_key__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "object_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Dataset Api V1 Storage Dataset  Object Key  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/convert": {
+      "post": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Convert Dataset Format",
+        "description": "Convert dataset between formats (CSV ↔ Parquet).\n\nBased on timeframe_load_convert_save.py logic.",
+        "operationId": "convert_dataset_format_api_v1_storage_convert_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormatConversionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Convert Dataset Format Api V1 Storage Convert Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/convert/timeframes": {
+      "post": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Convert Timeframes",
+        "description": "Convert timeframes using the cross-repository pipeline.\n\nReferences timeframe_load_convert_save.py logic for data conversion.",
+        "operationId": "convert_timeframes_api_v1_storage_convert_timeframes_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Exchange name",
+              "default": "binance",
+              "title": "Exchange"
+            },
+            "description": "Exchange name"
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Trading symbol",
+              "title": "Symbol"
+            },
+            "description": "Trading symbol"
+          },
+          {
+            "name": "source_timeframe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Source timeframe",
+              "default": "1h",
+              "title": "Source Timeframe"
+            },
+            "description": "Source timeframe"
+          },
+          {
+            "name": "target_timeframes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Target timeframes for conversion",
+              "default": ["4h", "1d"],
+              "title": "Target Timeframes"
+            },
+            "description": "Target timeframes for conversion"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Start date in ISO format",
+              "title": "Start Date"
+            },
+            "description": "Start date in ISO format"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "End date in ISO format",
+              "title": "End Date"
+            },
+            "description": "End date in ISO format"
+          },
+          {
+            "name": "source_format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Source repository format",
+              "default": "csv",
+              "title": "Source Format"
+            },
+            "description": "Source repository format"
+          },
+          {
+            "name": "target_format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Target repository format",
+              "default": "parquet",
+              "title": "Target Format"
+            },
+            "description": "Target repository format"
+          },
+          {
+            "name": "overwrite_existing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Overwrite existing data",
+              "default": false,
+              "title": "Overwrite Existing"
+            },
+            "description": "Overwrite existing data"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Convert Timeframes Api V1 Storage Convert Timeframes Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/bulk": {
+      "post": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Bulk Operations",
+        "description": "Perform bulk storage operations.\n\nSupports concurrent execution with error handling.",
+        "operationId": "bulk_operations_api_v1_storage_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkOperationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Bulk Operations Api V1 Storage Bulk Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/stats": {
+      "get": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Get Storage Statistics",
+        "description": "Get storage statistics and health information.",
+        "operationId": "get_storage_statistics_api_v1_storage_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageStatsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/health": {
+      "get": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Storage Health Check",
+        "description": "Check storage service health and connectivity.",
+        "operationId": "storage_health_check_api_v1_storage_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Storage Health Check Api V1 Storage Health Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/": {
+      "get": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Storage Service Info",
+        "description": "Get storage service information and available endpoints.",
+        "operationId": "storage_service_info_api_v1_storage__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Storage Service Info Api V1 Storage  Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-data-jobs/status": {
+      "get": {
+        "tags": ["market-data-job-management", "market-data-job-management"],
+        "summary": "Get Job Status",
+        "description": "Get current market data job service status and statistics.\n\n**Requires admin authentication via API key.**\n\nReturns detailed information about the job service including:\n- Current running status\n- Process information\n- Scheduler status\n- Next scheduled run time\n- Job execution statistics\n\nReturns:\n    JobStatusResponse: Current job status and statistics\n\nRaises:\n    HTTPException: 401 if no API key provided, 403 if invalid API key",
+        "operationId": "get_job_status_api_v1_market_data_jobs_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Invalid API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/market-data-jobs/start": {
+      "post": {
+        "tags": ["market-data-job-management", "market-data-job-management"],
+        "summary": "Start Job",
+        "description": "Start the market data job service.\n\n**Requires admin authentication via API key.**\n\nStarts the background job service with optional configuration.\nIf the service is already running, use force_restart=true to restart it.\n\nArgs:\n    request: Job start request with optional configuration\n\nReturns:\n    JobOperationResponse: Operation result with success status\n\nRaises:\n    HTTPException: 401 if no API key provided, 403 if invalid API key, 500 on service errors",
+        "operationId": "start_job_api_v1_market_data_jobs_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobStartRequest",
+                "default": {
+                  "force_restart": false,
+                  "background_mode": true
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOperationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Invalid API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/market-data-jobs/stop": {
+      "post": {
+        "tags": ["market-data-job-management", "market-data-job-management"],
+        "summary": "Stop Job",
+        "description": "Stop the market data job service.\n\n**Requires admin authentication via API key.**\n\nGracefully stops the background job service.\nUse graceful=false for immediate termination.\n\nArgs:\n    request: Job stop request with shutdown options\n\nReturns:\n    JobOperationResponse: Operation result with success status\n\nRaises:\n    HTTPException: 401 if no API key provided, 403 if invalid API key, 500 on service errors",
+        "operationId": "stop_job_api_v1_market_data_jobs_stop_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobStopRequest",
+                "default": {
+                  "graceful": true,
+                  "timeout_seconds": 30,
+                  "force_kill": false
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOperationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Invalid API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/market-data-jobs/run": {
+      "post": {
+        "tags": ["market-data-job-management", "market-data-job-management"],
+        "summary": "Run Manual Job",
+        "description": "Run a manual market data collection job.\n\n**Requires admin authentication via API key.**\n\nExecutes a one-time data collection job with specified parameters.\nCan run asynchronously in the background or synchronously.\n\nArgs:\n    request: Manual job request with collection parameters\n    background_tasks: FastAPI background tasks for async execution\n\nReturns:\n    ManualJobResponse: Job execution result and details\n\nRaises:\n    HTTPException: 401 if no API key provided, 403 if invalid API key, 500 on service errors",
+        "operationId": "run_manual_job_api_v1_market_data_jobs_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualJobRequest",
+                "default": {
+                  "job_priority": "normal",
+                  "async_execution": true
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualJobResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Invalid API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/market-data-jobs/config": {
+      "get": {
+        "tags": ["market-data-job-management", "market-data-job-management"],
+        "summary": "Get Job Config",
+        "description": "Get current market data job configuration.\n\n**Requires admin authentication via API key.**\n\nReturns the current job configuration including scheduling,\ncollection parameters, and notification settings.\n\nReturns:\n    MarketDataJobConfigModel: Current job configuration\n\nRaises:\n    HTTPException: 401 if no API key provided, 403 if invalid API key, 500 on service errors",
+        "operationId": "get_job_config_api_v1_market_data_jobs_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketDataJobConfigModel"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Invalid API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": ["market-data-job-management", "market-data-job-management"],
+        "summary": "Update Job Config",
+        "description": "Update market data job configuration.\n\n**Requires admin authentication via API key.**\n\nUpdates the job configuration with the provided parameters.\nOnly specified fields will be updated, others remain unchanged.\n\nArgs:\n    request: Configuration update request with new values\n\nReturns:\n    JobOperationResponse: Operation result with success status\n\nRaises:\n    HTTPException: 401 if no API key provided, 403 if invalid API key, 400 on validation errors, 500 on service errors",
+        "operationId": "update_job_config_api_v1_market_data_jobs_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobConfigUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOperationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Invalid API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/market-data-jobs/stats": {
+      "get": {
+        "tags": ["market-data-job-management", "market-data-job-management"],
+        "summary": "Get Job Stats",
+        "description": "Get market data job execution statistics.\n\n**Requires admin authentication via API key.**\n\nReturns statistics about job execution including success/failure counts,\nlast run times, and performance metrics.\n\nReturns:\n    JobStatsModel: Job execution statistics\n\nRaises:\n    HTTPException: 401 if no API key provided, 403 if invalid API key, 500 on service errors",
+        "operationId": "get_job_stats_api_v1_market_data_jobs_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatsModel"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Invalid API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/market-data-jobs/health": {
+      "get": {
+        "tags": ["market-data-job-management", "market-data-job-management"],
+        "summary": "Job Health Check",
+        "description": "Perform comprehensive health check of the job service.\n\n**Requires admin authentication via API key.**\n\nChecks the health of all job service components including\nthe job service itself, scheduler, configuration files, and dependencies.\n\nReturns:\n    HealthCheckResponse: Detailed health information\n\nRaises:\n    HTTPException: 401 if no API key provided, 403 if invalid API key, 500 on service errors",
+        "operationId": "job_health_check_api_v1_market_data_jobs_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Invalid API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/market-data-jobs/collect": {
+      "post": {
+        "tags": ["market-data-job-management", "market-data-job-management"],
+        "summary": "Run Data Collection Job",
+        "description": "Run a specific data collection job.\n\n**Requires admin authentication via API key.**\n\nExecutes a data collection job for specified symbols and timeframes\nwith custom parameters.\n\nArgs:\n    request: Data collection job request\n    background_tasks: FastAPI background tasks for async execution\n\nReturns:\n    DataCollectionJobResponse: Job execution result\n\nRaises:\n    HTTPException: 401 if no API key provided, 403 if invalid API key, 400 on validation errors, 500 on service errors",
+        "operationId": "run_data_collection_job_api_v1_market_data_jobs_collect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataCollectionJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataCollectionJobResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Invalid API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/market-data-jobs/": {
+      "get": {
+        "tags": ["market-data-job-management", "market-data-job-management"],
+        "summary": "Job Service Info",
+        "description": "Get market data job service information and available endpoints.\n\n**Requires admin authentication via API key.**\n\nReturns information about the job management service and\ndescriptions of all available endpoints.\n\nReturns:\n    dict: Service information and endpoint descriptions\n\nRaises:\n    HTTPException: 401 if no API key provided, 403 if invalid API key",
+        "operationId": "job_service_info_api_v1_market_data_jobs__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Job Service Info Api V1 Market Data Jobs  Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Invalid API key"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BacktestDeletionResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether deletion was successful"
+          },
+          "backtest_id": {
+            "type": "string",
+            "title": "Backtest Id",
+            "description": "Deleted backtest identifier"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Status message"
+          },
+          "deleted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deleted At"
+          }
+        },
+        "type": "object",
+        "required": ["success", "backtest_id", "message"],
+        "title": "BacktestDeletionResponse",
+        "description": "Response schema for backtest deletion endpoint."
+      },
+      "BacktestEngineInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Engine name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Engine description"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Engine version"
+          },
+          "supported_strategies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Strategies",
+            "description": "Supported strategies"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Features",
+            "description": "Engine features"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "version",
+          "supported_strategies",
+          "features"
+        ],
+        "title": "BacktestEngineInfo",
+        "description": "Information about a backtesting engine."
+      },
+      "BacktestEnginesResponse": {
+        "properties": {
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestEngineInfo"
+            },
+            "type": "array",
+            "title": "Engines",
+            "description": "List of available engines"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Total number of engines"
+          },
+          "current_engine": {
+            "type": "string",
+            "title": "Current Engine",
+            "description": "Currently active engine"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": ["engines", "count", "current_engine"],
+        "title": "BacktestEnginesResponse",
+        "description": "Response schema for backtesting engines endpoint."
+      },
+      "BacktestHistoryItem": {
+        "properties": {
+          "backtest_id": {
+            "type": "string",
+            "title": "Backtest Id",
+            "description": "Unique backtest identifier"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Timeframe"
+          },
+          "strategy_type": {
+            "$ref": "#/components/schemas/StrategyType",
+            "description": "Strategy type"
+          },
+          "total_return": {
+            "type": "number",
+            "title": "Total Return",
+            "description": "Total return percentage"
+          },
+          "sharpe_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharpe Ratio",
+            "description": "Sharpe ratio"
+          },
+          "max_drawdown": {
+            "type": "number",
+            "title": "Max Drawdown",
+            "description": "Maximum drawdown percentage"
+          },
+          "win_rate": {
+            "type": "number",
+            "title": "Win Rate",
+            "description": "Win rate percentage"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date",
+            "description": "Backtest start date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date",
+            "description": "Backtest end date"
+          },
+          "executed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Executed At",
+            "description": "Execution timestamp"
+          },
+          "execution_time_seconds": {
+            "type": "number",
+            "title": "Execution Time Seconds",
+            "description": "Execution time in seconds"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Backtest status",
+            "default": "completed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "backtest_id",
+          "symbol",
+          "timeframe",
+          "strategy_type",
+          "total_return",
+          "max_drawdown",
+          "win_rate",
+          "start_date",
+          "end_date",
+          "executed_at",
+          "execution_time_seconds"
+        ],
+        "title": "BacktestHistoryItem",
+        "description": "Single item in backtest history."
+      },
+      "BacktestHistoryResponse": {
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestHistoryItem"
+            },
+            "type": "array",
+            "title": "History",
+            "description": "List of backtest history items"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Total number of items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "description": "Current page number",
+            "default": 1
+          },
+          "total_pages": {
+            "type": "integer",
+            "title": "Total Pages",
+            "description": "Total number of pages",
+            "default": 1
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": ["history", "count"],
+        "title": "BacktestHistoryResponse",
+        "description": "Response schema for backtest history endpoint."
+      },
+      "BacktestRequest": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol (e.g., BTCUSDT)"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Timeframe (e.g., 1h, 1d)"
+          },
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name",
+            "default": "binance"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date",
+            "description": "Backtest start date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date",
+            "description": "Backtest end date"
+          },
+          "strategy_type": {
+            "$ref": "#/components/schemas/StrategyType",
+            "description": "Strategy type to use"
+          },
+          "strategy_params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Strategy Params",
+            "description": "Strategy-specific parameters"
+          },
+          "initial_capital": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "Initial Capital",
+            "description": "Initial capital for backtesting",
+            "default": 10000
+          },
+          "commission": {
+            "type": "number",
+            "maximum": 1,
+            "minimum": 0,
+            "title": "Commission",
+            "description": "Commission rate (0.001 = 0.1%)",
+            "default": 0.001
+          },
+          "max_position_size": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Position Size",
+            "description": "Maximum position size as fraction of capital"
+          },
+          "stop_loss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Loss",
+            "description": "Stop loss percentage (0.05 = 5%)"
+          },
+          "take_profit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take Profit",
+            "description": "Take profit percentage (0.10 = 10%)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "timeframe",
+          "start_date",
+          "end_date",
+          "strategy_type"
+        ],
+        "title": "BacktestRequest",
+        "description": "Request schema for backtesting operations."
+      },
+      "BacktestResult": {
+        "properties": {
+          "backtest_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backtest Id",
+            "description": "Unique backtest identifier"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe"
+          },
+          "exchange": {
+            "type": "string",
+            "title": "Exchange"
+          },
+          "strategy_type": {
+            "$ref": "#/components/schemas/StrategyType"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date"
+          },
+          "duration_days": {
+            "type": "integer",
+            "title": "Duration Days"
+          },
+          "initial_capital": {
+            "type": "number",
+            "title": "Initial Capital"
+          },
+          "final_capital": {
+            "type": "number",
+            "title": "Final Capital"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/PerformanceMetrics"
+          },
+          "trades": {
+            "items": {
+              "$ref": "#/components/schemas/TradeResult"
+            },
+            "type": "array",
+            "title": "Trades"
+          },
+          "equity_curve": {
+            "items": {
+              "$ref": "#/components/schemas/EquityCurvePoint"
+            },
+            "type": "array",
+            "title": "Equity Curve"
+          },
+          "strategy_data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Strategy Data",
+            "description": "Strategy-specific output data"
+          },
+          "execution_time_seconds": {
+            "type": "number",
+            "title": "Execution Time Seconds"
+          },
+          "engine_used": {
+            "type": "string",
+            "title": "Engine Used"
+          },
+          "is_valid": {
+            "type": "boolean",
+            "title": "Is Valid",
+            "description": "Whether results are valid",
+            "default": true
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Execution warnings"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "Execution errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "timeframe",
+          "exchange",
+          "strategy_type",
+          "start_date",
+          "end_date",
+          "duration_days",
+          "initial_capital",
+          "final_capital",
+          "metrics",
+          "trades",
+          "equity_curve",
+          "execution_time_seconds",
+          "engine_used"
+        ],
+        "title": "BacktestResult",
+        "description": "Comprehensive backtesting result."
+      },
+      "BulkOperationRequest": {
+        "properties": {
+          "operations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Operations",
+            "description": "List of operations to perform"
+          },
+          "max_concurrent": {
+            "type": "integer",
+            "maximum": 20,
+            "minimum": 1,
+            "title": "Max Concurrent",
+            "description": "Maximum concurrent operations",
+            "default": 5
+          },
+          "continue_on_error": {
+            "type": "boolean",
+            "title": "Continue On Error",
+            "description": "Whether to continue on individual operation errors",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": ["operations"],
+        "title": "BulkOperationRequest",
+        "description": "Request schema for bulk storage operations."
+      },
+      "DataCollectionJobRequest": {
+        "properties": {
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols",
+            "description": "List of symbols to collect"
+          },
+          "timeframes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Timeframes",
+            "description": "List of timeframes to collect"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date",
+            "description": "Start date for data collection (ISO format)"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date",
+            "description": "End date for data collection (ISO format)"
+          },
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange to collect from",
+            "default": "binance"
+          },
+          "repository_type": {
+            "type": "string",
+            "title": "Repository Type",
+            "description": "Repository type for storage",
+            "default": "mongodb"
+          },
+          "force_update": {
+            "type": "boolean",
+            "title": "Force Update",
+            "description": "Force update existing data",
+            "default": false
+          },
+          "batch_size": {
+            "type": "integer",
+            "maximum": 10000,
+            "minimum": 100,
+            "title": "Batch Size",
+            "description": "Batch size for processing",
+            "default": 1000
+          }
+        },
+        "type": "object",
+        "required": ["symbols", "timeframes"],
+        "title": "DataCollectionJobRequest",
+        "description": "Request for data collection job execution."
+      },
+      "DataCollectionJobResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "Unique job identifier"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Job execution status"
+          },
+          "symbols_requested": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols Requested",
+            "description": "Symbols that were requested"
+          },
+          "symbols_processed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols Processed",
+            "description": "Symbols that were successfully processed"
+          },
+          "symbols_failed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols Failed",
+            "description": "Symbols that failed to process"
+          },
+          "timeframes_processed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Timeframes Processed",
+            "description": "Timeframes that were processed"
+          },
+          "total_records_collected": {
+            "type": "integer",
+            "title": "Total Records Collected",
+            "description": "Total number of records collected",
+            "default": 0
+          },
+          "execution_time_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Time Seconds",
+            "description": "Job execution time in seconds"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "List of errors encountered during execution"
+          },
+          "repository_info": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Info",
+            "description": "Information about the repository used"
+          }
+        },
+        "type": "object",
+        "required": ["job_id", "status", "symbols_requested"],
+        "title": "DataCollectionJobResponse",
+        "description": "Response from data collection job execution."
+      },
+      "DatasetDownloadRequest": {
+        "properties": {
+          "object_key": {
+            "type": "string",
+            "title": "Object Key",
+            "description": "Object storage key for the dataset"
+          },
+          "extract_archive": {
+            "type": "boolean",
+            "title": "Extract Archive",
+            "description": "Whether to extract archive files",
+            "default": false
+          },
+          "target_directory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Directory",
+            "description": "Target directory for extraction"
+          }
+        },
+        "type": "object",
+        "required": ["object_key"],
+        "title": "DatasetDownloadRequest",
+        "description": "Request schema for dataset download operations."
+      },
+      "DatasetUploadRequest": {
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name",
+            "default": "binance"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol (e.g., BTCUSDT)"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Time interval",
+            "default": "1h"
+          },
+          "start_date": {
+            "type": "string",
+            "title": "Start Date",
+            "description": "Start date in ISO format"
+          },
+          "end_date": {
+            "type": "string",
+            "title": "End Date",
+            "description": "End date in ISO format"
+          },
+          "source_format": {
+            "type": "string",
+            "title": "Source Format",
+            "description": "Source data format (csv or parquet)",
+            "default": "csv"
+          },
+          "target_format": {
+            "type": "string",
+            "title": "Target Format",
+            "description": "Target format for upload (csv or parquet)",
+            "default": "parquet"
+          },
+          "compress": {
+            "type": "boolean",
+            "title": "Compress",
+            "description": "Whether to compress the dataset",
+            "default": true
+          },
+          "include_metadata": {
+            "type": "boolean",
+            "title": "Include Metadata",
+            "description": "Whether to include metadata files",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": ["symbol", "start_date", "end_date"],
+        "title": "DatasetUploadRequest",
+        "description": "Request schema for dataset upload operations."
+      },
+      "EquityCurvePoint": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "portfolio_value": {
+            "type": "number",
+            "title": "Portfolio Value"
+          },
+          "cash": {
+            "type": "number",
+            "title": "Cash"
+          },
+          "position_value": {
+            "type": "number",
+            "title": "Position Value"
+          },
+          "drawdown": {
+            "type": "number",
+            "title": "Drawdown",
+            "description": "Drawdown from peak"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "portfolio_value",
+          "cash",
+          "position_value",
+          "drawdown"
+        ],
+        "title": "EquityCurvePoint",
+        "description": "Single point in equity curve."
+      },
+      "FormatConversionRequest": {
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name",
+            "default": "binance"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Source timeframe"
+          },
+          "start_date": {
+            "type": "string",
+            "title": "Start Date",
+            "description": "Start date in ISO format"
+          },
+          "end_date": {
+            "type": "string",
+            "title": "End Date",
+            "description": "End date in ISO format"
+          },
+          "source_format": {
+            "type": "string",
+            "title": "Source Format",
+            "description": "Source repository format (csv or parquet)"
+          },
+          "target_format": {
+            "type": "string",
+            "title": "Target Format",
+            "description": "Target repository format (csv or parquet)"
+          },
+          "target_timeframes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Timeframes",
+            "description": "Target timeframes for conversion (optional)"
+          },
+          "overwrite_existing": {
+            "type": "boolean",
+            "title": "Overwrite Existing",
+            "description": "Whether to overwrite existing data",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "timeframe",
+          "start_date",
+          "end_date",
+          "source_format",
+          "target_format"
+        ],
+        "title": "FormatConversionRequest",
+        "description": "Request schema for data format conversion."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthCheckResponse": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Service name",
+            "default": "market-data-job"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Overall health status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Service version",
+            "default": "1.0.0"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "Health check timestamp"
+          },
+          "components": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Components",
+            "description": "Component health status"
+          },
+          "dependencies": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Dependencies",
+            "description": "Dependency health information"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metrics",
+            "description": "Service metrics"
+          },
+          "uptime_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Seconds",
+            "description": "Service uptime in seconds"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "HealthCheckResponse",
+        "description": "Health check response for the job service."
+      },
+      "JobConfigUpdateRequest": {
+        "properties": {
+          "cron_schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron Schedule",
+            "description": "Cron schedule expression"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone",
+            "description": "Timezone for job scheduling"
+          },
+          "exchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange",
+            "description": "Exchange to collect data from"
+          },
+          "max_lookback_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 365,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Lookback Days",
+            "description": "Maximum days to look back for data collection"
+          },
+          "update_existing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Update Existing",
+            "description": "Whether to update existing data"
+          },
+          "max_concurrent_symbols": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 20,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Concurrent Symbols",
+            "description": "Maximum concurrent symbol processing"
+          },
+          "repository_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Type",
+            "description": "Repository type for data storage"
+          },
+          "repository_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Config",
+            "description": "Additional repository configuration"
+          },
+          "max_symbols_per_run": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 500,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Symbols Per Run",
+            "description": "Maximum symbols to process per run"
+          },
+          "max_timeframes_per_run": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 50,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Timeframes Per Run",
+            "description": "Maximum timeframes to process per run"
+          },
+          "priority_symbols": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority Symbols",
+            "description": "Priority symbols to process first"
+          },
+          "priority_timeframes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority Timeframes",
+            "description": "Priority timeframes to process first"
+          },
+          "max_retries": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10,
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Retries",
+            "description": "Maximum retry attempts for failed operations"
+          },
+          "retry_delay_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 60,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Delay Minutes",
+            "description": "Delay between retry attempts in minutes"
+          },
+          "enable_notifications": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enable Notifications",
+            "description": "Enable job completion notifications"
+          },
+          "notification_webhook": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notification Webhook",
+            "description": "Webhook URL for notifications"
+          },
+          "notification_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotificationLevel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Notification level setting"
+          },
+          "batch_size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000,
+                "minimum": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Size",
+            "description": "Batch size for data processing"
+          },
+          "request_delay_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5000,
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Delay Ms",
+            "description": "Delay between API requests in milliseconds"
+          }
+        },
+        "type": "object",
+        "title": "JobConfigUpdateRequest",
+        "description": "Request to update market data job configuration."
+      },
+      "JobOperationResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the operation was successful"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Operation result message"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Current job status after operation"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "Operation timestamp"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details",
+            "description": "Additional operation details"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id",
+            "description": "Related job identifier"
+          }
+        },
+        "type": "object",
+        "required": ["success", "message"],
+        "title": "JobOperationResponse",
+        "description": "Generic response for job management operations."
+      },
+      "JobPriority": {
+        "type": "string",
+        "enum": ["high", "normal", "low"],
+        "title": "JobPriority",
+        "description": "Job execution priority levels."
+      },
+      "JobStartRequest": {
+        "properties": {
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MarketDataJobConfigModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Job configuration (uses existing config if not provided)"
+          },
+          "force_restart": {
+            "type": "boolean",
+            "title": "Force Restart",
+            "description": "Force restart if service is already running",
+            "default": false
+          },
+          "background_mode": {
+            "type": "boolean",
+            "title": "Background Mode",
+            "description": "Run service in background mode",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "JobStartRequest",
+        "description": "Request to start the market data job service."
+      },
+      "JobStatsModel": {
+        "properties": {
+          "total_jobs": {
+            "type": "integer",
+            "title": "Total Jobs",
+            "description": "Total number of jobs executed",
+            "default": 0
+          },
+          "successful_jobs": {
+            "type": "integer",
+            "title": "Successful Jobs",
+            "description": "Number of successful jobs",
+            "default": 0
+          },
+          "failed_jobs": {
+            "type": "integer",
+            "title": "Failed Jobs",
+            "description": "Number of failed jobs",
+            "default": 0
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run",
+            "description": "Last job run timestamp"
+          },
+          "last_success": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success",
+            "description": "Last successful job timestamp"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error",
+            "description": "Last error details"
+          },
+          "average_runtime_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Runtime Seconds",
+            "description": "Average job runtime in seconds"
+          },
+          "symbols_processed_last_run": {
+            "type": "integer",
+            "title": "Symbols Processed Last Run",
+            "description": "Symbols processed in last run",
+            "default": 0
+          },
+          "records_collected_last_run": {
+            "type": "integer",
+            "title": "Records Collected Last Run",
+            "description": "Records collected in last run",
+            "default": 0
+          },
+          "data_collection_rate_per_hour": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Collection Rate Per Hour",
+            "description": "Data collection rate (records per hour)"
+          }
+        },
+        "type": "object",
+        "title": "JobStatsModel",
+        "description": "Market data job execution statistics."
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "running",
+          "stopped",
+          "error",
+          "degraded",
+          "starting",
+          "stopping"
+        ],
+        "title": "JobStatus",
+        "description": "Market data job service status enumeration."
+      },
+      "JobStatusResponse": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Service name",
+            "default": "market-data-job"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Service version",
+            "default": "1.0.0"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Current job service status"
+          },
+          "is_running": {
+            "type": "boolean",
+            "title": "Is Running",
+            "description": "Whether the job service is running"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid",
+            "description": "Process ID"
+          },
+          "pid_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid File",
+            "description": "PID file path"
+          },
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config File",
+            "description": "Configuration file path"
+          },
+          "log_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log File",
+            "description": "Log file path"
+          },
+          "scheduler_running": {
+            "type": "boolean",
+            "title": "Scheduler Running",
+            "description": "Whether the scheduler is running",
+            "default": false
+          },
+          "next_run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run",
+            "description": "Next scheduled run time"
+          },
+          "uptime_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Seconds",
+            "description": "Service uptime in seconds"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/JobStatsModel",
+            "description": "Job execution statistics"
+          },
+          "health_status": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Health Status",
+            "description": "Detailed health information"
+          }
+        },
+        "type": "object",
+        "required": ["status", "is_running"],
+        "title": "JobStatusResponse",
+        "description": "Market data job service status response."
+      },
+      "JobStopRequest": {
+        "properties": {
+          "graceful": {
+            "type": "boolean",
+            "title": "Graceful",
+            "description": "Perform graceful shutdown",
+            "default": true
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "maximum": 300,
+            "minimum": 5,
+            "title": "Timeout Seconds",
+            "description": "Timeout for graceful shutdown",
+            "default": 30
+          },
+          "force_kill": {
+            "type": "boolean",
+            "title": "Force Kill",
+            "description": "Force kill if graceful shutdown fails",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "JobStopRequest",
+        "description": "Request to stop the market data job service."
+      },
+      "ManualJobRequest": {
+        "properties": {
+          "symbols": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbols",
+            "description": "Specific symbols to collect (uses config default if not provided)"
+          },
+          "timeframes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeframes",
+            "description": "Specific timeframes to collect (uses config default if not provided)"
+          },
+          "max_lookback_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 365,
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Lookback Days",
+            "description": "Maximum lookback days (uses config default if not provided)"
+          },
+          "exchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange",
+            "description": "Exchange to collect from (uses config default if not provided)"
+          },
+          "repository_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Type",
+            "description": "Repository type for storage (uses config default if not provided)"
+          },
+          "job_priority": {
+            "$ref": "#/components/schemas/JobPriority",
+            "description": "Job execution priority",
+            "default": "normal"
+          },
+          "async_execution": {
+            "type": "boolean",
+            "title": "Async Execution",
+            "description": "Execute job asynchronously",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "ManualJobRequest",
+        "description": "Request to run a manual data collection job."
+      },
+      "ManualJobResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Job execution status"
+          },
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "Unique job identifier"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols",
+            "description": "Symbols that were processed"
+          },
+          "timeframes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Timeframes",
+            "description": "Timeframes that were processed"
+          },
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange used for data collection"
+          },
+          "max_lookback_days": {
+            "type": "integer",
+            "title": "Max Lookback Days",
+            "description": "Max lookback days used"
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Time",
+            "description": "Job start time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time",
+            "description": "Job end time"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds",
+            "description": "Job duration in seconds"
+          },
+          "records_collected": {
+            "type": "integer",
+            "title": "Records Collected",
+            "description": "Total records collected",
+            "default": 0
+          },
+          "symbols_processed": {
+            "type": "integer",
+            "title": "Symbols Processed",
+            "description": "Number of symbols processed",
+            "default": 0
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "List of errors encountered"
+          },
+          "results": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Results",
+            "description": "Detailed job execution results"
+          },
+          "async_execution": {
+            "type": "boolean",
+            "title": "Async Execution",
+            "description": "Whether job was executed asynchronously",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "job_id",
+          "symbols",
+          "timeframes",
+          "exchange",
+          "max_lookback_days",
+          "start_time"
+        ],
+        "title": "ManualJobResponse",
+        "description": "Response from manual data collection job execution."
+      },
+      "MarketDataJobConfigModel": {
+        "properties": {
+          "cron_schedule": {
+            "type": "string",
+            "title": "Cron Schedule",
+            "description": "Cron schedule expression (5 fields: minute hour day month day_of_week)",
+            "default": "*/15 * * * *"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "Timezone for job scheduling",
+            "default": "UTC"
+          },
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange to collect data from",
+            "default": "binance"
+          },
+          "max_lookback_days": {
+            "type": "integer",
+            "maximum": 365,
+            "minimum": 1,
+            "title": "Max Lookback Days",
+            "description": "Maximum days to look back for data collection",
+            "default": 30
+          },
+          "update_existing": {
+            "type": "boolean",
+            "title": "Update Existing",
+            "description": "Whether to update existing data",
+            "default": true
+          },
+          "max_concurrent_symbols": {
+            "type": "integer",
+            "maximum": 20,
+            "minimum": 1,
+            "title": "Max Concurrent Symbols",
+            "description": "Maximum concurrent symbol processing",
+            "default": 5
+          },
+          "repository_type": {
+            "type": "string",
+            "title": "Repository Type",
+            "description": "Repository type for data storage",
+            "default": "mongodb"
+          },
+          "repository_config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Repository Config",
+            "description": "Additional repository configuration"
+          },
+          "max_symbols_per_run": {
+            "type": "integer",
+            "maximum": 500,
+            "minimum": 1,
+            "title": "Max Symbols Per Run",
+            "description": "Maximum symbols to process per run",
+            "default": 50
+          },
+          "max_timeframes_per_run": {
+            "type": "integer",
+            "maximum": 50,
+            "minimum": 1,
+            "title": "Max Timeframes Per Run",
+            "description": "Maximum timeframes to process per run",
+            "default": 10
+          },
+          "priority_symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Priority Symbols",
+            "description": "Priority symbols to process first"
+          },
+          "priority_timeframes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Priority Timeframes",
+            "description": "Priority timeframes to process first"
+          },
+          "max_retries": {
+            "type": "integer",
+            "maximum": 10,
+            "minimum": 0,
+            "title": "Max Retries",
+            "description": "Maximum retry attempts for failed operations",
+            "default": 3
+          },
+          "retry_delay_minutes": {
+            "type": "integer",
+            "maximum": 60,
+            "minimum": 1,
+            "title": "Retry Delay Minutes",
+            "description": "Delay between retry attempts in minutes",
+            "default": 5
+          },
+          "skip_failed_symbols": {
+            "type": "boolean",
+            "title": "Skip Failed Symbols",
+            "description": "Whether to skip failed symbols and continue",
+            "default": true
+          },
+          "enable_notifications": {
+            "type": "boolean",
+            "title": "Enable Notifications",
+            "description": "Enable job completion notifications",
+            "default": false
+          },
+          "notification_webhook": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notification Webhook",
+            "description": "Webhook URL for notifications"
+          },
+          "notification_level": {
+            "$ref": "#/components/schemas/NotificationLevel",
+            "description": "Notification level setting",
+            "default": "errors_only"
+          },
+          "notify_on_success": {
+            "type": "boolean",
+            "title": "Notify On Success",
+            "description": "Send notifications on successful completion",
+            "default": false
+          },
+          "notify_on_error": {
+            "type": "boolean",
+            "title": "Notify On Error",
+            "description": "Send notifications on errors",
+            "default": true
+          },
+          "batch_size": {
+            "type": "integer",
+            "maximum": 10000,
+            "minimum": 100,
+            "title": "Batch Size",
+            "description": "Batch size for data processing",
+            "default": 1000
+          },
+          "request_delay_ms": {
+            "type": "integer",
+            "maximum": 5000,
+            "minimum": 0,
+            "title": "Request Delay Ms",
+            "description": "Delay between API requests in milliseconds",
+            "default": 100
+          },
+          "connection_timeout_seconds": {
+            "type": "integer",
+            "maximum": 300,
+            "minimum": 5,
+            "title": "Connection Timeout Seconds",
+            "description": "Connection timeout for API requests",
+            "default": 30
+          }
+        },
+        "type": "object",
+        "title": "MarketDataJobConfigModel",
+        "description": "Configuration model for market data collection job.\n\nReplaces the dataclass JobConfig with Pydantic BaseModel v2."
+      },
+      "NotificationLevel": {
+        "type": "string",
+        "enum": ["all", "errors_only", "none"],
+        "title": "NotificationLevel",
+        "description": "Notification level settings."
+      },
+      "OHLCVResponseSchema": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/OHLCVSchema"
+            },
+            "type": "array",
+            "title": "Data",
+            "description": "OHLCV records"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Count",
+            "description": "Number of records returned"
+          },
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Timeframe"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date",
+            "description": "Query start date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date",
+            "description": "Query end date"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Whether more data is available"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "count",
+          "exchange",
+          "symbol",
+          "timeframe",
+          "start_date",
+          "end_date",
+          "has_more"
+        ],
+        "title": "OHLCVResponseSchema",
+        "description": "Schema for OHLCV API responses."
+      },
+      "OHLCVSchema": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "Timestamp of the candle in UTC"
+          },
+          "open": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "Open",
+            "description": "Opening price"
+          },
+          "high": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "High",
+            "description": "Highest price during the period"
+          },
+          "low": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "Low",
+            "description": "Lowest price during the period"
+          },
+          "close": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "Close",
+            "description": "Closing price"
+          },
+          "volume": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Volume",
+            "description": "Volume traded during the period"
+          },
+          "symbol": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Symbol",
+            "description": "Trading symbol (e.g., BTCUSDT)"
+          },
+          "exchange": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exchange",
+            "description": "Exchange name (e.g., binance)"
+          },
+          "timeframe": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Timeframe",
+            "description": "Timeframe (e.g., 1h, 1d)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "open",
+          "high",
+          "low",
+          "close",
+          "volume",
+          "symbol",
+          "exchange",
+          "timeframe"
+        ],
+        "title": "OHLCVSchema",
+        "description": "Base OHLCV data schema for API layer.\n\nThis represents the standardized format for OHLCV data\nacross all parts of the system."
+      },
+      "OHLCVStatsSchema": {
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Timeframe"
+          },
+          "total_records": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Total Records",
+            "description": "Total number of records"
+          },
+          "date_range": {
+            "additionalProperties": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "type": "object",
+            "title": "Date Range",
+            "description": "Date range with 'start' and 'end' keys"
+          },
+          "price_range": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Price Range",
+            "description": "Price range with 'min' and 'max' keys"
+          },
+          "volume_stats": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Volume Stats",
+            "description": "Volume statistics with 'min', 'max', 'avg' keys"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exchange",
+          "symbol",
+          "timeframe",
+          "total_records",
+          "date_range",
+          "price_range",
+          "volume_stats"
+        ],
+        "title": "OHLCVStatsSchema",
+        "description": "Schema for OHLCV statistics."
+      },
+      "ParameterSchema": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Parameter name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Parameter type (string, integer, float, boolean)"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Parameter description"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "description": "Whether parameter is required"
+          },
+          "default_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Value",
+            "description": "Default value"
+          },
+          "min_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Value",
+            "description": "Minimum value (for numeric types)"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Value",
+            "description": "Maximum value (for numeric types)"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices",
+            "description": "Valid choices (for string types)"
+          }
+        },
+        "type": "object",
+        "required": ["name", "type", "description", "required"],
+        "title": "ParameterSchema",
+        "description": "Schema for strategy parameter definition."
+      },
+      "PerformanceMetrics": {
+        "properties": {
+          "total_return": {
+            "type": "number",
+            "title": "Total Return",
+            "description": "Total return percentage"
+          },
+          "annual_return": {
+            "type": "number",
+            "title": "Annual Return",
+            "description": "Annualized return percentage"
+          },
+          "total_trades": {
+            "type": "integer",
+            "title": "Total Trades",
+            "description": "Total number of trades"
+          },
+          "winning_trades": {
+            "type": "integer",
+            "title": "Winning Trades",
+            "description": "Number of winning trades"
+          },
+          "losing_trades": {
+            "type": "integer",
+            "title": "Losing Trades",
+            "description": "Number of losing trades"
+          },
+          "max_drawdown": {
+            "type": "number",
+            "title": "Max Drawdown",
+            "description": "Maximum drawdown percentage"
+          },
+          "sharpe_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharpe Ratio",
+            "description": "Sharpe ratio"
+          },
+          "sortino_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sortino Ratio",
+            "description": "Sortino ratio"
+          },
+          "calmar_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calmar Ratio",
+            "description": "Calmar ratio"
+          },
+          "win_rate": {
+            "type": "number",
+            "title": "Win Rate",
+            "description": "Win rate percentage"
+          },
+          "average_win": {
+            "type": "number",
+            "title": "Average Win",
+            "description": "Average winning trade percentage"
+          },
+          "average_loss": {
+            "type": "number",
+            "title": "Average Loss",
+            "description": "Average losing trade percentage"
+          },
+          "profit_factor": {
+            "type": "number",
+            "title": "Profit Factor",
+            "description": "Profit factor (gross profit / gross loss)"
+          },
+          "volatility": {
+            "type": "number",
+            "title": "Volatility",
+            "description": "Strategy volatility (annualized)"
+          },
+          "var_95": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Var 95",
+            "description": "95% Value at Risk"
+          },
+          "total_commission": {
+            "type": "number",
+            "title": "Total Commission",
+            "description": "Total commission paid"
+          },
+          "holding_period_avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holding Period Avg",
+            "description": "Average holding period in days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_return",
+          "annual_return",
+          "total_trades",
+          "winning_trades",
+          "losing_trades",
+          "max_drawdown",
+          "sharpe_ratio",
+          "sortino_ratio",
+          "calmar_ratio",
+          "win_rate",
+          "average_win",
+          "average_loss",
+          "profit_factor",
+          "volatility",
+          "var_95",
+          "total_commission",
+          "holding_period_avg"
+        ],
+        "title": "PerformanceMetrics",
+        "description": "Comprehensive performance metrics."
+      },
+      "PositionSide": {
+        "type": "string",
+        "enum": ["long", "short"],
+        "title": "PositionSide",
+        "description": "Position side for trades."
+      },
+      "StorageStatsResponse": {
+        "properties": {
+          "total_objects": {
+            "type": "integer",
+            "title": "Total Objects"
+          },
+          "total_size_bytes": {
+            "type": "integer",
+            "title": "Total Size Bytes"
+          },
+          "datasets_by_format": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Datasets By Format"
+          },
+          "datasets_by_exchange": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Datasets By Exchange"
+          },
+          "storage_health": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Storage Health"
+          },
+          "last_updated": {
+            "type": "string",
+            "title": "Last Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_objects",
+          "total_size_bytes",
+          "datasets_by_format",
+          "datasets_by_exchange",
+          "storage_health",
+          "last_updated"
+        ],
+        "title": "StorageStatsResponse",
+        "description": "Response schema for storage statistics."
+      },
+      "StrategyConfigSchema": {
+        "properties": {
+          "strategy_name": {
+            "type": "string",
+            "title": "Strategy Name",
+            "description": "Strategy name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Strategy description"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/components/schemas/ParameterSchema"
+            },
+            "type": "array",
+            "title": "Parameters",
+            "description": "Strategy parameters"
+          },
+          "examples": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Examples",
+            "description": "Example configurations"
+          }
+        },
+        "type": "object",
+        "required": ["strategy_name", "description", "parameters"],
+        "title": "StrategyConfigSchema",
+        "description": "Response schema for strategy configuration endpoint."
+      },
+      "StrategyListResponse": {
+        "properties": {
+          "strategies": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Strategies",
+            "description": "List of available strategies"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Total number of strategies"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": ["strategies", "count"],
+        "title": "StrategyListResponse",
+        "description": "Response schema for strategy list endpoint."
+      },
+      "StrategyType": {
+        "type": "string",
+        "enum": [
+          "moving_average_crossover",
+          "rsi_strategy",
+          "bollinger_bands",
+          "macd_strategy",
+          "simple_buy_hold"
+        ],
+        "title": "StrategyType",
+        "description": "Supported strategy types."
+      },
+      "TradeResult": {
+        "properties": {
+          "entry_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Entry Date"
+          },
+          "exit_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Date"
+          },
+          "entry_price": {
+            "type": "number",
+            "title": "Entry Price"
+          },
+          "exit_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Price"
+          },
+          "position_side": {
+            "$ref": "#/components/schemas/PositionSide"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl"
+          },
+          "pnl_percentage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Percentage"
+          },
+          "commission_paid": {
+            "type": "number",
+            "title": "Commission Paid",
+            "default": 0
+          },
+          "entry_reason": {
+            "type": "string",
+            "title": "Entry Reason",
+            "description": "Reason for entry",
+            "default": "signal"
+          },
+          "exit_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Reason",
+            "description": "Reason for exit"
+          },
+          "is_open": {
+            "type": "boolean",
+            "title": "Is Open",
+            "description": "Whether position is still open",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": ["entry_date", "entry_price", "position_side", "quantity"],
+        "title": "TradeResult",
+        "description": "Individual trade result."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}
