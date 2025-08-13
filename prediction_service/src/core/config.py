@@ -18,13 +18,105 @@ class Settings(BaseSettings):
     """Application configuration settings"""
 
     # Application info
-    app_name: str = Field("FinSight Model Builder", env="APP_NAME")
+    app_name: str = Field("FinSight Prediction Service", env="APP_NAME")
     app_version: str = Field("1.0.0", env="APP_VERSION")
     debug: bool = Field(False, env="DEBUG")
 
     # API settings
     api_host: str = Field("0.0.0.0", env="API_HOST")
     api_port: int = Field(8000, env="API_PORT")
+
+    # Eureka Client configuration
+    enable_eureka_client: bool = Field(
+        default=True, description="Enable Eureka client registration"
+    )
+    eureka_server_url: str = Field(
+        default="http://localhost:8761", description="Eureka server URL"
+    )
+    eureka_app_name: str = Field(
+        default="prediction-service",
+        description="Application name for Eureka registration",
+    )
+    eureka_instance_id: Optional[str] = Field(
+        default=None, description="Instance ID for Eureka registration"
+    )
+    eureka_host_name: Optional[str] = Field(
+        default=None, description="Host name for Eureka registration"
+    )
+    eureka_ip_address: Optional[str] = Field(
+        default=None, description="IP address for Eureka registration"
+    )
+    eureka_port: int = Field(default=8000, description="Port for Eureka registration")
+    eureka_secure_port: int = Field(
+        default=8443, description="Secure port for Eureka registration"
+    )
+    eureka_secure_port_enabled: bool = Field(
+        default=False, description="Enable secure port for Eureka registration"
+    )
+    eureka_home_page_url: Optional[str] = Field(
+        default=None, description="Home page URL for Eureka registration"
+    )
+    eureka_status_page_url: Optional[str] = Field(
+        default=None, description="Status page URL for Eureka registration"
+    )
+    eureka_health_check_url: Optional[str] = Field(
+        default=None, description="Health check URL for Eureka registration"
+    )
+    eureka_vip_address: Optional[str] = Field(
+        default=None, description="VIP address for Eureka registration"
+    )
+    eureka_secure_vip_address: Optional[str] = Field(
+        default=None, description="Secure VIP address for Eureka registration"
+    )
+    eureka_prefer_ip_address: bool = Field(
+        default=True,
+        description="Prefer IP address over hostname for Eureka registration",
+    )
+    eureka_lease_renewal_interval_in_seconds: int = Field(
+        default=30, description="Lease renewal interval in seconds"
+    )
+    eureka_lease_expiration_duration_in_seconds: int = Field(
+        default=90, description="Lease expiration duration in seconds"
+    )
+    eureka_registry_fetch_interval_seconds: int = Field(
+        default=30, description="Registry fetch interval in seconds"
+    )
+    eureka_instance_info_replication_interval_seconds: int = Field(
+        default=30, description="Instance info replication interval in seconds"
+    )
+    eureka_initial_instance_info_replication_interval_seconds: int = Field(
+        default=40, description="Initial instance info replication interval in seconds"
+    )
+    eureka_heartbeat_interval_seconds: int = Field(
+        default=30, description="Heartbeat interval in seconds"
+    )
+
+    # Eureka Retry Configuration
+    eureka_registration_retry_attempts: int = Field(
+        default=3, description="Number of retry attempts for registration"
+    )
+    eureka_registration_retry_delay_seconds: int = Field(
+        default=5, description="Initial delay between registration retries in seconds"
+    )
+    eureka_heartbeat_retry_attempts: int = Field(
+        default=3, description="Number of retry attempts for heartbeat"
+    )
+    eureka_heartbeat_retry_delay_seconds: int = Field(
+        default=2, description="Initial delay between heartbeat retries in seconds"
+    )
+    eureka_retry_backoff_multiplier: float = Field(
+        default=2.0, description="Multiplier for exponential backoff"
+    )
+    eureka_max_retry_delay_seconds: int = Field(
+        default=60, description="Maximum delay between retries in seconds"
+    )
+    eureka_enable_auto_re_registration: bool = Field(
+        default=True,
+        description="Enable automatic re-registration after server restart",
+    )
+    eureka_re_registration_delay_seconds: int = Field(
+        default=10, description="Delay before attempting re-registration in seconds"
+    )
 
     # Directory paths - relative to prediction_service root
     base_dir: Path = Field(
@@ -390,6 +482,49 @@ class Settings(BaseSettings):
             raise ValueError("CUDA device memory fraction must be between 0.0 and 1.0")
         return v
 
+    @field_validator("eureka_lease_renewal_interval_in_seconds")
+    @classmethod
+    def validate_eureka_lease_renewal_interval(cls, v):
+        if v < 1 or v > 300:
+            raise ValueError(
+                "eureka_lease_renewal_interval_in_seconds must be between 1 and 300"
+            )
+        return v
+
+    @field_validator("eureka_lease_expiration_duration_in_seconds")
+    @classmethod
+    def validate_eureka_lease_expiration_duration(cls, v):
+        if v < 30 or v > 900:
+            raise ValueError(
+                "eureka_lease_expiration_duration_in_seconds must be between 30 and 900"
+            )
+        return v
+
+    @field_validator("eureka_registration_retry_attempts")
+    @classmethod
+    def validate_eureka_registration_retry_attempts(cls, v):
+        if v < 1 or v > 10:
+            raise ValueError(
+                "eureka_registration_retry_attempts must be between 1 and 10"
+            )
+        return v
+
+    @field_validator("eureka_heartbeat_retry_attempts")
+    @classmethod
+    def validate_eureka_heartbeat_retry_attempts(cls, v):
+        if v < 1 or v > 10:
+            raise ValueError("eureka_heartbeat_retry_attempts must be between 1 and 10")
+        return v
+
+    @field_validator("eureka_retry_backoff_multiplier")
+    @classmethod
+    def validate_eureka_retry_backoff_multiplier(cls, v):
+        if v < 1.0 or v > 5.0:
+            raise ValueError(
+                "eureka_retry_backoff_multiplier must be between 1.0 and 5.0"
+            )
+        return v
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -709,6 +844,41 @@ class Settings(BaseSettings):
             adapter_type = "simple"
 
         return {"adapter_type": adapter_type, "adapter_config": adapter_config}
+
+    @property
+    def eureka_config(self) -> dict:
+        """Get Eureka client configuration"""
+        return {
+            "enable_eureka_client": self.enable_eureka_client,
+            "eureka_server_url": self.eureka_server_url,
+            "app_name": self.eureka_app_name,
+            "instance_id": self.eureka_instance_id,
+            "host_name": self.eureka_host_name,
+            "ip_address": self.eureka_ip_address,
+            "port": self.eureka_port,
+            "secure_port": self.eureka_secure_port,
+            "secure_port_enabled": self.eureka_secure_port_enabled,
+            "home_page_url": self.eureka_home_page_url,
+            "status_page_url": self.eureka_status_page_url,
+            "health_check_url": self.eureka_health_check_url,
+            "vip_address": self.eureka_vip_address,
+            "secure_vip_address": self.eureka_secure_vip_address,
+            "prefer_ip_address": self.eureka_prefer_ip_address,
+            "lease_renewal_interval_in_seconds": self.eureka_lease_renewal_interval_in_seconds,
+            "lease_expiration_duration_in_seconds": self.eureka_lease_expiration_duration_in_seconds,
+            "registry_fetch_interval_seconds": self.eureka_registry_fetch_interval_seconds,
+            "instance_info_replication_interval_seconds": self.eureka_instance_info_replication_interval_seconds,
+            "initial_instance_info_replication_interval_seconds": self.eureka_initial_instance_info_replication_interval_seconds,
+            "heartbeat_interval_seconds": self.eureka_heartbeat_interval_seconds,
+            "registration_retry_attempts": self.eureka_registration_retry_attempts,
+            "registration_retry_delay_seconds": self.eureka_registration_retry_delay_seconds,
+            "heartbeat_retry_attempts": self.eureka_heartbeat_retry_attempts,
+            "heartbeat_retry_delay_seconds": self.eureka_heartbeat_retry_delay_seconds,
+            "retry_backoff_multiplier": self.eureka_retry_backoff_multiplier,
+            "max_retry_delay_seconds": self.eureka_max_retry_delay_seconds,
+            "enable_auto_re_registration": self.eureka_enable_auto_re_registration,
+            "re_registration_delay_seconds": self.eureka_re_registration_delay_seconds,
+        }
 
 
 # Global settings instance

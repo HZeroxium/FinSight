@@ -13,7 +13,9 @@ from .routers.models import router as models_router
 from .routers.serving import router as serving_router
 from .routers.dataset_management import router as dataset_management_router
 from .routers.cloud_storage import router as cloud_storage_router
+from .routers.eureka_router import router as eureka_router
 from .schemas.base_schemas import HealthResponse
+from .services.eureka_client_service import eureka_client_service
 from common.logger import LoggerFactory, LogLevel
 
 logger = LoggerFactory.get_logger("FinSightApp", console_level=LogLevel.DEBUG)
@@ -21,16 +23,35 @@ logger = LoggerFactory.get_logger("FinSightApp", console_level=LogLevel.DEBUG)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    """
+    Application lifespan manager with improved error handling and startup sequence.
+    Includes both REST API and Eureka client initialization.
+    """
+    global eureka_client_service
+
     settings = get_settings()
 
-    logger.info("Starting FinSight Model Builder API")
-    logger.info(f"Data directory: {settings.data_dir}")
-    logger.info(f"Models directory: {settings.models_dir}")
-    logger.info(f"Logs directory: {settings.logs_dir}")
+    logger.info(f"🚀 Starting {settings.app_name} v{settings.app_version}")
+    logger.info(f"📊 Environment: {getattr(settings, 'environment', 'development')}")
+    logger.info(f"🌐 FastAPI Host: {settings.api_host}:{settings.api_port}")
+    logger.info(f"📁 Data directory: {settings.data_dir}")
+    logger.info(f"📁 Models directory: {settings.models_dir}")
+    logger.info(f"📁 Logs directory: {settings.logs_dir}")
 
-    # Initialize async services
+    # Check if Eureka client is enabled
+    eureka_enabled = getattr(settings, "enable_eureka_client", True)
+    if eureka_enabled:
+        logger.info(
+            f"🔗 Eureka Client: {getattr(settings, 'eureka_server_url', 'http://localhost:8761')}"
+        )
+
+    startup_errors = []
+
     try:
+        # Step 1: Initialize core services
+        logger.info("📋 Step 1: Initializing core services...")
+
+        # Initialize async training services
         logger.info("Initializing async training services...")
         from .routers.training import get_training_service
 
@@ -39,7 +60,7 @@ async def lifespan(app: FastAPI):
 
         logger.info("✅ Async training services initialized successfully")
 
-        # Initialize serving adapter (use the same singleton instances)
+        # Initialize serving adapter
         logger.info("Initializing serving adapter...")
         from .facades import get_serving_facade, get_unified_facade
 
@@ -53,18 +74,55 @@ async def lifespan(app: FastAPI):
 
         logger.info("✅ Serving adapter initialized successfully")
 
+        # Step 2: Initialize Eureka client service
+        if eureka_enabled:
+            logger.info("📋 Step 2: Initializing Eureka client service...")
+            try:
+                success = await eureka_client_service.start()
+                if success:
+                    logger.info("✅ Eureka client service initialized successfully")
+                else:
+                    logger.warning("⚠️ Eureka client service initialization failed")
+                    startup_errors.append("Eureka client service initialization failed")
+            except Exception as eureka_error:
+                logger.error(f"⚠️ Failed to start Eureka client service: {eureka_error}")
+                startup_errors.append(
+                    f"Eureka client service error: {str(eureka_error)}"
+                )
+        else:
+            logger.info("🔄 Eureka client service is disabled")
+
+        # Final startup validation
+        if startup_errors:
+            logger.warning(f"⚠️ Service started with warnings: {startup_errors}")
+            logger.info("🔧 Service is operational but some components may be degraded")
+        else:
+            if eureka_enabled:
+                logger.info(
+                    "🎉 FinSight Model Builder API is fully operational (REST + Eureka)!"
+                )
+            else:
+                logger.info(
+                    "🎉 FinSight Model Builder API is fully operational (REST only)!"
+                )
+
     except Exception as e:
-        logger.error(f"❌ Failed to initialize async services: {e}")
-        # Don't raise - let the service start in degraded mode
-        logger.warning("🔧 Starting API in degraded mode due to initialization errors")
+        logger.error(f"❌ Critical startup error: {str(e)}")
+        # Don't raise the error - let the service start in degraded mode
+        logger.warning("🔧 Starting service in degraded mode due to startup errors")
+        startup_errors.append(f"Critical error: {str(e)}")
 
     yield
 
-    # Shutdown
-    logger.info("Shutting down FinSight Model Builder API")
-
-    # Cleanup async services
+    # Cleanup phase
+    logger.info("🛑 Shutting down services...")
     try:
+        # Stop Eureka client service first
+        if eureka_enabled and eureka_client_service.is_registered():
+            await eureka_client_service.stop()
+            logger.info("✅ Eureka client service stopped")
+
+        # Cleanup async services
         logger.info("Cleaning up async services...")
         from .routers.training import get_training_service
 
@@ -74,7 +132,9 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Async services cleaned up successfully")
 
     except Exception as e:
-        logger.error(f"❌ Error during async services cleanup: {e}")
+        logger.error(f"❌ Error during cleanup: {str(e)}")
+
+    logger.info(f"👋 {settings.app_name} shutdown complete")
 
 
 # Create FastAPI app
@@ -146,11 +206,15 @@ app.include_router(models_router)
 app.include_router(serving_router)  # Model serving management endpoints
 app.include_router(dataset_management_router)  # Dataset management endpoints
 app.include_router(cloud_storage_router)  # Cloud storage management endpoints
+app.include_router(eureka_router)  # Eureka client management endpoints
 
 
 @app.get("/", response_model=dict)
 async def root():
     """Root endpoint with API information"""
+    settings = get_settings()
+    eureka_enabled = getattr(settings, "enable_eureka_client", True)
+
     return {
         "name": settings.app_name,
         "version": settings.app_version,
@@ -163,7 +227,15 @@ async def root():
             "serving": "/serving",  # Model serving management
             "datasets": "/datasets",  # Dataset management
             "cloud_storage": "/cloud-storage",  # Cloud storage management
+            "eureka": "/eureka" if eureka_enabled else None,  # Eureka client management
             "health": "/health",
+        },
+        "features": {
+            "model_training": True,
+            "model_serving": True,
+            "dataset_management": True,
+            "cloud_storage": True,
+            "eureka_client": eureka_enabled,
         },
     }
 
@@ -197,8 +269,23 @@ async def health_check():
     else:
         dependencies["logs_dir"] = "not_configured"
 
+    # Add Eureka client status if enabled
+    eureka_enabled = getattr(settings, "enable_eureka_client", True)
+    if eureka_enabled:
+        eureka_status = (
+            "healthy"
+            if eureka_client_service and eureka_client_service.is_registered()
+            else "stopped"
+        )
+        dependencies["eureka_client"] = eureka_status
+
+    # Determine overall health status
+    overall_status = "healthy"
+    if any(status in ["missing", "stopped"] for status in dependencies.values()):
+        overall_status = "degraded"
+
     return HealthResponse(
-        status="healthy",
+        status=overall_status,
         timestamp=datetime.now().isoformat(),
         version=settings.app_version,
         dependencies=dependencies,

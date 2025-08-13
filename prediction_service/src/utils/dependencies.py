@@ -18,6 +18,7 @@ from ..data.cloud_data_loader import CloudDataLoader
 from ..data.file_data_loader import FileDataLoader
 from ..utils.storage_client import StorageClient
 from ..utils.model_utils import ModelUtils
+from ..services.eureka_client_service import EurekaClientService
 from ..core.config import get_settings, Settings
 from ..schemas.enums import DataLoaderType, ExperimentTrackerType, StorageProviderType
 from .device_manager import create_device_manager_from_settings, DeviceManager
@@ -139,6 +140,11 @@ class Container(containers.DeclarativeContainer):
     # Model utilities, now injected with storage_client
     model_utils = providers.Singleton(ModelUtils, storage_client=storage_client)
 
+    # Eureka Client Service
+    eureka_client_service = providers.Singleton(
+        EurekaClientService,
+    )
+
     # Data loaders, now injected with storage_client
     cloud_data_loader = providers.Singleton(
         CloudDataLoader,
@@ -217,6 +223,10 @@ class DependencyManager:
         """Get model utilities"""
         return self.container.model_utils()
 
+    def get_eureka_client_service(self) -> EurekaClientService:
+        """Get Eureka client service"""
+        return self.container.eureka_client_service()
+
     def reset_configuration(self) -> None:
         """Reset container configuration to defaults"""
         self.container.reset_last_provided()
@@ -266,6 +276,15 @@ def get_model_utils() -> ModelUtils:
     return dependency_manager.get_model_utils()
 
 
+def get_eureka_client_service() -> EurekaClientService:
+    """Get Eureka client service instance"""
+    try:
+        return dependency_manager.container.eureka_client_service()
+    except Exception as e:
+        logger.error(f"Failed to get Eureka client service: {e}")
+        raise
+
+
 # FastAPI dependency functions for easy injection
 async def get_experiment_tracker_dependency() -> IExperimentTracker:
     """FastAPI dependency function for experiment tracker."""
@@ -295,6 +314,11 @@ async def get_device_manager_dependency() -> DeviceManager:
 async def get_model_utils_dependency() -> ModelUtils:
     """FastAPI dependency function for model utilities."""
     return get_model_utils()
+
+
+async def get_eureka_client_service_dependency() -> EurekaClientService:
+    """FastAPI dependency: Eureka client service"""
+    return get_eureka_client_service()
 
 
 # Health check and info functions
@@ -413,6 +437,11 @@ def get_dependency_info() -> dict:
             "instance": type(model_utils).__name__,
             "storage_client_injected": model_utils.storage_client is not None,
         },
+        "eureka": {
+            "enabled": settings.enable_eureka_client,
+            "server_url": settings.eureka_server_url,
+            "app_name": settings.eureka_app_name,
+        },
     }
 
     return info
@@ -451,3 +480,54 @@ def override_data_loader(loader: IDataLoader) -> None:
     """
     dependency_manager.container.data_loader.override(providers.Object(loader))
     logger.info(f"Overridden data loader with {type(loader).__name__}")
+
+
+# === Eureka lifecycle (clone từ service đúng) ===
+
+
+async def initialize_services() -> None:
+    """Initialize all async services (Eureka included)"""
+    _logger = logger  # dùng logger đã có sẵn ở đầu file
+    _logger.info("Initializing services...")
+
+    try:
+        settings = get_settings()
+        # Initialize Eureka client service
+        eureka_service = dependency_manager.container.eureka_client_service()
+        if settings.enable_eureka_client:
+            _logger.info("🚀 Initializing Eureka client service...")
+            success = await eureka_service.start()
+            if success:
+                _logger.info("✅ Eureka client service initialized successfully")
+            else:
+                _logger.warning("⚠️ Eureka client service initialization failed")
+        else:
+            _logger.info("🔄 Eureka client service is disabled")
+
+        _logger.info("✅ All services initialized successfully")
+    except Exception as e:
+        _logger.error(f"❌ Failed to initialize services: {e}")
+        raise
+
+
+async def cleanup_services() -> None:
+    """Cleanup all async services (stop Eureka)"""
+    _logger = logger
+    _logger.info("Cleaning up services...")
+
+    try:
+        settings = get_settings()
+        eureka_service = dependency_manager.container.eureka_client_service()
+        # is_registered() giả định đã có trong EurekaClientService
+        if (
+            settings.enable_eureka_client
+            and hasattr(eureka_service, "is_registered")
+            and eureka_service.is_registered()
+        ):
+            _logger.info("🛑 Stopping Eureka client service...")
+            await eureka_service.stop()
+            _logger.info("✅ Eureka client service stopped")
+
+        _logger.info("✅ All services cleaned up successfully")
+    except Exception as e:
+        _logger.error(f"❌ Error during service cleanup: {e}")
