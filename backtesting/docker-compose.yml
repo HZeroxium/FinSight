@@ -1,0 +1,106 @@
+version: "3.8"
+
+services:
+  market_data_datasets_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VERSION: ${VERSION:-latest}
+        VCS_REF: ${VCS_REF:-unknown}
+    image: hzeroxium/market_data_datasets_service:${VERSION:-latest}
+    container_name: market-data-datasets-service
+    ports:
+      - "8000:8000"
+    environment:
+      # Application settings
+      - APP_ENV=production
+      - DEBUG=false
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+
+      # Storage configuration
+      - STORAGE_BASE_DIRECTORY=/app/data
+      - REPOSITORY_TYPE=csv
+
+      # MongoDB configuration (if using MongoDB)
+      - MONGODB_URL=mongodb://localhost:27017/
+      - MONGODB_DATABASE=finsight_market_data
+
+      # S3-compatible storage (MinIO)
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-http://minio:9000}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-market-data}
+      - S3_USE_SSL=${S3_USE_SSL:-false}
+      - SPACES_ENDPOINT_URL=${SPACES_ENDPOINT_URL:-YOUR_ENDPOINT_URL}
+      - SPACES_REGION_NAME=${SPACES_REGION_NAME:-YOUR_REGION_NAME}
+      - SPACES_ACCESS_KEY=${SPACES_ACCESS_KEY:-YOUR_ACCESS_KEY}
+      - SPACES_SECRET_KEY=${SPACES_SECRET_KEY:-YOUR_SECRET_KEY}
+      - SPACES_BUCKET_NAME=${SPACES_BUCKET_NAME:-YOUR_BUCKET_NAME}
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-digitalocean}
+
+      # Binance API (optional)
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_SECRET_KEY=${BINANCE_SECRET_KEY:-}
+
+      # Admin API
+      - API_KEY=${API_KEY:-admin-default-key-change-in-production}
+
+    volumes:
+      - /data:/app/data
+      - market_data_datasets_service_data:/app/data
+      - market_data_datasets_service_logs:/app/logs
+      - market_data_datasets_service_cache:/app/cache
+
+    networks:
+      - finsight-network
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    depends_on:
+      - minio
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - finsight-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  market_data_datasets_service_data:
+    driver: local
+  market_data_datasets_service_logs:
+    driver: local
+  market_data_datasets_service_cache:
+    driver: local
+  minio_data:
+    driver: local
+
+networks:
+  finsight-network:
+    driver: bridge
