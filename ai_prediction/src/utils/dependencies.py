@@ -16,6 +16,7 @@ from ..interfaces.data_loader_interface import IDataLoader
 from ..adapters.simple_experiment_tracker import SimpleExperimentTracker
 from ..data.cloud_data_loader import CloudDataLoader
 from ..data.file_data_loader import FileDataLoader
+from ..services.dataset_management_service import DatasetManagementService
 from ..utils.storage_client import StorageClient
 from ..core.config import get_settings, Settings
 from ..schemas.enums import DataLoaderType, ExperimentTrackerType, StorageProviderType
@@ -124,6 +125,9 @@ class Container(containers.DeclarativeContainer):
         FileDataLoader, data_dir=config.provided.data_dir
     )
 
+    # Services
+    dataset_management_service = providers.Singleton(DatasetManagementService)
+
     # Experiment trackers
     simple_experiment_tracker = providers.Singleton(SimpleExperimentTracker)
 
@@ -177,6 +181,10 @@ class DependencyManager:
         """Get file data loader"""
         return self.container.file_data_loader()
 
+    def get_dataset_management_service(self) -> DatasetManagementService:
+        """Get dataset management service"""
+        return self.container.dataset_management_service()
+
     def get_device_manager(self) -> DeviceManager:
         """Get device manager"""
         return self.container.device_manager()
@@ -215,6 +223,11 @@ def get_storage_client() -> StorageClient:
     return dependency_manager.get_storage_client()
 
 
+def get_dataset_management_service() -> DatasetManagementService:
+    """Get dataset management service (convenience function)"""
+    return dependency_manager.get_dataset_management_service()
+
+
 def get_device_manager() -> DeviceManager:
     """Get configured device manager (convenience function)"""
     return dependency_manager.get_device_manager()
@@ -236,6 +249,11 @@ async def get_storage_client_dependency() -> StorageClient:
     return get_storage_client()
 
 
+async def get_dataset_management_service_dependency() -> DatasetManagementService:
+    """FastAPI dependency function for dataset management service."""
+    return get_dataset_management_service()
+
+
 async def get_device_manager_dependency() -> DeviceManager:
     """FastAPI dependency function for device manager."""
     return get_device_manager()
@@ -253,6 +271,7 @@ async def health_check_dependencies() -> dict:
         "experiment_tracker": False,
         "data_loader": False,
         "storage_client": False,
+        "dataset_management_service": False,
         "device_manager": False,
         "timestamp": None,
     }
@@ -280,6 +299,10 @@ async def health_check_dependencies() -> dict:
         else:
             results["storage_client"] = storage_client is not None
 
+        # Check dataset management service
+        dataset_service = get_dataset_management_service()
+        results["dataset_management_service"] = dataset_service is not None
+
         # Check device manager
         device_manager = get_device_manager()
         results["device_manager"] = device_manager is not None
@@ -305,6 +328,7 @@ def get_dependency_info() -> dict:
 
     data_loader = dependency_manager.get_data_loader()
     experiment_tracker = dependency_manager.get_experiment_tracker()
+    dataset_service = dependency_manager.get_dataset_management_service()
     device_manager = dependency_manager.get_device_manager()
 
     info = {
@@ -316,6 +340,10 @@ def get_dependency_info() -> dict:
         "data_loader": {
             "type": settings.data_loader_type,
             "instance": type(data_loader).__name__,
+        },
+        "dataset_management_service": {
+            "instance": type(dataset_service).__name__,
+            "cache_directory": str(dataset_service.cache_dir),
         },
         "device_manager": {
             "device": device_manager.device,

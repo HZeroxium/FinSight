@@ -71,3 +71,17 @@ class StorageProviderType(str, Enum):
     DIGITALOCEAN = "digitalocean"
     AWS = "aws"
     S3 = "s3"
+
+
+class Exchange(str, Enum):
+    """Supported exchanges"""
+
+    BINANCE = "binance"
+    KUCOIN = "kucoin"
+    OKX = "okx"
+    HUOBI = "huobi"
+
+
+class DataFormat(str, Enum):
+    CSV = "csv"
+    PARQUET = "parquet"
