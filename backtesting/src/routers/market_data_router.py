@@ -11,7 +11,7 @@ Provides endpoints for market data operations including:
 """
 
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from ..utils.datetime_utils import DateTimeUtils
 
@@ -23,6 +23,7 @@ from ..schemas.ohlcv_schemas import (
 from common.logger import LoggerFactory
 from ..factories.market_data_repository_factory import get_market_data_service
 from ..utils.datetime_utils import DateTimeUtils
+from ..schemas.enums import Exchange, CryptoSymbol, TimeFrame
 
 
 # Router configuration
@@ -42,11 +43,19 @@ logger = LoggerFactory.get_logger(name="market_data_router")
 
 @router.get("/ohlcv", response_model=OHLCVResponseSchema)
 async def get_ohlcv_data(
-    exchange: str = Query(..., description="Exchange name (e.g., binance)"),
-    symbol: str = Query(..., description="Trading symbol (e.g., BTCUSDT)"),
-    timeframe: str = Query(..., description="Timeframe (e.g., 1h, 1d)"),
-    start_date: str = Query(..., description="Start date (ISO 8601 format)"),
-    end_date: str = Query(..., description="End date (ISO 8601 format)"),
+    exchange: str = Query(
+        Exchange.BINANCE.value, description="Exchange name (e.g., binance)"
+    ),
+    symbol: str = Query(
+        CryptoSymbol.BTCUSDT.value, description="Trading symbol (e.g., BTCUSDT)"
+    ),
+    timeframe: str = Query(
+        TimeFrame.HOUR_1.value, description="Timeframe (e.g., 1h, 1d)"
+    ),
+    start_date: str = Query(
+        datetime.now() - timedelta(days=30), description="Start date (ISO 8601 format)"
+    ),
+    end_date: str = Query(datetime.now(), description="End date (ISO 8601 format)"),
     limit: Optional[int] = Query(
         default=None, description="Maximum number of records to return", ge=1, le=10000
     ),
@@ -95,9 +104,9 @@ async def get_ohlcv_data(
 
 @router.get("/ohlcv/stats", response_model=OHLCVStatsSchema)
 async def get_ohlcv_stats(
-    exchange: str = Query(..., description="Exchange name"),
-    symbol: str = Query(..., description="Trading symbol"),
-    timeframe: str = Query(..., description="Timeframe"),
+    exchange: str = Query(Exchange.BINANCE.value, description="Exchange name"),
+    symbol: str = Query(CryptoSymbol.BTCUSDT.value, description="Trading symbol"),
+    timeframe: str = Query(TimeFrame.HOUR_1.value, description="Timeframe"),
     market_data_service: MarketDataService = Depends(get_market_data_service),
 ) -> OHLCVStatsSchema:
     """
@@ -131,9 +140,9 @@ async def get_ohlcv_stats(
 
 @router.get("/ohlcv/latest-timestamp")
 async def get_latest_timestamp(
-    exchange: str = Query(..., description="Exchange name"),
-    symbol: str = Query(..., description="Trading symbol"),
-    timeframe: str = Query(..., description="Timeframe"),
+    exchange: str = Query(Exchange.BINANCE.value, description="Exchange name"),
+    symbol: str = Query(CryptoSymbol.BTCUSDT.value, description="Trading symbol"),
+    timeframe: str = Query(TimeFrame.HOUR_1.value, description="Timeframe"),
     market_data_service: MarketDataService = Depends(get_market_data_service),
 ) -> Dict[str, Any]:
     """
@@ -167,11 +176,13 @@ async def get_latest_timestamp(
 
 @router.get("/ohlcv/gaps")
 async def get_data_gaps(
-    exchange: str = Query(..., description="Exchange name"),
-    symbol: str = Query(..., description="Trading symbol"),
-    timeframe: str = Query(..., description="Timeframe"),
-    start_date: str = Query(..., description="Start date for gap analysis"),
-    end_date: str = Query(..., description="End date for gap analysis"),
+    exchange: str = Query(Exchange.BINANCE.value, description="Exchange name"),
+    symbol: str = Query(CryptoSymbol.BTCUSDT.value, description="Trading symbol"),
+    timeframe: str = Query(TimeFrame.HOUR_1.value, description="Timeframe"),
+    start_date: str = Query(
+        datetime.now() - timedelta(days=30), description="Start date for gap analysis"
+    ),
+    end_date: str = Query(datetime.now(), description="End date for gap analysis"),
     market_data_service: MarketDataService = Depends(get_market_data_service),
 ) -> Dict[str, Any]:
     """
@@ -257,7 +268,7 @@ async def get_available_exchanges(
 
 @router.get("/symbols")
 async def get_available_symbols(
-    exchange: str = Query(..., description="Exchange name"),
+    exchange: str = Query(Exchange.BINANCE.value, description="Exchange name"),
     market_data_service: MarketDataService = Depends(get_market_data_service),
 ) -> Dict[str, Any]:
     """
@@ -286,8 +297,8 @@ async def get_available_symbols(
 
 @router.get("/timeframes")
 async def get_available_timeframes(
-    exchange: str = Query(..., description="Exchange name"),
-    symbol: str = Query(..., description="Trading symbol"),
+    exchange: str = Query(Exchange.BINANCE.value, description="Exchange name"),
+    symbol: str = Query(CryptoSymbol.BTCUSDT.value, description="Trading symbol"),
     market_data_service: MarketDataService = Depends(get_market_data_service),
 ) -> Dict[str, Any]:
     """

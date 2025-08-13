@@ -122,9 +122,6 @@ async def download_dataset_by_symbol(
     extract_archive: Optional[bool] = Query(
         False, description="Whether to extract archive files (defaults to False)"
     ),
-    target_directory: Optional[str] = Query(
-        None, description="Target directory for extraction"
-    ),
     storage_service: MarketDataStorageService = Depends(get_storage_service),
     _: bool = Depends(require_admin_access),
 ) -> Dict[str, Any]:
@@ -139,13 +136,23 @@ async def download_dataset_by_symbol(
             f"Downloading dataset: {exchange}/{symbol}/{timeframe} ({format_type})"
         )
 
-        # Generate object key for the dataset
-        object_key = f"{exchange}/{symbol}/{timeframe}/data.{format_type}"
+        # Generate object key for the dataset using settings
+        from ..core.config import settings
+
+        object_key = (
+            settings.build_dataset_path(
+                exchange=exchange,
+                symbol=symbol,
+                timeframe=timeframe,
+                format_type=format_type,
+            )
+            + f"/data.{format_type}"
+        )
 
         result = await storage_service.download_dataset(
             object_key=object_key,
             extract_archives=extract_archive,
-            target_directory=target_directory,
+            # target_directory=target_directory,
         )
 
         if result["success"]:
@@ -487,7 +494,17 @@ async def download_dataset(
             exchange = request.exchange or Exchange.BINANCE.value
             symbol = request.symbol or CryptoSymbol.BTCUSDT.value
             timeframe = request.timeframe or TimeFrame.HOUR_1.value
-            object_key = f"{exchange}/{symbol}/{timeframe}/data.csv"
+            from ..core.config import settings
+
+            object_key = (
+                settings.build_dataset_path(
+                    exchange=exchange,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    format_type="csv",
+                )
+                + "/data.csv"
+            )
         else:
             object_key = request.object_key
 
@@ -496,7 +513,6 @@ async def download_dataset(
         result = await storage_service.download_dataset(
             object_key=object_key,
             extract_archives=request.extract_archive or False,
-            target_directory=request.target_directory,
         )
 
         if result["success"]:
@@ -919,9 +935,10 @@ async def bulk_operations(
         logger.info(f"Starting bulk operations: {len(request.operations)} operations")
 
         result = await storage_service.bulk_upload_datasets(
-            operations=request.operations,
+            datasets=request.operations,
+            source_format=request.source_format or "csv",
+            target_format=request.target_format or "parquet",
             max_concurrent=request.max_concurrent,
-            continue_on_error=request.continue_on_error,
         )
 
         logger.info(f"Bulk operations completed: {result.get('message', '')}")

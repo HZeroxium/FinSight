@@ -83,10 +83,12 @@ class MarketDataStorageService:
         self.csv_service = None
         if self.csv_repository:
             self.csv_service = MarketDataService(self.csv_repository)
+            self.logger.info("CSV repository service initialized")
 
         self.parquet_service = None
         if self.parquet_repository:
             self.parquet_service = MarketDataService(self.parquet_repository)
+            self.logger.info("Parquet repository service initialized")
 
         # Ensure temp directory exists
         self.temp_dir.mkdir(parents=True, exist_ok=True)
@@ -610,10 +612,14 @@ class MarketDataStorageService:
                 # Ensure prefix includes the configured storage prefix
                 prefix = settings.build_storage_path(prefix)
 
+            self.logger.info(f"Using prefix for listing: {prefix}")
+
             # List objects from storage
             objects = await self.storage_client.list_objects(
                 prefix=prefix, max_keys=limit
             )
+
+            self.logger.info(f"Found {len(objects)} objects in storage")
 
             # Parse and filter datasets
             datasets = []
@@ -1054,19 +1060,27 @@ This dataset contains OHLCV (Open, High, Low, Close, Volume) data for the specif
         """Parse object key to extract dataset metadata."""
         try:
             # Expected format: {storage_prefix}/{exchange}/{symbol}/{timeframe}/{format}/{date}/{filename}
-            # Example: datasets/binance/BTCUSDT/1h/parquet/20250809/filename.zip
+            # Example: finsight/market_data/datasets/binance/BTCUSDT/1h/parquet/20250809/filename.zip
             parts = object_key.split("/")
 
             # Check if the object key starts with the configured storage prefix
-            if len(parts) >= 7 and parts[0] == settings.get_storage_prefix():
-                return {
-                    "exchange": parts[1],
-                    "symbol": parts[2],
-                    "timeframe": parts[3],
-                    "format": parts[4],
-                    "date": parts[5],
-                    "filename": parts[-1],
-                }
+            storage_prefix_parts = settings.get_storage_prefix().split("/")
+            if len(parts) >= len(storage_prefix_parts) + 6:
+                # Check if the beginning matches the storage prefix
+                if all(
+                    parts[i] == storage_prefix_parts[i]
+                    for i in range(len(storage_prefix_parts))
+                ):
+                    offset = len(storage_prefix_parts)
+                    return {
+                        "exchange": parts[offset],
+                        "symbol": parts[offset + 1],
+                        "timeframe": parts[offset + 2],
+                        "format": parts[offset + 3],
+                        "date": parts[offset + 4],
+                        "filename": parts[-1],
+                    }
+
             # Fallback for old format or different prefix
             elif len(parts) >= 6 and parts[0] == "datasets":
                 return {

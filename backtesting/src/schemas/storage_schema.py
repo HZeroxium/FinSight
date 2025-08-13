@@ -131,6 +131,14 @@ class BulkOperationRequest(BaseModel):
     operations: List[Dict[str, Any]] = Field(
         description="List of operations to perform"
     )
+    source_format: Optional[str] = Field(
+        default=RepositoryType.CSV.value,
+        description="Source data format for bulk operations (csv or parquet, defaults to csv)",
+    )
+    target_format: Optional[str] = Field(
+        default=RepositoryType.PARQUET.value,
+        description="Target format for bulk operations (csv or parquet, defaults to parquet)",
+    )
     max_concurrent: int = Field(
         default=5, ge=1, le=20, description="Maximum concurrent operations"
     )
