@@ -14,6 +14,7 @@ from ..schemas.model_schemas import (
 )
 from ..schemas.enums import ModelType, TimeFrame, FallbackStrategy
 from ..utils.model_fallback_utils import ModelFallbackUtils, ModelSelectionResult
+from ..utils.data_fallback_utils import DataFallbackUtils, DataSelectionResult
 from common.logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
 from ..utils.model_utils import ModelUtils
@@ -83,17 +84,33 @@ class PredictionService:
                     ),
                 )
 
-            # Load recent data for prediction
-            # FIX: Use the symbol and timeframe from the selected model (which might be a fallback)
+            # Use intelligent data selection with fallback
+            # This is the key change: we now use data fallback utilities to find available data
+            data_selection = await self._select_data_with_fallback(
+                symbol=symbol,
+                timeframe=timeframe,
+                enable_fallback=request.enable_fallback,
+            )
+
+            if not data_selection or not data_selection.symbol:
+                return PredictionResponse(
+                    success=False,
+                    message="No suitable data found",
+                    error=f"No dataset available for {symbol} {timeframe} after fallback attempts",
+                    fallback_info=self._create_fallback_info(model_selection),
+                    model_selection=self._create_model_selection_info(model_selection),
+                )
+
+            # Load recent data for prediction using the selected data (which might be a fallback)
             recent_data = await self.data_service.data_loader.load_data(
-                model_selection.symbol, model_selection.timeframe
+                data_selection.symbol, data_selection.timeframe
             )
 
             if recent_data.empty:
                 return PredictionResponse(
                     success=False,
                     message="No data available",
-                    error=f"No data found for {model_selection.symbol} {model_selection.timeframe.value}",
+                    error=f"No data found for {data_selection.symbol} {data_selection.timeframe.value}",
                     fallback_info=self._create_fallback_info(model_selection),
                     model_selection=self._create_model_selection_info(model_selection),
                 )
@@ -102,6 +119,10 @@ class PredictionService:
             self.logger.info(
                 f"🚀 Making prediction with selected model: {model_selection.symbol} "
                 f"{model_selection.timeframe.value} {model_selection.model_type.value}"
+            )
+            self.logger.info(
+                f"📊 Using data from: {data_selection.symbol} {data_selection.timeframe.value} "
+                f"(fallback: {data_selection.fallback_applied})"
             )
 
             prediction_result = await self.model_facade.predict_async(
@@ -130,7 +151,7 @@ class PredictionService:
                 )
 
                 # Generate prediction timestamps
-                # FIX: Use the timeframe from the selected model (which might be a fallback)
+                # Use the timeframe from the selected model (which might be a fallback)
                 prediction_timestamps = self._generate_prediction_timestamps(
                     model_selection.timeframe, request.n_steps
                 )
@@ -138,7 +159,9 @@ class PredictionService:
                 # Create comprehensive response with fallback information
                 response = PredictionResponse(
                     success=True,
-                    message=self._generate_success_message(model_selection, request),
+                    message=self._generate_success_message(
+                        model_selection, data_selection, request
+                    ),
                     predictions=raw_predictions,
                     prediction_percentages=prediction_percentages,
                     prediction_timestamps=prediction_timestamps,
@@ -153,6 +176,13 @@ class PredictionService:
                         "data_points_used": len(recent_data),
                         "fallback_applied": model_selection.fallback_applied,
                         "selection_priority": model_selection.selection_priority.value,
+                        "data_fallback_applied": data_selection.fallback_applied,
+                        "data_selection_priority": data_selection.selection_priority.value,
+                        "data_fallback_reason": (
+                            data_selection.fallback_reason.value
+                            if data_selection.fallback_reason
+                            else None
+                        ),
                         "percentage_calculations": self.model_utils.calculate_prediction_metadata(
                             raw_predictions, prediction_percentages, current_price
                         ),
@@ -162,9 +192,16 @@ class PredictionService:
                 # Log fallback information if applied
                 if model_selection.fallback_applied:
                     self.logger.info(
-                        f"Fallback applied: {request.symbol.value} {request.timeframe.value} -> "
+                        f"Model fallback applied: {request.symbol.value} {request.timeframe.value} -> "
                         f"{model_selection.symbol} {model_selection.timeframe.value} "
                         f"({model_selection.fallback_reason})"
+                    )
+
+                if data_selection.fallback_applied:
+                    self.logger.info(
+                        f"Data fallback applied: {request.symbol.value} {request.timeframe.value} -> "
+                        f"{data_selection.symbol} {data_selection.timeframe.value} "
+                        f"({data_selection.fallback_reason})"
                     )
 
                 return response
@@ -226,6 +263,48 @@ class PredictionService:
             self.logger.error(f"Error in model selection with fallback: {e}")
             return None
 
+    async def _select_data_with_fallback(
+        self,
+        symbol: str,
+        timeframe: TimeFrame,
+        enable_fallback: bool = True,
+    ) -> Optional[DataSelectionResult]:
+        """
+        Select the best available data using intelligent fallback strategies.
+
+        Args:
+            symbol: Requested trading symbol
+            timeframe: Requested timeframe
+            enable_fallback: Whether to enable fallback strategies
+
+        Returns:
+            DataSelectionResult with the selected data and fallback information
+        """
+        try:
+            # Create data fallback utilities instance
+            data_fallback_utils = DataFallbackUtils(self.data_service.data_loader)
+
+            # Use the data fallback utilities to find the best available data
+            data_selection = await data_fallback_utils.find_available_data(
+                requested_symbol=symbol,
+                requested_timeframe=timeframe,
+                enable_fallback=enable_fallback,
+            )
+
+            if data_selection:
+                self.logger.info(
+                    f"Data selection result: {data_selection.symbol} "
+                    f"{data_selection.timeframe.value} "
+                    f"(priority: {data_selection.selection_priority.value}, "
+                    f"fallback: {data_selection.fallback_applied})"
+                )
+
+            return data_selection
+
+        except Exception as e:
+            self.logger.error(f"Error in data selection with fallback: {e}")
+            return None
+
     def _create_fallback_info(
         self, model_selection: Optional[ModelSelectionResult]
     ) -> Optional[FallbackInfo]:
@@ -275,29 +354,70 @@ class PredictionService:
         )
 
     def _generate_success_message(
-        self, model_selection: ModelSelectionResult, request: PredictionRequest
+        self,
+        model_selection: ModelSelectionResult,
+        data_selection: DataSelectionResult,
+        request: PredictionRequest,
     ) -> str:
         """Generate appropriate success message based on fallback usage."""
-        if not model_selection.fallback_applied:
-            return "Prediction completed successfully using requested model"
+        messages = []
 
-        # Generate fallback-aware message
-        original_symbol = request.symbol.value
-        original_timeframe = request.timeframe.value
-        selected_symbol = model_selection.symbol
-        selected_timeframe = model_selection.timeframe.value
+        # Check model fallback
+        if model_selection.fallback_applied:
+            original_symbol = request.symbol.value
+            original_timeframe = request.timeframe.value
+            selected_symbol = model_selection.symbol
+            selected_timeframe = model_selection.timeframe.value
 
-        if (
-            original_symbol != selected_symbol
-            and original_timeframe != selected_timeframe
-        ):
-            return f"Prediction completed successfully using fallback model ({original_symbol} {original_timeframe} -> {selected_symbol} {selected_timeframe})"
-        elif original_symbol != selected_symbol:
-            return f"Prediction completed successfully using fallback symbol ({original_symbol} -> {selected_symbol})"
-        elif original_timeframe != selected_timeframe:
-            return f"Prediction completed successfully using fallback timeframe ({original_timeframe} -> {selected_timeframe})"
-        else:
-            return "Prediction completed successfully using fallback model type"
+            if (
+                original_symbol != selected_symbol
+                and original_timeframe != selected_timeframe
+            ):
+                messages.append(
+                    f"Model fallback: {original_symbol} {original_timeframe} -> {selected_symbol} {selected_timeframe}"
+                )
+            elif original_symbol != selected_symbol:
+                messages.append(
+                    f"Model fallback symbol: {original_symbol} -> {selected_symbol}"
+                )
+            elif original_timeframe != selected_timeframe:
+                messages.append(
+                    f"Model fallback timeframe: {original_timeframe} -> {selected_timeframe}"
+                )
+            else:
+                messages.append("Model fallback applied")
+
+        # Check data fallback
+        if data_selection.fallback_applied:
+            original_symbol = request.symbol.value
+            original_timeframe = request.timeframe.value
+            selected_symbol = data_selection.symbol
+            selected_timeframe = data_selection.timeframe.value
+
+            if (
+                original_symbol != selected_symbol
+                and original_timeframe != selected_timeframe
+            ):
+                messages.append(
+                    f"Data fallback: {original_symbol} {original_timeframe} -> {selected_symbol} {selected_timeframe}"
+                )
+            elif original_symbol != selected_symbol:
+                messages.append(
+                    f"Data fallback symbol: {original_symbol} -> {selected_symbol}"
+                )
+            elif original_timeframe != selected_timeframe:
+                messages.append(
+                    f"Data fallback timeframe: {original_timeframe} -> {selected_timeframe}"
+                )
+            else:
+                messages.append("Data fallback applied")
+
+        if not messages:
+            return "Prediction completed successfully using requested model and data"
+
+        return (
+            f"Prediction completed successfully with fallbacks: {'; '.join(messages)}"
+        )
 
     def get_available_models(self) -> List[Dict[str, Any]]:
         """Get information about all available trained models"""

@@ -7,9 +7,7 @@ This module sets up dependency injection using the dependency_injector library
 to provide clean separation of concerns and enable easy testing and configuration.
 """
 
-from typing import Optional
 from dependency_injector import containers, providers
-from pathlib import Path
 
 from ..interfaces.experiment_tracker_interface import IExperimentTracker
 from ..interfaces.data_loader_interface import IDataLoader
@@ -20,7 +18,7 @@ from ..utils.storage_client import StorageClient
 from ..utils.model_utils import ModelUtils
 from ..services.eureka_client_service import EurekaClientService
 from ..core.config import get_settings, Settings
-from ..schemas.enums import DataLoaderType, ExperimentTrackerType, StorageProviderType
+from ..schemas.enums import DataLoaderType, ExperimentTrackerType
 from .device_manager import create_device_manager_from_settings, DeviceManager
 from common.logger.logger_factory import LoggerFactory
 

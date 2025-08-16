@@ -144,3 +144,34 @@ class PredictionConfidenceLevel(str, Enum):
     MEDIUM = "medium"  # 50-74% confidence
     LOW = "low"  # 25-49% confidence
     VERY_LOW = "very_low"  # 0-24% confidence
+
+
+class DataSelectionPriority(str, Enum):
+    """Priority order for data selection during fallback"""
+
+    EXACT_MATCH = "exact_match"  # Exact symbol + timeframe match
+    TIMEFRAME_FALLBACK = "timeframe_fallback"  # Same symbol, fallback timeframe
+    SYMBOL_FALLBACK = "symbol_fallback"  # Fallback symbol, same timeframe
+    FULL_FALLBACK = "full_fallback"  # Fallback both symbol and timeframe
+    BEST_AVAILABLE = "best_available"  # Best available option as last resort
+
+
+class DataAvailabilityStatus(str, Enum):
+    """Status of data availability"""
+
+    AVAILABLE = "available"  # Data is available and accessible
+    NOT_FOUND = "not_found"  # Data not found
+    ACCESS_ERROR = "access_error"  # Data exists but cannot be accessed
+    EMPTY = "empty"  # Data exists but is empty
+    CORRUPTED = "corrupted"  # Data exists but is corrupted
+
+
+class FallbackReason(str, Enum):
+    """Reasons for applying fallback strategies"""
+
+    EXACT_MATCH_NOT_FOUND = "exact_match_not_found"
+    TIMEFRAME_NOT_AVAILABLE = "timeframe_not_available"
+    SYMBOL_NOT_AVAILABLE = "symbol_not_available"
+    DATA_LOAD_ERROR = "data_load_error"
+    INSUFFICIENT_DATA = "insufficient_data"
+    BEST_AVAILABLE_OPTION = "best_available_option"
