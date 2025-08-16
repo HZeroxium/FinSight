@@ -25,6 +25,12 @@ __all__ = [
     "ExperimentTrackerType",
     "ServingAdapterType",
     "StorageProviderType",
+    "DeviceType",
+    "FallbackStrategy",
+    "ModelSelectionPriority",
+    "PredictionTrend",
+    "PercentageCalculationMethod",
+    "PredictionConfidenceLevel",
     # Model schemas
     "ModelConfig",
     "TrainingRequest",

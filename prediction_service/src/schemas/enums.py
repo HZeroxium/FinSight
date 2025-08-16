@@ -114,3 +114,33 @@ class ModelSelectionPriority(str, Enum):
     TIMEFRAME_FALLBACK = "timeframe_fallback"  # Same symbol, fallback timeframe
     SYMBOL_FALLBACK = "symbol_fallback"  # Fallback symbol, same timeframe
     FULL_FALLBACK = "full_fallback"  # Fallback both symbol and timeframe
+
+
+class PredictionTrend(str, Enum):
+    """Prediction trend analysis results"""
+
+    BULLISH = "bullish"  # Overall positive trend
+    BEARISH = "bearish"  # Overall negative trend
+    NEUTRAL = "neutral"  # No clear trend
+    VOLATILE = "volatile"  # High volatility, unclear trend
+
+
+class PercentageCalculationMethod(str, Enum):
+    """Methods for calculating percentage changes"""
+
+    CURRENT_PRICE_BASED = "current_price_based"  # Use current market price as reference
+    FIRST_PREDICTION_BASED = (
+        "first_prediction_based"  # Use first prediction as reference
+    )
+    CUSTOM_BASE_PRICE = "custom_base_price"  # Use custom base price
+    ROLLING_BASE = "rolling_base"  # Use previous prediction as base for next
+
+
+class PredictionConfidenceLevel(str, Enum):
+    """Confidence levels for predictions"""
+
+    VERY_HIGH = "very_high"  # 90-100% confidence
+    HIGH = "high"  # 75-89% confidence
+    MEDIUM = "medium"  # 50-74% confidence
+    LOW = "low"  # 25-49% confidence
+    VERY_LOW = "very_low"  # 0-24% confidence

@@ -698,6 +698,8 @@ class ModelServingFacade:
         return {
             "success": serving_result.success,
             "predictions": serving_result.predictions,
+            "current_price": serving_result.current_price,
+            "predicted_change_pct": serving_result.predicted_change_pct,
             "confidence_scores": getattr(serving_result, "confidence_scores", []),
             "model_info": {
                 "symbol": symbol,

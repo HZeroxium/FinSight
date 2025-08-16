@@ -16,6 +16,7 @@ from ..schemas.enums import ModelType, TimeFrame, FallbackStrategy
 from ..utils.model_fallback_utils import ModelFallbackUtils, ModelSelectionResult
 from common.logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
+from ..utils.model_utils import ModelUtils
 
 
 class PredictionService:
@@ -28,6 +29,7 @@ class PredictionService:
         self.unified_facade = get_unified_facade()  # For cloud-first model checking
         self.data_service = DataService()
         self.fallback_utils = ModelFallbackUtils()
+        self.model_utils = ModelUtils()
 
     async def predict(self, request: PredictionRequest) -> PredictionResponse:
         """
@@ -116,6 +118,17 @@ class PredictionService:
             if prediction_result.get("success", False):
                 self.logger.info(f"Prediction completed in {execution_time:.3f}s")
 
+                # Get raw predictions and calculate percentages
+                raw_predictions = prediction_result.get("predictions", [])
+                current_price = prediction_result.get("current_price")
+
+                # Calculate percentage changes using model_utils
+                prediction_percentages = (
+                    self.model_utils.calculate_prediction_percentages(
+                        raw_predictions=raw_predictions, current_price=current_price
+                    )
+                )
+
                 # Generate prediction timestamps
                 # FIX: Use the timeframe from the selected model (which might be a fallback)
                 prediction_timestamps = self._generate_prediction_timestamps(
@@ -126,9 +139,10 @@ class PredictionService:
                 response = PredictionResponse(
                     success=True,
                     message=self._generate_success_message(model_selection, request),
-                    predictions=prediction_result.get("predictions", []),
+                    predictions=raw_predictions,
+                    prediction_percentages=prediction_percentages,
                     prediction_timestamps=prediction_timestamps,
-                    current_price=prediction_result.get("current_price"),
+                    current_price=current_price,
                     predicted_change_pct=prediction_result.get("predicted_change_pct"),
                     confidence_score=model_selection.confidence_score,
                     model_info=prediction_result.get("model_info", {}),
@@ -139,6 +153,9 @@ class PredictionService:
                         "data_points_used": len(recent_data),
                         "fallback_applied": model_selection.fallback_applied,
                         "selection_priority": model_selection.selection_priority.value,
+                        "percentage_calculations": self.model_utils.calculate_prediction_metadata(
+                            raw_predictions, prediction_percentages, current_price
+                        ),
                     },
                 )
 

@@ -150,7 +150,13 @@ class PredictionResponse(BaseResponse):
 
     model_config = ConfigDict(validate_assignment=True)
 
-    predictions: Optional[List[float]] = Field(None, description="Prediction values")
+    predictions: Optional[List[float]] = Field(
+        None, description="Raw prediction values"
+    )
+    prediction_percentages: Optional[List[float]] = Field(
+        None,
+        description="Prediction values as percentage changes (positive = increase, negative = decrease)",
+    )
     prediction_timestamps: Optional[List[str]] = Field(
         None, description="Prediction timestamps"
     )

@@ -13,7 +13,13 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Union
 from datetime import datetime
 
-from ..schemas.enums import ModelType, TimeFrame
+from ..schemas.enums import (
+    ModelType,
+    TimeFrame,
+    PredictionTrend,
+    PercentageCalculationMethod,
+    PredictionConfidenceLevel,
+)
 from ..core.config import get_settings
 from .model.path_manager import ModelPathManager
 from .model.metadata_manager import ModelMetadataManager
@@ -58,9 +64,16 @@ class ModelUtils:
     def experiment_tracker(self):
         """Lazy-loaded experiment tracker instance"""
         if self._experiment_tracker is None:
-            from .dependencies import get_experiment_tracker
+            # Avoid circular import by using string import
+            try:
+                from .dependencies import get_experiment_tracker
 
-            self._experiment_tracker = get_experiment_tracker()
+                self._experiment_tracker = get_experiment_tracker()
+            except ImportError:
+                self.logger.warning(
+                    "Experiment tracker not available due to import issues"
+                )
+                self._experiment_tracker = None
         return self._experiment_tracker
 
     # ===== Path Management Operations (delegated to PathManager) =====
@@ -385,6 +398,225 @@ class ModelUtils:
         return await self.cloud_ops.load_model_with_cloud_fallback(
             symbol, timeframe, model_type, adapter_type, force_cloud_download
         )
+
+    # ===== Utility Methods for Prediction Processing =====
+
+    def calculate_prediction_percentages(
+        self,
+        raw_predictions: List[float],
+        current_price: Optional[float] = None,
+        base_price: Optional[float] = None,
+        method: PercentageCalculationMethod = PercentageCalculationMethod.CURRENT_PRICE_BASED,
+    ) -> List[float]:
+        """
+        Calculate percentage changes from raw prediction values.
+
+        Args:
+            raw_predictions: List of raw prediction values
+            current_price: Current market price (if None, uses first prediction as base)
+            base_price: Base price for percentage calculation (if None, uses current_price)
+            method: Method for calculating percentage changes
+
+        Returns:
+            List of percentage changes where positive values indicate increase, negative indicate decrease
+        """
+        if not raw_predictions:
+            return []
+
+        try:
+            # Determine base price for percentage calculation based on method
+            if (
+                method == PercentageCalculationMethod.CUSTOM_BASE_PRICE
+                and base_price is not None
+            ):
+                reference_price = base_price
+            elif (
+                method == PercentageCalculationMethod.CURRENT_PRICE_BASED
+                and current_price is not None
+            ):
+                reference_price = current_price
+            elif method == PercentageCalculationMethod.FIRST_PREDICTION_BASED:
+                reference_price = raw_predictions[0]
+                self.logger.info(
+                    f"Using first prediction as base for percentage calculation: {reference_price}"
+                )
+            elif method == PercentageCalculationMethod.ROLLING_BASE:
+                # For rolling base, we'll calculate relative to previous prediction
+                return self._calculate_rolling_percentages(raw_predictions)
+            else:
+                # Fallback to current price or first prediction
+                reference_price = (
+                    current_price if current_price is not None else raw_predictions[0]
+                )
+                self.logger.warning(
+                    f"Using fallback reference price: {reference_price} for method: {method.value}"
+                )
+
+            if reference_price <= 0:
+                self.logger.error(
+                    f"Invalid reference price for percentage calculation: {reference_price}"
+                )
+                return []
+
+            # Calculate percentage changes
+            percentages = []
+            for prediction in raw_predictions:
+                if prediction <= 0:
+                    self.logger.warning(
+                        f"Invalid prediction value for percentage calculation: {prediction}"
+                    )
+                    percentages.append(0.0)
+                else:
+                    percentage_change = (
+                        (prediction - reference_price) / reference_price
+                    ) * 100
+                    percentages.append(round(percentage_change, 4))
+
+            self.logger.debug(
+                f"Calculated {len(percentages)} percentage changes using method: {method.value}"
+            )
+            return percentages
+
+        except Exception as e:
+            self.logger.error(f"Error calculating prediction percentages: {e}")
+            return []
+
+    def _calculate_rolling_percentages(
+        self, raw_predictions: List[float]
+    ) -> List[float]:
+        """Calculate percentage changes using rolling base (each prediction relative to previous)."""
+        if len(raw_predictions) < 2:
+            return []
+
+        percentages = [0.0]  # First prediction has no change
+        for i in range(1, len(raw_predictions)):
+            prev_price = raw_predictions[i - 1]
+            curr_price = raw_predictions[i]
+
+            if prev_price <= 0:
+                percentages.append(0.0)
+            else:
+                percentage_change = ((curr_price - prev_price) / prev_price) * 100
+                percentages.append(round(percentage_change, 4))
+
+        return percentages
+
+    def calculate_prediction_metadata(
+        self,
+        raw_predictions: List[float],
+        percentages: List[float],
+        current_price: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Calculate comprehensive prediction metadata including statistics.
+
+        Args:
+            raw_predictions: List of raw prediction values
+            percentages: List of percentage changes
+            current_price: Current market price
+
+        Returns:
+            Dictionary containing prediction metadata and statistics
+        """
+        if not raw_predictions or not percentages:
+            return {}
+
+        try:
+            # Calculate trend analysis
+            overall_trend = self._determine_trend(percentages)
+            trend_strength = (
+                abs(sum(percentages)) / len(percentages) if percentages else 0.0
+            )
+            volatility = max(percentages) - min(percentages) if percentages else 0.0
+
+            # Determine confidence level based on trend strength and volatility
+            confidence_level = self._determine_confidence_level(
+                trend_strength, volatility
+            )
+
+            metadata = {
+                "prediction_count": len(raw_predictions),
+                "raw_predictions_summary": {
+                    "min": min(raw_predictions),
+                    "max": max(raw_predictions),
+                    "mean": sum(raw_predictions) / len(raw_predictions),
+                },
+                "percentage_summary": {
+                    "min": min(percentages),
+                    "max": max(percentages),
+                    "mean": sum(percentages) / len(percentages),
+                },
+                "trend_analysis": {
+                    "overall_trend": overall_trend.value,
+                    "trend_strength": round(trend_strength, 4),
+                    "volatility": round(volatility, 4),
+                    "confidence_level": confidence_level.value,
+                },
+            }
+
+            # Add current price context if available
+            if current_price is not None:
+                metadata["price_context"] = {
+                    "current_price": current_price,
+                    "predicted_prices": raw_predictions,
+                    "price_changes": [
+                        round(p - current_price, 4) for p in raw_predictions
+                    ],
+                }
+
+            self.logger.debug(
+                f"Generated prediction metadata for {len(raw_predictions)} predictions"
+            )
+            return metadata
+
+        except Exception as e:
+            self.logger.error(f"Error calculating prediction metadata: {e}")
+            return {}
+
+    def _determine_trend(self, percentages: List[float]) -> PredictionTrend:
+        """Determine the overall trend based on percentage changes."""
+        if not percentages:
+            return PredictionTrend.NEUTRAL
+
+        avg_percentage = sum(percentages) / len(percentages)
+        volatility = max(percentages) - min(percentages)
+
+        # High volatility threshold (can be made configurable)
+        HIGH_VOLATILITY_THRESHOLD = 10.0
+
+        if volatility > HIGH_VOLATILITY_THRESHOLD:
+            return PredictionTrend.VOLATILE
+        elif avg_percentage > 1.0:  # More than 1% average increase
+            return PredictionTrend.BULLISH
+        elif avg_percentage < -1.0:  # More than 1% average decrease
+            return PredictionTrend.BEARISH
+        else:
+            return PredictionTrend.NEUTRAL
+
+    def _determine_confidence_level(
+        self, trend_strength: float, volatility: float
+    ) -> PredictionConfidenceLevel:
+        """Determine confidence level based on trend strength and volatility."""
+        # Normalize trend strength (0-100 scale)
+        normalized_strength = min(trend_strength * 10, 100)  # Scale factor of 10
+
+        # Volatility penalty (higher volatility reduces confidence)
+        volatility_penalty = min(volatility * 2, 50)  # Scale factor of 2
+
+        # Calculate final confidence score
+        confidence_score = max(0, normalized_strength - volatility_penalty)
+
+        # Map to confidence levels
+        if confidence_score >= 90:
+            return PredictionConfidenceLevel.VERY_HIGH
+        elif confidence_score >= 75:
+            return PredictionConfidenceLevel.HIGH
+        elif confidence_score >= 50:
+            return PredictionConfidenceLevel.MEDIUM
+        elif confidence_score >= 25:
+            return PredictionConfidenceLevel.LOW
+        else:
+            return PredictionConfidenceLevel.VERY_LOW
 
     # ===== Static Methods for Backward Compatibility =====
 
