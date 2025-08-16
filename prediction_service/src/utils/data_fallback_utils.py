@@ -113,6 +113,8 @@ class DataFallbackUtils:
             requested_symbol, requested_timeframe
         )
 
+        return fallback_result
+
         if fallback_result:
             self.logger.info(
                 f"Applied data fallback: {requested_symbol} {requested_timeframe.value} -> "
