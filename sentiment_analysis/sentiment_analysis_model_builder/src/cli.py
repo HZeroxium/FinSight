@@ -1,0 +1,457 @@
+"""Command-line interface for the sentiment analysis model builder."""
+
+import json
+import sys
+from pathlib import Path
+from typing import Optional
+
+import typer
+from loguru import logger
+from rich.console import Console
+from rich.table import Table
+
+from .core.config import Config
+from .core.enums import LogLevel
+from .data.data_loader import DataLoader
+from .data.dataset import DatasetPreparator
+from .models.trainer import SentimentTrainer
+from .models.exporter import ModelExporter
+from .registry.mlflow_registry import MLflowRegistry
+from .schemas.training_schemas import TrainingMetrics
+from .utils.file_utils import save_json, ensure_directory
+
+# Create Typer app
+app = typer.Typer(
+    name="sentiment-analysis",
+    help="Crypto News Sentiment Analysis Model Builder",
+    add_completion=False,
+)
+
+# Rich console for pretty output
+console = Console()
+
+
+def setup_logging(log_level: str) -> None:
+    """Setup logging configuration.
+
+    Args:
+        log_level: Logging level
+    """
+    # Remove default handler
+    logger.remove()
+
+    # Add console handler with specified level
+    logger.add(
+        sys.stderr,
+        level=log_level,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+    )
+
+
+@app.command()
+def train(
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to configuration file (YAML or .env)"
+    ),
+    data_path: Optional[Path] = typer.Option(
+        None, "--data", "-d", help="Path to input data file"
+    ),
+    output_dir: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output directory for training artifacts"
+    ),
+    experiment_name: str = typer.Option(
+        "sentiment-analysis", "--experiment", "-e", help="MLflow experiment name"
+    ),
+    log_level: str = typer.Option("INFO", "--log-level", "-l", help="Logging level"),
+):
+    """Train a sentiment analysis model on crypto news data."""
+    try:
+        # Setup logging
+        setup_logging(log_level)
+
+        # Load configuration
+        if config_file:
+            # Load from specific config file
+            config = Config(_env_file=config_file)
+        else:
+            # Load from default locations
+            config = Config()
+
+        # Override config with CLI arguments
+        if data_path:
+            config.data.input_path = data_path
+        if output_dir:
+            config.output_dir = output_dir
+
+        # Validate configuration
+        if not config.data.input_path or not config.data.input_path.exists():
+            console.print(
+                f"[red]Error: Input data file not found: {config.data.input_path}[/red]"
+            )
+            raise typer.Exit(1)
+
+        console.print(f"[green]Configuration loaded successfully[/green]")
+        console.print(f"  Data path: {config.data.input_path}")
+        console.print(f"  Output directory: {config.output_dir}")
+        console.print(f"  Model backbone: {config.training.backbone.value}")
+        console.print(f"  Experiment name: {experiment_name}")
+
+        # Create output directory
+        ensure_directory(config.output_dir)
+
+        # Initialize components
+        data_loader = DataLoader(config.data, config.preprocessing)
+        dataset_preparator = DatasetPreparator(config.preprocessing, config.training)
+        trainer = SentimentTrainer(config.training, dataset_preparator)
+
+        # Load and validate data
+        console.print("\n[yellow]Loading and preprocessing data...[/yellow]")
+        articles = data_loader.load_data()
+
+        if not data_loader.validate_data(articles):
+            console.print("[red]Error: Data validation failed[/red]")
+            raise typer.Exit(1)
+
+        # Prepare datasets
+        console.print("[yellow]Preparing datasets...[/yellow]")
+        datasets = dataset_preparator.prepare_datasets(articles)
+
+        # Train model
+        console.print("[yellow]Starting model training...[/yellow]")
+        model, tokenizer, training_metrics = trainer.train(
+            datasets=datasets,
+            output_dir=config.output_dir,
+            experiment_name=experiment_name,
+        )
+
+        # Save training summary
+        summary_path = config.output_dir / "training_summary.json"
+        save_json(training_metrics.model_dump(), summary_path)
+
+        console.print(f"\n[green]Training completed successfully![/green]")
+        console.print(f"  Model saved to: {config.output_dir / 'model'}")
+        console.print(f"  Training summary: {summary_path}")
+        console.print(f"  MLflow run ID: {training_metrics.run_id}")
+        console.print(f"  Experiment ID: {training_metrics.experiment_id}")
+
+        # Display final metrics
+        if "test" in training_metrics.eval_results:
+            test_results = training_metrics.eval_results["test"]
+            console.print(f"\n[bold]Test Set Performance:[/bold]")
+            console.print(f"  Accuracy: {test_results.eval_accuracy:.4f}")
+            console.print(f"  F1 Macro: {test_results.eval_f1_macro:.4f}")
+            console.print(f"  F1 Weighted: {test_results.eval_f1_weighted:.4f}")
+
+    except Exception as e:
+        console.print(f"[red]Training failed: {e}[/red]")
+        logger.exception("Training failed")
+        raise typer.Exit(1)
+
+
+@app.command()
+def export(
+    model_path: Path = typer.Argument(..., help="Path to the trained model directory"),
+    output_dir: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output directory for exported models"
+    ),
+    format: str = typer.Option(
+        "onnx", "--format", "-f", help="Export format: onnx, torchscript, or both"
+    ),
+    validate: bool = typer.Option(
+        True, "--validate/--no-validate", help="Validate exported models"
+    ),
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to configuration file"
+    ),
+    log_level: str = typer.Option("INFO", "--log-level", "-l", help="Logging level"),
+):
+    """Export a trained model to ONNX or TorchScript format."""
+    try:
+        # Setup logging
+        setup_logging(log_level)
+
+        # Load configuration
+        if config_file:
+            config = Config(_env_file=config_file)
+        else:
+            config = Config()
+
+        # Override config with CLI arguments
+        if output_dir:
+            config.export.output_dir = output_dir
+
+        # Validate model path
+        if not model_path.exists():
+            console.print(f"[red]Error: Model path not found: {model_path}[/red]")
+            raise typer.Exit(1)
+
+        if not (model_path / "config.json").exists():
+            console.print(f"[red]Error: Invalid model directory: {model_path}[/red]")
+            raise typer.Exit(1)
+
+        console.print(f"[green]Exporting model from: {model_path}[/green]")
+        console.print(f"  Output directory: {config.export.output_dir}")
+        console.print(f"  Format: {format}")
+        console.print(f"  Validate: {validate}")
+
+        # Initialize exporter
+        exporter = ModelExporter(config.export)
+
+        # Export model
+        console.print("\n[yellow]Exporting model...[/yellow]")
+        export_paths = exporter.export_model(
+            model_path=model_path,
+            output_dir=config.export.output_dir,
+            experiment_name="sentiment-analysis-export",
+        )
+
+        # Display export summary
+        export_summary = exporter.get_export_summary(export_paths)
+
+        console.print(f"\n[green]Export completed successfully![/green]")
+        console.print(
+            f"  Exported formats: {', '.join(export_summary['exported_formats'])}"
+        )
+
+        for format_name, path in export_paths.items():
+            console.print(f"  {format_name.upper()}: {path}")
+            if f"{format_name}_size_mb" in export_summary:
+                console.print(
+                    f"    Size: {export_summary[f'{format_name}_size_mb']} MB"
+                )
+
+        # Save export summary
+        summary_path = config.export.output_dir / "export_summary.json"
+        save_json(export_summary, summary_path)
+
+        console.print(f"  Export summary: {summary_path}")
+
+    except Exception as e:
+        console.print(f"[red]Export failed: {e}[/red]")
+        logger.exception("Export failed")
+        raise typer.Exit(1)
+
+
+@app.command()
+def register(
+    model_path: Path = typer.Argument(..., help="Path to the trained model directory"),
+    run_id: str = typer.Option(
+        ..., "--run-id", "-r", help="MLflow run ID from training"
+    ),
+    description: str = typer.Option(
+        "Crypto News Sentiment Analysis Model",
+        "--description",
+        "-d",
+        help="Model description",
+    ),
+    stage: str = typer.Option(
+        "Staging",
+        "--stage",
+        "-s",
+        help="Initial model stage (Staging, Production, Archived)",
+    ),
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to configuration file"
+    ),
+    log_level: str = typer.Option("INFO", "--log-level", "-l", help="Logging level"),
+):
+    """Register a trained model in the MLflow model registry."""
+    try:
+        # Setup logging
+        setup_logging(log_level)
+
+        # Load configuration
+        if config_file:
+            config = Config(_env_file=config_file)
+        else:
+            config = Config()
+
+        # Override config with CLI arguments
+        config.registry.model_stage = stage
+
+        # Validate model path
+        if not model_path.exists():
+            console.print(f"[red]Error: Model path not found: {model_path}[/red]")
+            raise typer.Exit(1)
+
+        console.print(f"[green]Registering model from: {model_path}[/green]")
+        console.print(f"  Run ID: {run_id}")
+        console.print(f"  Description: {description}")
+        console.print(f"  Stage: {stage}")
+        console.print(f"  Registry: {config.registry.tracking_uri}")
+
+        # Initialize registry
+        registry = MLflowRegistry(config.registry)
+
+        # Register model
+        console.print("\n[yellow]Registering model in MLflow...[/yellow]")
+        model_uri = registry.register_model(
+            model_path=model_path, run_id=run_id, description=description
+        )
+
+        console.print(f"\n[green]Model registered successfully![/green]")
+        console.print(f"  Model URI: {model_uri}")
+
+        # Display registry summary
+        summary = registry.get_registry_summary()
+        if summary:
+            console.print(f"\n[bold]Registry Summary:[/bold]")
+            console.print(f"  Model: {summary['model_name']}")
+            console.print(f"  Total versions: {summary['total_versions']}")
+            console.print(f"  Stage counts: {summary['stage_counts']}")
+            console.print(f"  Latest versions: {summary['latest_versions']}")
+
+    except Exception as e:
+        console.print(f"[red]Registration failed: {e}[/red]")
+        logger.exception("Registration failed")
+        raise typer.Exit(1)
+
+
+@app.command()
+def list_models(
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to configuration file"
+    ),
+    log_level: str = typer.Option("INFO", "--log-level", "-l", help="Logging level"),
+):
+    """List all models in the MLflow registry."""
+    try:
+        # Setup logging
+        setup_logging(log_level)
+
+        # Load configuration
+        if config_file:
+            config = Config(_env_file=config_file)
+        else:
+            config = Config()
+
+        # Initialize registry
+        registry = MLflowRegistry(config.registry)
+
+        # Get model versions
+        versions = registry.list_model_versions()
+
+        if not versions:
+            console.print("[yellow]No model versions found in registry[/yellow]")
+            return
+
+        # Create table
+        table = Table(title="Model Versions")
+        table.add_column("Version", style="cyan")
+        table.add_column("Stage", style="green")
+        table.add_column("Status", style="yellow")
+        table.add_column("Run ID", style="blue")
+        table.add_column("Created", style="magenta")
+
+        for version in versions:
+            table.add_row(
+                str(version["version"]),
+                version["stage"],
+                version["status"],
+                version["run_id"][:8] + "...",
+                str(version["created_at"])[:19],
+            )
+
+        console.print(table)
+
+        # Display summary
+        summary = registry.get_registry_summary()
+        if summary:
+            console.print(f"\n[bold]Registry Summary:[/bold]")
+            console.print(f"  Model: {summary['model_name']}")
+            console.print(f"  Total versions: {summary['total_versions']}")
+            console.print(f"  Stage counts: {summary['stage_counts']}")
+            console.print(f"  Latest versions: {summary['latest_versions']}")
+
+    except Exception as e:
+        console.print(f"[red]Failed to list models: {e}[/red]")
+        logger.exception("Failed to list models")
+        raise typer.Exit(1)
+
+
+@app.command()
+def info(
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to configuration file"
+    ),
+    log_level: str = typer.Option("INFO", "--log-level", "-l", help="Logging level"),
+):
+    """Display configuration and system information."""
+    try:
+        # Setup logging
+        setup_logging(log_level)
+
+        # Load configuration
+        if config_file:
+            config = Config(_env_file=config_file)
+        else:
+            config = Config()
+
+        # Display configuration
+        console.print("[bold green]Configuration Information[/bold green]")
+
+        # Data configuration
+        console.print("\n[bold yellow]Data Configuration[/bold yellow]")
+        console.print(f"  Input path: {config.data.input_path}")
+        console.print(f"  Input format: {config.data.input_format.value}")
+        console.print(f"  Text column: {config.data.text_column}")
+        console.print(f"  Label column: {config.data.label_column}")
+
+        # Preprocessing configuration
+        console.print("\n[bold yellow]Preprocessing Configuration[/bold yellow]")
+        console.print(f"  Max length: {config.preprocessing.max_length}")
+        console.print(f"  Min length: {config.preprocessing.min_length}")
+        console.print(f"  Remove HTML: {config.preprocessing.remove_html}")
+        console.print(f"  Lowercase: {config.preprocessing.lowercase}")
+        console.print(f"  Label mapping: {config.preprocessing.label_mapping}")
+
+        # Training configuration
+        console.print("\n[bold yellow]Training Configuration[/bold yellow]")
+        console.print(f"  Backbone: {config.training.backbone.value}")
+        console.print(f"  Batch size: {config.training.batch_size}")
+        console.print(f"  Learning rate: {config.training.learning_rate}")
+        console.print(f"  Epochs: {config.training.num_epochs}")
+        console.print(f"  Random seed: {config.training.random_seed}")
+
+        # Export configuration
+        console.print("\n[bold yellow]Export Configuration[/bold yellow]")
+        console.print(f"  Format: {config.export.format.value}")
+        console.print(f"  ONNX opset: {config.export.onnx_opset_version}")
+        console.print(f"  Validate export: {config.export.validate_export}")
+
+        # Registry configuration
+        console.print("\n[bold yellow]Registry Configuration[/bold yellow]")
+        console.print(f"  Tracking URI: {config.registry.tracking_uri}")
+        console.print(f"  Model name: {config.registry.model_name}")
+        console.print(f"  Model stage: {config.registry.model_stage.value}")
+        console.print(
+            f"  Artifact storage: {'S3/MinIO' if config.registry.aws_access_key_id else 'Local'}"
+        )
+
+        # System information
+        console.print("\n[bold yellow]System Information[/bold yellow]")
+        import torch
+
+        console.print(f"  PyTorch version: {torch.__version__}")
+        console.print(f"  CUDA available: {torch.cuda.is_available()}")
+        if torch.cuda.is_available():
+            console.print(f"  CUDA version: {torch.version.cuda}")
+            console.print(f"  GPU count: {torch.cuda.device_count()}")
+
+        import mlflow
+
+        console.print(f"  MLflow version: {mlflow.__version__}")
+
+    except Exception as e:
+        console.print(f"[red]Failed to display info: {e}[/red]")
+        logger.exception("Failed to display info")
+        raise typer.Exit(1)
+
+
+def main():
+    """Main entry point for the CLI."""
+    app()
+
+
+if __name__ == "__main__":
+    main()

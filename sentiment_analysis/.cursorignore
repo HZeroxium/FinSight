@@ -1,0 +1,8 @@
+.venv/
+.git/
+.gitignore
+.cursorignore
+.cursorrules
+.cursorignore
+data/news_dataset.json
+sentiment_analysis_model_builder.egg-info
