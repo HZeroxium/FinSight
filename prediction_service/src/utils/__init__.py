@@ -1,55 +1,23 @@
 # utils/__init__.py
 
 """
-Utility modules for the FinSight Model Builder system.
+Utility modules for the prediction service
 """
 
-from .backtest_strategy_utils import (
-    BacktestEngine,
-    HyperparameterTuner,
-    SignalType,
-    Trade,
-)
-from .device_manager import (
-    DeviceManager,
-    create_device_manager,
-    create_device_manager_from_settings,
-)
-from .dataset_utils import (
-    validate_timeframe_string,
-    parse_datetime_string,
-    calculate_file_age_hours,
-    calculate_cache_expiry_hours,
-    format_file_size,
-    validate_dataset_path,
-    get_dataset_metadata,
-    merge_dataset_lists,
-    calculate_dataset_statistics,
-)
-
-# Conditional import for visualization utils due to matplotlib dependency
-try:
-    from .visualization_utils import VisualizationUtils
-except ImportError:
-    VisualizationUtils = None
+from .model_utils import ModelUtils
+from .model_fallback_utils import ModelFallbackUtils, ModelSelectionResult
+from .device_manager import create_device_manager_from_settings
+from .metrics_utils import MetricUtils
+from .storage_client import StorageClient
+from .dependencies import get_experiment_tracker, get_storage_client
 
 __all__ = [
-    "BacktestEngine",
-    "HyperparameterTuner",
-    "SignalType",
-    "Trade",
-    "DeviceManager",
-    "create_device_manager",
+    "ModelUtils",
+    "ModelFallbackUtils",
+    "ModelSelectionResult",
     "create_device_manager_from_settings",
-    "VisualizationUtils",
-    # Dataset utilities
-    "validate_timeframe_string",
-    "parse_datetime_string",
-    "calculate_file_age_hours",
-    "calculate_cache_expiry_hours",
-    "format_file_size",
-    "validate_dataset_path",
-    "get_dataset_metadata",
-    "merge_dataset_lists",
-    "calculate_dataset_statistics",
+    "MetricUtils",
+    "StorageClient",
+    "get_experiment_tracker",
+    "get_storage_client",
 ]
