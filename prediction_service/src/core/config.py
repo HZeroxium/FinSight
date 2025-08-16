@@ -155,6 +155,46 @@ class Settings(BaseSettings):
     default_batch_size: int = Field(32, env="DEFAULT_BATCH_SIZE")
     default_learning_rate: float = Field(1e-3, env="DEFAULT_LEARNING_RATE")
 
+    # Fallback strategy configuration
+    enable_model_fallback: bool = Field(
+        True,
+        env="ENABLE_MODEL_FALLBACK",
+        description="Enable intelligent model fallback strategies",
+    )
+    fallback_strategy: str = Field(
+        "timeframe_and_symbol",
+        env="FALLBACK_STRATEGY",
+        description="Fallback strategy: none, timeframe_only, symbol_only, timeframe_and_symbol",
+    )
+    fallback_timeframe_priority: List[str] = Field(
+        default_factory=lambda: ["1d", "4h", "1h", "15m", "5m", "1m", "12h", "1w"],
+        env="FALLBACK_TIMEFRAME_PRIORITY",
+        description="Priority order for timeframe fallback (most preferred first)",
+    )
+    fallback_symbol_priority: List[str] = Field(
+        default_factory=lambda: ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
+        env="FALLBACK_SYMBOL_PRIORITY",
+        description="Priority order for symbol fallback (most preferred first)",
+    )
+    fallback_model_type_priority: List[str] = Field(
+        default_factory=lambda: [
+            "ibm/patchtst-forecasting",
+            "ibm/patchtsmixer-forecasting",
+            "pytorch-lightning/time-series-transformer",
+            "enhanced-transformer",
+        ],
+        env="FALLBACK_MODEL_TYPE_PRIORITY",
+        description="Priority order for model type fallback (most preferred first)",
+    )
+    max_fallback_attempts: int = Field(
+        5, env="MAX_FALLBACK_ATTEMPTS", description="Maximum fallback attempts"
+    )
+    fallback_timeout: float = Field(
+        30.0,
+        env="FALLBACK_TIMEOUT",
+        description="Fallback operation timeout in seconds",
+    )
+
     # Device configuration
     force_cpu: bool = Field(
         False,

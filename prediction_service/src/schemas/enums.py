@@ -96,3 +96,21 @@ class DeviceType(str, Enum):
     CPU = "cpu"
     CUDA = "cuda"
     MPS = "mps"  # Apple Silicon Metal Performance Shaders (if available)
+
+
+class FallbackStrategy(str, Enum):
+    """Fallback strategies for model selection"""
+
+    NONE = "none"  # No fallback, fail if exact model not found
+    TIMEFRAME_ONLY = "timeframe_only"  # Fallback to different timeframe only
+    SYMBOL_ONLY = "symbol_only"  # Fallback to different symbol only
+    TIMEFRAME_AND_SYMBOL = "timeframe_and_symbol"  # Full fallback strategy
+
+
+class ModelSelectionPriority(str, Enum):
+    """Priority order for model selection during fallback"""
+
+    EXACT_MATCH = "exact_match"  # Exact symbol + timeframe + model_type match
+    TIMEFRAME_FALLBACK = "timeframe_fallback"  # Same symbol, fallback timeframe
+    SYMBOL_FALLBACK = "symbol_fallback"  # Fallback symbol, same timeframe
+    FULL_FALLBACK = "full_fallback"  # Fallback both symbol and timeframe

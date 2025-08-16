@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import datetime
 
-from .enums import ModelType, TimeFrame, CryptoSymbol
+from .enums import ModelType, TimeFrame, CryptoSymbol, ModelSelectionPriority
 from .base_schemas import BaseResponse
 
 
@@ -101,6 +101,48 @@ class PredictionRequest(BaseModel):
         description="Model type (if None, will auto-select best available)",
     )
     n_steps: int = Field(1, gt=0, le=100, description="Number of prediction steps")
+    enable_fallback: bool = Field(
+        True, description="Whether to enable model fallback strategies"
+    )
+
+
+class ModelSelectionInfo(BaseModel):
+    """Information about the selected model for prediction"""
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    symbol: str = Field(..., description="Symbol used for prediction")
+    timeframe: str = Field(..., description="Timeframe used for prediction")
+    model_type: str = Field(..., description="Model type used for prediction")
+    model_path: Optional[str] = Field(None, description="Path to the selected model")
+    selection_priority: str = Field(
+        ..., description="Priority level of model selection"
+    )
+    fallback_applied: bool = Field(..., description="Whether fallback was applied")
+    fallback_reason: Optional[str] = Field(
+        None, description="Reason for fallback if applied"
+    )
+    confidence_score: float = Field(
+        ..., description="Confidence score of the selection"
+    )
+
+
+class FallbackInfo(BaseModel):
+    """Information about fallback operations"""
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    fallback_applied: bool = Field(..., description="Whether fallback was applied")
+    original_request: Dict[str, Any] = Field(
+        ..., description="Original request parameters"
+    )
+    selected_model: ModelSelectionInfo = Field(
+        ..., description="Actually selected model"
+    )
+    fallback_reason: Optional[str] = Field(None, description="Reason for fallback")
+    confidence_score: float = Field(
+        ..., description="Confidence score of the selection"
+    )
 
 
 class PredictionResponse(BaseResponse):
@@ -118,6 +160,17 @@ class PredictionResponse(BaseResponse):
     )
     confidence_score: Optional[float] = Field(None, description="Confidence score")
     model_info: Optional[Dict[str, Any]] = Field(None, description="Model information")
+
+    # New fallback-related fields
+    fallback_info: Optional[FallbackInfo] = Field(
+        None, description="Information about fallback operations"
+    )
+    model_selection: Optional[ModelSelectionInfo] = Field(
+        None, description="Information about the selected model"
+    )
+    prediction_metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Additional prediction metadata"
+    )
 
 
 class ModelInfo(BaseModel):

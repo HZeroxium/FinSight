@@ -215,13 +215,13 @@ class FacadeConstants:
     ADAPTER_TORCHSCRIPT = "torchscript"
     ADAPTER_TORCHSERVE = "torchserve"
     ADAPTER_TRITON = "triton"
-    
+
     # All supported adapter types
     SUPPORTED_ADAPTERS = [
         ADAPTER_SIMPLE,
-        ADAPTER_TORCHSCRIPT, 
+        ADAPTER_TORCHSCRIPT,
         ADAPTER_TORCHSERVE,
-        ADAPTER_TRITON
+        ADAPTER_TRITON,
     ]
 
     # Model cache settings
@@ -268,6 +268,57 @@ class BackgroundTaskConfig:
     # Health check settings
     HEALTH_CHECK_INTERVAL = 60  # seconds
     HEALTH_CHECK_TIMEOUT = 10  # seconds
+
+
+# Model Fallback Configuration
+class FallbackConstants:
+    """Constants for model fallback strategy"""
+
+    # Default fallback strategy
+    DEFAULT_FALLBACK_STRATEGY = "timeframe_and_symbol"
+
+    # Fallback priority order for timeframes (most preferred first)
+    TIMEFRAME_FALLBACK_PRIORITY = [
+        "1d",  # DAY_1 - most preferred fallback
+        "4h",  # HOUR_4
+        "1h",  # HOUR_1
+        "15m",  # MINUTE_15
+        "5m",  # MINUTE_5
+        "1m",  # MINUTE_1
+        "12h",  # HOUR_12
+        "1w",  # WEEK_1
+    ]
+
+    # Fallback priority order for symbols (most preferred first)
+    SYMBOL_FALLBACK_PRIORITY = [
+        "BTCUSDT",  # Most preferred fallback symbol
+        "ETHUSDT",  # Second choice
+        "BNBUSDT",  # Third choice
+    ]
+
+    # Model type priority for fallback (most preferred first)
+    MODEL_TYPE_FALLBACK_PRIORITY = [
+        "ibm/patchtst-forecasting",  # PATCHTST
+        "ibm/patchtsmixer-forecasting",  # PATCHTSMIXER
+        "pytorch-lightning/time-series-transformer",  # PYTORCH_TRANSFORMER
+        "enhanced-transformer",  # ENHANCED_TRANSFORMER
+    ]
+
+    # Maximum fallback attempts
+    MAX_FALLBACK_ATTEMPTS = 5
+
+    # Fallback timeout (seconds)
+    FALLBACK_TIMEOUT = 30.0
+
+    # Enable/disable fallback features
+    ENABLE_TIMEFRAME_FALLBACK = True
+    ENABLE_SYMBOL_FALLBACK = True
+    ENABLE_MODEL_TYPE_FALLBACK = True
+
+    # Logging for fallback operations
+    LOG_FALLBACK_ATTEMPTS = True
+    LOG_FALLBACK_SUCCESS = True
+    LOG_FALLBACK_FAILURES = True
 
 
 # Default Configurations
