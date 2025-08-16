@@ -1,7 +1,7 @@
 version: "3.8"
 
 services:
-  market_data_datasets_service:
+  market-dataset-service:
     build:
       context: .
       dockerfile: Dockerfile
@@ -9,8 +9,8 @@ services:
         BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
         VERSION: ${VERSION:-latest}
         VCS_REF: ${VCS_REF:-unknown}
-    image: hzeroxium/market_data_datasets_service:${VERSION:-latest}
-    container_name: market-data-datasets-service
+    image: hzeroxium/market-dataset-service:${VERSION:-latest}
+    container_name: market-dataset-service
     ports:
       - "8000:8000"
     environment:

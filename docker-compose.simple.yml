@@ -1,0 +1,157 @@
+services:
+  eureka-server:
+    image: steeltoeoss/eureka-server:latest
+    container_name: eureka-server
+    restart: unless-stopped
+    ports:
+      - "8761:8761"
+    environment:
+      - EUREKA_SERVER_PORT=8761
+      - EUREKA_SERVER_HOST=0.0.0.0
+      - EUREKA_SERVER_DEFAULT_ZONE=default
+      - EUREKA_SERVER_DEFAULT_REGION=default
+      - EUREKA_SERVER_DEFAULT_GROUP=default
+      - EUREKA_SERVER_DEFAULT_APPLICATION=default
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/eureka/apps"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - finsight-network
+
+  # FinSight AI Prediction Service
+  prediction-service:
+    image: hzeroxium/prediction-service:latest
+    container_name: prediction-service
+    restart: unless-stopped
+    ports:
+      - "8001:8000" # FastAPI API
+    depends_on:
+      - eureka-server
+    environment:
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-YOUR_PROVIDER}
+      - SPACES_ENDPOINT_URL=${SPACES_ENDPOINT_URL:-YOUR_ENDPOINT_URL}
+      - SPACES_REGION_NAME=${SPACES_REGION_NAME:-YOUR_REGION}
+      - SPACES_ACCESS_KEY=${SPACES_ACCESS_KEY:-YOUR_ACCESS_KEY}
+      - SPACES_SECRET_KEY=${SPACES_SECRET_KEY:-YOUR_SECRET_KEY}
+      - SPACES_BUCKET_NAME=${SPACES_BUCKET_NAME:-YOUR_BUCKET_NAME}
+      - FORCE_CPU=${FORCE_CPU:-true}
+
+      # Eureka Client configuration
+      - EUREKA_SERVER_URL=${EUREKA_SERVER_URL:-http://eureka-server:8761}
+      - EUREKA_APP_NAME=${EUREKA_APP_NAME:-prediction-service}
+      - EUREKA_INSTANCE_ID=${EUREKA_INSTANCE_ID:-prediction-service-1}
+      - EUREKA_HOST_NAME=${EUREKA_HOST_NAME:-prediction-service}
+      - EUREKA_IP_ADDRESS=${EUREKA_IP_ADDRESS:-127.0.0.1}
+      - EUREKA_PORT=${EUREKA_PORT:-8000}
+      - EUREKA_SECURE_PORT=${EUREKA_SECURE_PORT:-8443}
+
+    networks:
+      - finsight-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  news-service:
+    container_name: news-service
+    image: hzeroxium/news-service:latest
+    ports:
+      - "8002:8000"
+      - "50052:50051"
+    depends_on:
+      - eureka-server
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+      - HOST=0.0.0.0
+      - PORT=8000
+      - GRPC_PORT=50051
+      - LOG_LEVEL=INFO
+
+      # Eureka Client configuration
+      - EUREKA_SERVER_URL=${EUREKA_SERVER_URL:-http://eureka-server:8761}
+      - EUREKA_APP_NAME=${EUREKA_APP_NAME:-news-service}
+      - EUREKA_INSTANCE_ID=${EUREKA_INSTANCE_ID:-news-service-1}
+      - EUREKA_HOST_NAME=${EUREKA_HOST_NAME:-news-service}
+      - EUREKA_IP_ADDRESS=${EUREKA_IP_ADDRESS:-127.0.0.1}
+      - EUREKA_PORT=${EUREKA_PORT:-8000}
+      - EUREKA_SECURE_PORT=${EUREKA_SECURE_PORT:-8443}
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    command: ["server"]
+    networks:
+      - finsight-network
+
+  market-dataset-service:
+    image: hzeroxium/market-dataset-service:latest
+    container_name: market-dataset-service
+    ports:
+      - "8000:8000"
+    environment:
+      # Application settings
+      - APP_ENV=production
+      - DEBUG=false
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+
+      # Storage configuration
+      - STORAGE_BASE_DIRECTORY=/app/data
+      - REPOSITORY_TYPE=csv
+
+      # S3-compatible storage (MinIO)
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-http://minio:9000}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-market-data}
+      - S3_USE_SSL=${S3_USE_SSL:-false}
+      - SPACES_ENDPOINT_URL=${SPACES_ENDPOINT_URL:-YOUR_ENDPOINT_URL}
+      - SPACES_REGION_NAME=${SPACES_REGION_NAME:-YOUR_REGION_NAME}
+      - SPACES_ACCESS_KEY=${SPACES_ACCESS_KEY:-YOUR_ACCESS_KEY}
+      - SPACES_SECRET_KEY=${SPACES_SECRET_KEY:-YOUR_SECRET_KEY}
+      - SPACES_BUCKET_NAME=${SPACES_BUCKET_NAME:-YOUR_BUCKET_NAME}
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-digitalocean}
+
+      # Admin API
+      - API_KEY=${API_KEY:-admin-default-key-change-in-production}
+
+      # Eureka Client configuration
+      - EUREKA_SERVER_URL=${EUREKA_SERVER_URL:-http://eureka-server:8761}
+      - EUREKA_APP_NAME=${EUREKA_APP_NAME:-market-dataset-service}
+      - EUREKA_INSTANCE_ID=${EUREKA_INSTANCE_ID:-market-dataset-service-1}
+      - EUREKA_HOST_NAME=${EUREKA_HOST_NAME:-market-dataset-service}
+      - EUREKA_IP_ADDRESS=${EUREKA_IP_ADDRESS:-127.0.0.1}
+      - EUREKA_PORT=${EUREKA_PORT:-8000}
+      - EUREKA_SECURE_PORT=${EUREKA_SECURE_PORT:-8443}
+
+    networks:
+      - finsight-network
+
+    restart: unless-stopped
+
+    depends_on:
+      - eureka-server
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  finsight-network:
+    driver: bridge

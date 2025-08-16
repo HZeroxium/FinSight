@@ -173,7 +173,7 @@ class Settings(BaseSettings):
 
     # Eureka Client configuration
     enable_eureka_client: bool = Field(
-        default=True, description="Enable Eureka client registration"
+        default=True, description="Enable Eureka client registration", env="ENABLE_EUREKA_CLIENT"
     )
     eureka_server_url: str = Field(
         default="http://localhost:8761", description="Eureka server URL"

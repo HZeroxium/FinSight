@@ -1,0 +1,62 @@
+services:
+  eureka-server:
+    image: steeltoeoss/eureka-server:latest
+    container_name: eureka-server
+    restart: unless-stopped
+    ports:
+      - "8761:8761"
+    environment:
+      - EUREKA_SERVER_PORT=8761
+      - EUREKA_SERVER_HOST=0.0.0.0
+      - EUREKA_SERVER_DEFAULT_ZONE=default
+      - EUREKA_SERVER_DEFAULT_REGION=default
+      - EUREKA_SERVER_DEFAULT_GROUP=default
+      - EUREKA_SERVER_DEFAULT_APPLICATION=default
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/eureka/apps"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - prediction-service-network
+
+  # Prediction Service
+  prediction-service:
+    image: hzeroxium/prediction-service:latest
+    container_name: prediction-service
+    restart: unless-stopped
+    ports:
+      - "8001:8000" # FastAPI API
+    depends_on:
+      - eureka-server
+    environment:
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-YOUR_PROVIDER}
+      - SPACES_ENDPOINT_URL=${SPACES_ENDPOINT_URL:-YOUR_ENDPOINT_URL}
+      - SPACES_REGION_NAME=${SPACES_REGION_NAME:-YOUR_REGION}
+      - SPACES_ACCESS_KEY=${SPACES_ACCESS_KEY:-YOUR_ACCESS_KEY}
+      - SPACES_SECRET_KEY=${SPACES_SECRET_KEY:-YOUR_SECRET_KEY}
+      - SPACES_BUCKET_NAME=${SPACES_BUCKET_NAME:-YOUR_BUCKET_NAME}
+      - FORCE_CPU=${FORCE_CPU:-true}
+
+      # Eureka Client configuration
+      - EUREKA_SERVER_URL=${EUREKA_SERVER_URL:-http://eureka-server:8761}
+      - EUREKA_APP_NAME=${EUREKA_APP_NAME:-prediction-service}
+      - EUREKA_INSTANCE_ID=${EUREKA_INSTANCE_ID:-prediction-service-1}
+      - EUREKA_HOST_NAME=${EUREKA_HOST_NAME:-prediction-service}
+      - EUREKA_IP_ADDRESS=${EUREKA_IP_ADDRESS:-127.0.0.1}
+      - EUREKA_PORT=${EUREKA_PORT:-8000}
+      - EUREKA_SECURE_PORT=${EUREKA_SECURE_PORT:-8443}
+
+    networks:
+      - prediction-service-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  prediction-service-network:
+    driver: bridge
