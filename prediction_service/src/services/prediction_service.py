@@ -86,6 +86,9 @@ class PredictionService:
 
             # Use intelligent data selection with fallback
             # This is the key change: we now use data fallback utilities to find available data
+            self.logger.info(
+                f"🔍 Selecting data with fallback for {symbol} {timeframe.value}"
+            )
             data_selection = await self._select_data_with_fallback(
                 symbol=symbol,
                 timeframe=timeframe,
@@ -93,20 +96,45 @@ class PredictionService:
             )
 
             if not data_selection or not data_selection.symbol:
+                self.logger.error(
+                    f"❌ No suitable data found for {symbol} {timeframe.value}"
+                )
                 return PredictionResponse(
                     success=False,
                     message="No suitable data found",
-                    error=f"No dataset available for {symbol} {timeframe} after fallback attempts",
+                    error=f"No dataset available for {symbol} {timeframe.value} after fallback attempts",
                     fallback_info=self._create_fallback_info(model_selection),
                     model_selection=self._create_model_selection_info(model_selection),
                 )
 
             # Load recent data for prediction using the selected data (which might be a fallback)
-            recent_data = await self.data_service.data_loader.load_data(
-                data_selection.symbol, data_selection.timeframe
+            self.logger.info(
+                f"📥 Loading data for prediction: {data_selection.symbol} {data_selection.timeframe.value}"
             )
 
+            try:
+                recent_data = await self.data_service.data_loader.load_data(
+                    data_selection.symbol, data_selection.timeframe
+                )
+                self.logger.info(
+                    f"✅ Data loaded successfully: {len(recent_data)} records for {data_selection.symbol} {data_selection.timeframe.value}"
+                )
+            except Exception as e:
+                self.logger.error(
+                    f"❌ Failed to load data: {data_selection.symbol} {data_selection.timeframe.value} - {e}"
+                )
+                return PredictionResponse(
+                    success=False,
+                    message="Data loading failed",
+                    error=f"Failed to load data for {data_selection.symbol} {data_selection.timeframe.value}: {str(e)}",
+                    fallback_info=self._create_fallback_info(model_selection),
+                    model_selection=self._create_model_selection_info(model_selection),
+                )
+
             if recent_data.empty:
+                self.logger.error(
+                    f"❌ Loaded data is empty for {data_selection.symbol} {data_selection.timeframe.value}"
+                )
                 return PredictionResponse(
                     success=False,
                     message="No data available",
@@ -281,6 +309,10 @@ class PredictionService:
             DataSelectionResult with the selected data and fallback information
         """
         try:
+            self.logger.info(
+                f"🔍 Starting data selection for {symbol} {timeframe.value}"
+            )
+
             # Create data fallback utilities instance
             data_fallback_utils = DataFallbackUtils(self.data_service.data_loader)
 
@@ -293,16 +325,21 @@ class PredictionService:
 
             if data_selection:
                 self.logger.info(
-                    f"Data selection result: {data_selection.symbol} "
+                    f"✅ Data selection successful: {data_selection.symbol} "
                     f"{data_selection.timeframe.value} "
                     f"(priority: {data_selection.selection_priority.value}, "
-                    f"fallback: {data_selection.fallback_applied})"
+                    f"fallback: {data_selection.fallback_applied}, "
+                    f"confidence: {data_selection.confidence_score})"
+                )
+            else:
+                self.logger.warning(
+                    f"❌ Data selection failed for {symbol} {timeframe.value}"
                 )
 
             return data_selection
 
         except Exception as e:
-            self.logger.error(f"Error in data selection with fallback: {e}")
+            self.logger.error(f"❌ Error in data selection with fallback: {e}")
             return None
 
     def _create_fallback_info(

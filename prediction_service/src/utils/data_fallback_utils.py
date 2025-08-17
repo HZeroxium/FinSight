@@ -81,18 +81,36 @@ class DataFallbackUtils:
         Returns:
             DataSelectionResult containing the selected data and fallback information
         """
-        # Start with exact match attempt
-        exact_match = await self._try_exact_data_match(
-            requested_symbol, requested_timeframe
+        import uuid
+
+        search_id = str(uuid.uuid4())[:8]  # Short unique identifier
+
+        self.logger.info(
+            f"🚀 [{search_id}] Starting data availability search for {requested_symbol} {requested_timeframe.value}"
         )
 
-        if exact_match and exact_match.data_path and exact_match.data_path.exists():
+        # Start with exact match attempt
+        exact_match = await self._try_exact_data_match(
+            requested_symbol, requested_timeframe, search_id
+        )
+
+        # Check if exact match was found (data_path can be None if data loader handles paths internally)
+        if exact_match and exact_match.confidence_score > 0:
             self.logger.info(
-                f"Found exact data match: {exact_match.symbol} {exact_match.timeframe.value}"
+                f"✅ [{search_id}] Found exact data match: {exact_match.symbol} {exact_match.timeframe.value} (confidence: {exact_match.confidence_score})"
             )
+            # IMPORTANT: Return immediately when exact match is found
+            # Do not continue with fallback strategies
             return exact_match
 
+        self.logger.info(
+            f"❌ [{search_id}] Exact match not found for {requested_symbol} {requested_timeframe.value}"
+        )
+
         if not enable_fallback:
+            self.logger.info(
+                f"🔄 [{search_id}] Fallback disabled, returning exact match result for {requested_symbol} {requested_timeframe.value}"
+            )
             # Return the exact match result even if data doesn't exist
             return exact_match or DataSelectionResult(
                 symbol=requested_symbol,
@@ -109,33 +127,40 @@ class DataFallbackUtils:
             )
 
         # Apply fallback strategies - prioritize timeframe fallback over symbol fallback
+        self.logger.info(
+            f"🔄 [{search_id}] Applying fallback strategies for {requested_symbol} {requested_timeframe.value}"
+        )
         fallback_result = await self._apply_data_fallback_strategies(
             requested_symbol, requested_timeframe
         )
 
-        return fallback_result
-
         if fallback_result:
             self.logger.info(
-                f"Applied data fallback: {requested_symbol} {requested_timeframe.value} -> "
+                f"✅ [{search_id}] Applied data fallback: {requested_symbol} {requested_timeframe.value} -> "
                 f"{fallback_result.symbol} {fallback_result.timeframe.value} "
                 f"({fallback_result.fallback_reason})"
             )
             return fallback_result
 
         # If all fallback strategies fail, return the best available option
+        self.logger.info(
+            f"🔄 [{search_id}] All fallback strategies failed, trying best available for {requested_symbol} {requested_timeframe.value}"
+        )
         best_available = await self._find_best_available_data_fallback(
             requested_symbol, requested_timeframe
         )
 
         if best_available:
             self.logger.warning(
-                f"Using best available data fallback: {best_available.symbol} "
+                f"⚠️ [{search_id}] Using best available data fallback: {best_available.symbol} "
                 f"{best_available.timeframe.value}"
             )
             return best_available
 
         # Final fallback - return the original request with no data found
+        self.logger.error(
+            f"❌ [{search_id}] No data available after all fallback attempts for {requested_symbol} {requested_timeframe.value}"
+        )
         return DataSelectionResult(
             symbol=requested_symbol,
             timeframe=requested_timeframe,
@@ -151,20 +176,30 @@ class DataFallbackUtils:
         )
 
     async def _try_exact_data_match(
-        self, symbol: str, timeframe: TimeFrame
+        self, symbol: str, timeframe: TimeFrame, search_id: str
     ) -> Optional[DataSelectionResult]:
         """Try to find an exact match for the requested data."""
         try:
+            self.logger.debug(
+                f"🔍 [{search_id}] Checking exact data match for {symbol} {timeframe.value}"
+            )
+
             # Check if data exists for the exact symbol/timeframe combination
             data_exists = await self.data_loader.check_data_exists(symbol, timeframe)
+            self.logger.debug(
+                f"📊 [{search_id}] Data exists check result: {data_exists} for {symbol} {timeframe.value}"
+            )
 
             if data_exists:
                 # Try to load a small sample to verify data is accessible
                 try:
+                    self.logger.debug(
+                        f"📥 [{search_id}] Loading sample data for {symbol} {timeframe.value}"
+                    )
                     sample_data = await self.data_loader.load_data(symbol, timeframe)
                     if not sample_data.empty:
                         self.logger.info(
-                            f"✅ Exact data match found: {symbol} {timeframe.value}"
+                            f"✅ [{search_id}] Exact data match found: {symbol} {timeframe.value} ({len(sample_data)} records)"
                         )
                         return DataSelectionResult(
                             symbol=symbol,
@@ -179,9 +214,50 @@ class DataFallbackUtils:
                             fallback_reason=None,
                             confidence_score=1.0,
                         )
+                    else:
+                        self.logger.warning(
+                            f"⚠️ [{search_id}] Data exists but sample is empty: {symbol} {timeframe.value}"
+                        )
                 except Exception as e:
                     self.logger.warning(
-                        f"Data exists but failed to load sample: {symbol} {timeframe.value} - {e}"
+                        f"⚠️ [{search_id}] Data exists but failed to load sample: {symbol} {timeframe.value} - {e}"
+                    )
+            else:
+                self.logger.debug(
+                    f"❌ [{search_id}] Data existence check failed for {symbol} {timeframe.value}"
+                )
+
+                # Even if existence check fails, try to load data directly
+                # This handles the case where data was loaded from cloud but not yet cached locally
+                try:
+                    self.logger.debug(
+                        f"🔄 [{search_id}] Attempting direct data load for {symbol} {timeframe.value}"
+                    )
+                    sample_data = await self.data_loader.load_data(symbol, timeframe)
+                    if not sample_data.empty:
+                        self.logger.info(
+                            f"✅ [{search_id}] Direct data load successful: {symbol} {timeframe.value} ({len(sample_data)} records)"
+                        )
+                        return DataSelectionResult(
+                            symbol=symbol,
+                            timeframe=timeframe,
+                            data_path=None,  # Data loader handles the path internally
+                            selection_priority=DataSelectionPriority.EXACT_MATCH,
+                            fallback_applied=False,
+                            original_request={
+                                "symbol": symbol,
+                                "timeframe": timeframe.value,
+                            },
+                            fallback_reason=None,
+                            confidence_score=1.0,
+                        )
+                    else:
+                        self.logger.debug(
+                            f"⚠️ [{search_id}] Direct data load returned empty data: {symbol} {timeframe.value}"
+                        )
+                except Exception as e:
+                    self.logger.debug(
+                        f"⚠️ [{search_id}] Direct data load failed: {symbol} {timeframe.value} - {e}"
                     )
 
             return DataSelectionResult(
@@ -199,7 +275,7 @@ class DataFallbackUtils:
             )
 
         except Exception as e:
-            self.logger.error(f"Error in exact data match: {e}")
+            self.logger.error(f"❌ [{search_id}] Error in exact data match: {e}")
             return None
 
     async def _apply_data_fallback_strategies(

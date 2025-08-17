@@ -120,17 +120,41 @@ class CloudDataLoader(IDataLoader):
 
     async def check_data_exists(self, symbol: str, timeframe: TimeFrame) -> bool:
         """Check if data exists in cloud, cache, or local storage."""
+        import asyncio
 
         # Check cache first
         if await self._check_cache_exists(symbol, timeframe):
+            self.logger.debug(f"✅ Data found in cache: {symbol} {timeframe.value}")
             return True
 
         # Check cloud storage
         if self.cloud_enabled and await self._check_cloud_exists(symbol, timeframe):
+            self.logger.debug(f"✅ Data found in cloud: {symbol} {timeframe.value}")
             return True
 
         # Check local storage
-        return await self._check_local_exists(symbol, timeframe)
+        if await self._check_local_exists(symbol, timeframe):
+            self.logger.debug(
+                f"✅ Data found in local storage: {symbol} {timeframe.value}"
+            )
+            return True
+
+        # If no data found, try a small delay and check again
+        # This handles the case where data was just loaded from cloud but not yet cached
+        self.logger.debug(
+            f"⏳ No data found immediately, waiting briefly and retrying: {symbol} {timeframe.value}"
+        )
+        await asyncio.sleep(0.1)  # Small delay to allow file operations to complete
+
+        # Retry local storage check
+        if await self._check_local_exists(symbol, timeframe):
+            self.logger.debug(
+                f"✅ Data found in local storage after retry: {symbol} {timeframe.value}"
+            )
+            return True
+
+        self.logger.debug(f"❌ No data found after retry: {symbol} {timeframe.value}")
+        return False
 
     def split_data(
         self, data: pd.DataFrame, train_ratio: float = 0.8, val_ratio: float = 0.1

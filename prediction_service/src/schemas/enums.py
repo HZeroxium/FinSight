@@ -31,9 +31,9 @@ class CryptoSymbol(str, Enum):
 class TimeFrame(str, Enum):
     """Supported timeframes for data"""
 
-    MINUTE_1 = "1m"
-    MINUTE_5 = "5m"
-    MINUTE_15 = "15m"
+    # MINUTE_1 = "1m"
+    # MINUTE_5 = "5m"
+    # MINUTE_15 = "15m"
     HOUR_1 = "1h"
     HOUR_4 = "4h"
     HOUR_12 = "12h"

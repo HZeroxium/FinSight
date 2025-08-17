@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     """Main configuration class for the backtesting system"""
 
     # Service configuration
-    app_name: str = "backtesting-service"
+    app_name: str = "market-dataset-service"
     debug: bool = False
     environment: str = "development"
     host: str = "0.0.0.0"
@@ -173,7 +173,9 @@ class Settings(BaseSettings):
 
     # Eureka Client configuration
     enable_eureka_client: bool = Field(
-        default=True, description="Enable Eureka client registration", env="ENABLE_EUREKA_CLIENT"
+        default=True,
+        description="Enable Eureka client registration",
+        env="ENABLE_EUREKA_CLIENT",
     )
     eureka_server_url: str = Field(
         default="http://localhost:8761", description="Eureka server URL"

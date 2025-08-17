@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     Includes both REST API and Eureka client initialization.
     """
     # Startup
-    logger.info("🚀 Starting FinSight Backtesting API server")
+    logger.info("🚀 Starting FinSight Market Dataset Service server")
     logger.info(f"📊 Environment: {settings.environment}")
     logger.info(f"🌐 FastAPI Host: {settings.host}:{settings.port}")
     logger.info(f"🔧 Debug mode: {settings.debug}")
@@ -94,11 +94,11 @@ async def lifespan(app: FastAPI):
         else:
             if eureka_enabled:
                 logger.info(
-                    "🎉 FinSight Backtesting API is fully operational (REST + Eureka)!"
+                    "🎉 FinSight Market Dataset Service is fully operational (REST + Eureka)!"
                 )
             else:
                 logger.info(
-                    "🎉 FinSight Backtesting API is fully operational (REST only)!"
+                    "🎉 FinSight Market Dataset Service is fully operational (REST only)!"
                 )
 
     except Exception as e:
@@ -126,14 +126,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Error during cleanup: {str(e)}")
 
-    logger.info("👋 FinSight Backtesting API shutdown complete")
+    logger.info("👋 FinSight Market Dataset Service shutdown complete")
 
 
 # Create FastAPI application
 app = FastAPI(
-    title="FinSight Backtesting API",
+    title="FinSight Market Dataset Service",
     description="""
-    Advanced backtesting system for cryptocurrency trading strategies.
+    Advanced market dataset service for cryptocurrency trading strategies.
 
     ## Features
 
