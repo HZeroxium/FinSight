@@ -24,6 +24,7 @@ from ..services.market_data_service import MarketDataService
 from ..schemas.ohlcv_schemas import OHLCVQuerySchema, OHLCVSchema
 from common.logger import LoggerFactory, LoggerType, LogLevel
 from ..utils.datetime_utils import DateTimeUtils
+from ..schemas.enums import RepositoryType
 
 
 class RepositoryError(Exception):
@@ -102,8 +103,8 @@ class MarketDataStorageService:
         timeframe: str,
         start_date: str,
         end_date: str,
-        source_format: str = "csv",
-        target_format: str = "parquet",
+        source_format: str = RepositoryType.CSV.value,
+        target_format: str = RepositoryType.PARQUET.value,
         compress: bool = True,
         include_metadata: bool = True,
     ) -> Dict[str, Any]:
@@ -266,7 +267,7 @@ class MarketDataStorageService:
     async def download_dataset(
         self,
         object_key: str,
-        target_format: str = "csv",
+        target_format: str = RepositoryType.CSV.value,
         local_path: Optional[str] = None,
         extract_archives: bool = True,
     ) -> Dict[str, Any]:
@@ -367,11 +368,11 @@ class MarketDataStorageService:
             Conversion result dictionary
         """
         try:
-            if source_format == target_format:
-                return {
-                    "success": False,
-                    "message": "Source and target formats are the same",
-                }
+            # if source_format == target_format:
+            #     return {
+            #         "success": False,
+            #         "message": "Source and target formats are the same",
+            #     }
 
             self.logger.info(
                 f"Starting format conversion: {source_format} → {target_format} "
@@ -459,8 +460,8 @@ class MarketDataStorageService:
     async def bulk_upload_datasets(
         self,
         datasets: List[Dict[str, Any]],
-        source_format: str = "csv",
-        target_format: str = "parquet",
+        source_format: str = RepositoryType.CSV.value,
+        target_format: str = RepositoryType.PARQUET.value,
         max_concurrent: int = 3,
     ) -> Dict[str, Any]:
         """

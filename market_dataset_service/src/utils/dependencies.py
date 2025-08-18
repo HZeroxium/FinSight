@@ -31,6 +31,7 @@ from .datetime_utils import DateTimeUtils
 from common.logger import LoggerFactory
 from ..schemas.enums import RepositoryType
 from ..services.eureka_client_service import EurekaClientService
+from ..services.admin_service import AdminService
 
 
 def _create_repository(
@@ -181,6 +182,16 @@ class Container(containers.DeclarativeContainer):
     # Eureka Client Service
     eureka_client_service = providers.Singleton(
         EurekaClientService,
+    )
+
+    admin_service = providers.Singleton(
+        AdminService,
+        market_data_service=market_data_service,
+        collector_service=market_data_collector_service,
+        repository=repository,
+        storage_service=market_data_storage_service,
+        market_data_job_service=market_data_job_service,
+        cross_repository_pipeline=cross_repository_pipeline,
     )
 
 

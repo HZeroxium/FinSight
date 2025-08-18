@@ -190,3 +190,55 @@ class APIKeyValidationResponse(BaseModel):
     )
 
     model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat() + "Z"})
+
+
+class QuickUploadResult(BaseModel):
+    """Result of a single upload operation for a symbol and timeframe."""
+
+    symbol: str = Field(..., description="Trading symbol")
+    timeframe: str = Field(..., description="Timeframe uploaded")
+    success: bool = Field(..., description="Whether the upload succeeded")
+    object_key: Optional[str] = Field(default=None, description="Uploaded object key")
+    message: Optional[str] = Field(default=None, description="Status message")
+
+
+class QuickSymbolPipelineResult(BaseModel):
+    """Aggregated pipeline results for a single symbol."""
+
+    symbol: str = Field(..., description="Trading symbol")
+    collection_status: str = Field(..., description="Collection step status")
+    collection_records: int = Field(default=0, description="Records collected in step")
+    conversion_status: str = Field(..., description="Conversion step status")
+    converted_timeframes: List[str] = Field(
+        default_factory=list, description="Converted target timeframes"
+    )
+    upload_results: List[QuickUploadResult] = Field(
+        default_factory=list, description="Per-timeframe upload results"
+    )
+    errors: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Errors encountered for this symbol"
+    )
+
+
+class QuickPipelineResponse(BaseModel):
+    """Response schema for the quick collect → convert → upload pipeline."""
+
+    exchange: str = Field(..., description="Exchange used for operations")
+    symbols: List[str] = Field(..., description="Symbols processed")
+    source_timeframe: str = Field(..., description="Source timeframe collected")
+    target_timeframes: List[str] = Field(..., description="Target timeframes converted")
+    source_format: str = Field(..., description="Source repository format")
+    target_format: str = Field(..., description="Target repository format for upload")
+    started_at: datetime = Field(..., description="Pipeline start time")
+    finished_at: datetime = Field(..., description="Pipeline finish time")
+    duration_seconds: float = Field(
+        ..., description="Total pipeline duration in seconds"
+    )
+    results_by_symbol: List[QuickSymbolPipelineResult] = Field(
+        default_factory=list, description="Detailed results per symbol"
+    )
+    success: bool = Field(..., description="Overall pipeline success status")
+    message: str = Field(..., description="Summary message")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata"
+    )

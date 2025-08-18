@@ -92,7 +92,8 @@ class PredictionService:
             data_selection = await self._select_data_with_fallback(
                 symbol=symbol,
                 timeframe=timeframe,
-                enable_fallback=request.enable_fallback,
+                # enable_fallback=request.enable_fallback,
+                enable_fallback=False,
             )
 
             if not data_selection or not data_selection.symbol:
@@ -181,7 +182,7 @@ class PredictionService:
                 # Generate prediction timestamps
                 # Use the timeframe from the selected model (which might be a fallback)
                 prediction_timestamps = self._generate_prediction_timestamps(
-                    model_selection.timeframe, request.n_steps
+                    timeframe, request.n_steps
                 )
 
                 # Create comprehensive response with fallback information
@@ -295,7 +296,7 @@ class PredictionService:
         self,
         symbol: str,
         timeframe: TimeFrame,
-        enable_fallback: bool = True,
+        enable_fallback: bool = False,
     ) -> Optional[DataSelectionResult]:
         """
         Select the best available data using intelligent fallback strategies.
