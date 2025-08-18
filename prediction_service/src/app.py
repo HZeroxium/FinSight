@@ -21,6 +21,7 @@ from .routers.serving import router as serving_router
 from .routers.dataset_management import router as dataset_management_router
 from .routers.cloud_storage import router as cloud_storage_router
 from .routers.eureka_router import router as eureka_router
+from .routers.cleanup import router as cleanup_router
 from .schemas.base_schemas import HealthResponse
 from .services.eureka_client_service import eureka_client_service
 from common.logger import LoggerFactory, LogLevel
@@ -81,6 +82,17 @@ async def lifespan(app: FastAPI):
 
         logger.info("✅ Serving adapter initialized successfully")
 
+        # Initialize background cleaner service
+        logger.info("Initializing background cleaner service...")
+        from .services.background_cleaner_service import start_background_cleaner
+
+        cleanup_success = await start_background_cleaner()
+        if cleanup_success:
+            logger.info("✅ Background cleaner service initialized successfully")
+        else:
+            logger.warning("⚠️ Background cleaner service initialization failed")
+            startup_errors.append("Background cleaner service initialization failed")
+
         # Step 2: Initialize Eureka client service
         if eureka_enabled:
             logger.info("📋 Step 2: Initializing Eureka client service...")
@@ -135,6 +147,16 @@ async def lifespan(app: FastAPI):
 
         training_service = get_training_service()
         await training_service.shutdown()
+
+        # Stop background cleaner service
+        logger.info("Stopping background cleaner service...")
+        from .services.background_cleaner_service import stop_background_cleaner
+
+        cleanup_stop_success = await stop_background_cleaner()
+        if cleanup_stop_success:
+            logger.info("✅ Background cleaner service stopped")
+        else:
+            logger.warning("⚠️ Background cleaner service stop failed")
 
         logger.info("✅ Async services cleaned up successfully")
 
@@ -210,15 +232,14 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 
 
 # Include routers
-app.include_router(
-    training_router
-)  # Consolidated training endpoints (both legacy and async)
-app.include_router(prediction_router)
-app.include_router(models_router)
+app.include_router(prediction_router)  # Prediction endpoints
+app.include_router(training_router)  # Training endpoints
+app.include_router(models_router)  # Model management endpoints
 app.include_router(serving_router)  # Model serving management endpoints
 app.include_router(dataset_management_router)  # Dataset management endpoints
 app.include_router(cloud_storage_router)  # Cloud storage management endpoints
 app.include_router(eureka_router)  # Eureka client management endpoints
+app.include_router(cleanup_router)  # Cleanup management endpoints
 
 
 @app.get("/", response_model=dict)
@@ -240,6 +261,7 @@ async def root():
             "datasets": "/datasets",  # Dataset management
             "cloud_storage": "/cloud-storage",  # Cloud storage management
             "eureka": "/eureka" if eureka_enabled else None,  # Eureka client management
+            "cleanup": "/cleanup",  # Cleanup management
             "health": "/health",
         },
         "features": {
@@ -248,6 +270,7 @@ async def root():
             "dataset_management": True,
             "cloud_storage": True,
             "eureka_client": eureka_enabled,
+            "background_cleanup": True,
         },
     }
 

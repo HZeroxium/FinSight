@@ -414,6 +414,37 @@ class Settings(BaseSettings):
         description="Enable overwriting existing files in cloud storage",
     )
 
+    # Cleanup configuration
+    cleanup_interval: str = Field(
+        default="1d",
+        description="Background cleanup interval (1m, 5m, 15m, 1h, 4h, 12h, 1d, 1w, disabled)",
+    )
+
+    # Cleanup targets configuration
+    enable_cloud_cache_cleanup: bool = Field(
+        default=True, description="Enable automatic cleanup of cloud cache files"
+    )
+    enable_datasets_cleanup: bool = Field(
+        default=True, description="Enable automatic cleanup of old dataset files"
+    )
+    enable_models_cleanup: bool = Field(
+        default=True, description="Enable automatic cleanup of old model files"
+    )
+
+    # Cleanup age thresholds (in hours)
+    cloud_cache_max_age_hours: int = Field(
+        default=24,
+        description="Maximum age of cloud cache files before cleanup (hours)",
+    )
+    datasets_max_age_hours: int = Field(
+        default=168,  # 7 days
+        description="Maximum age of dataset files before cleanup (hours)",
+    )
+    models_max_age_hours: int = Field(
+        default=720,  # 30 days
+        description="Maximum age of model files before cleanup (hours)",
+    )
+
     # Field validators
     @field_validator("default_symbols", mode="before")
     @classmethod

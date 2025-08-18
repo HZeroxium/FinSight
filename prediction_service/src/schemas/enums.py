@@ -31,9 +31,9 @@ class CryptoSymbol(str, Enum):
 class TimeFrame(str, Enum):
     """Supported timeframes for data"""
 
-    # MINUTE_1 = "1m"
-    # MINUTE_5 = "5m"
-    # MINUTE_15 = "15m"
+    MINUTE_1 = "1m"
+    MINUTE_5 = "5m"
+    MINUTE_15 = "15m"
     HOUR_1 = "1h"
     HOUR_4 = "4h"
     HOUR_12 = "12h"
@@ -176,3 +176,26 @@ class FallbackReason(str, Enum):
     DATA_LOAD_ERROR = "data_load_error"
     INSUFFICIENT_DATA = "insufficient_data"
     BEST_AVAILABLE_OPTION = "best_available_option"
+
+
+class CleanupTarget(str, Enum):
+    """Targets for cleanup operations"""
+
+    CLOUD_CACHE = "cloud_cache"
+    DATASETS = "datasets"
+    MODELS = "models"
+    ALL = "all"
+
+
+class CleanupInterval(str, Enum):
+    """Cleanup intervals for background cleaner"""
+
+    MINUTE_1 = "1m"
+    MINUTE_5 = "5m"
+    MINUTE_15 = "15m"
+    HOUR_1 = "1h"
+    HOUR_4 = "4h"
+    HOUR_12 = "12h"
+    DAY_1 = "1d"
+    WEEK_1 = "1w"
+    DISABLED = "disabled"

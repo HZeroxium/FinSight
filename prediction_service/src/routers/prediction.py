@@ -40,26 +40,26 @@ async def predict(request: PredictionRequest) -> PredictionResponse:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.get("/models", response_model=Dict[str, Any])
-async def get_available_models() -> Dict[str, Any]:
-    """
-    Get information about available trained models
+# @router.get("/models", response_model=Dict[str, Any])
+# async def get_available_models() -> Dict[str, Any]:
+#     """
+#     Get information about available trained models
 
-    Returns a comprehensive list of all trained models with their metadata,
-    organized by symbol and timeframe.
-    """
-    try:
-        models_info = prediction_service.get_available_models()
+#     Returns a comprehensive list of all trained models with their metadata,
+#     organized by symbol and timeframe.
+#     """
+#     try:
+#         models_info = prediction_service.get_available_models()
 
-        return {
-            "success": True,
-            "message": f"Found {len(models_info)} trained models",
-            "data": {
-                "models": models_info,
-                "total_count": len(models_info),
-            },
-        }
+#         return {
+#             "success": True,
+#             "message": f"Found {len(models_info)} trained models",
+#             "data": {
+#                 "models": models_info,
+#                 "total_count": len(models_info),
+#             },
+#         }
 
-    except Exception as e:
-        logger.error(f"Error getting available models: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+#     except Exception as e:
+#         logger.error(f"Error getting available models: {str(e)}")
+#         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
