@@ -5,7 +5,7 @@ Business logic services.
 """
 
 from .search_service import SearchService
-from .job_service import JobManagementService
+from .job_management_service import JobManagementService
 
 __all__ = [
     "SearchService",

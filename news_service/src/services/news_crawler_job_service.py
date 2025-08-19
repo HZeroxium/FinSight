@@ -25,15 +25,15 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 
-from .services.news_collector_service import (
+from ..services.news_collector_service import (
     NewsCollectorService,
     BatchCollectionRequest,
 )
-from .services.news_service import NewsService
-from .repositories.mongo_news_repository import MongoNewsRepository
-from .schemas.news_schemas import NewsSource
-from .core.news_collector_factory import CollectorType
-from .core.config import settings
+from ..services.news_service import NewsService
+from ..repositories.mongo_news_repository import MongoNewsRepository
+from ..schemas.news_schemas import NewsSource
+from ..core.news_collector_factory import CollectorType
+from ..core.config import settings
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
 

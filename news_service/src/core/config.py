@@ -184,12 +184,72 @@ class Settings(BaseSettings):
     enable_caching: bool = True
     cache_ttl_seconds: int = 300
 
+    # Redis Cache Configuration
+    redis_host: str = Field(default="localhost", description="Redis host")
+    redis_port: int = Field(default=6379, description="Redis port")
+    redis_db: int = Field(default=0, description="Redis database number")
+    redis_password: Optional[str] = Field(default=None, description="Redis password")
+    redis_key_prefix: str = Field(
+        default="news-service:", description="Redis key prefix"
+    )
+    redis_connection_timeout: int = Field(
+        default=5, description="Redis connection timeout"
+    )
+    redis_socket_timeout: int = Field(default=5, description="Redis socket timeout")
+    redis_socket_connect_timeout: int = Field(
+        default=5, description="Redis socket connect timeout"
+    )
+    redis_socket_keepalive: bool = Field(
+        default=True, description="Redis socket keepalive"
+    )
+    redis_retry_on_timeout: bool = Field(
+        default=True, description="Redis retry on timeout"
+    )
+    redis_max_connections: int = Field(default=10, description="Redis max connections")
+
+    # Cache TTL Configuration for different endpoints
+    cache_ttl_search_news: int = Field(
+        default=1800, description="TTL for search news (30 minutes)"
+    )
+    cache_ttl_recent_news: int = Field(
+        default=900, description="TTL for recent news (15 minutes)"
+    )
+    cache_ttl_news_by_source: int = Field(
+        default=1800, description="TTL for news by source (30 minutes)"
+    )
+    cache_ttl_news_by_keywords: int = Field(
+        default=1200, description="TTL for news by keywords (20 minutes)"
+    )
+    cache_ttl_news_by_tags: int = Field(
+        default=1800, description="TTL for news by tags (30 minutes)"
+    )
+    cache_ttl_available_tags: int = Field(
+        default=3600, description="TTL for available tags (1 hour)"
+    )
+    cache_ttl_repository_stats: int = Field(
+        default=600, description="TTL for repository stats (10 minutes)"
+    )
+    cache_ttl_news_item: int = Field(
+        default=7200, description="TTL for individual news item (2 hours)"
+    )
+
+    # Cache invalidation settings
+    cache_invalidation_enabled: bool = Field(
+        default=True, description="Enable cache invalidation"
+    )
+    cache_invalidation_pattern: str = Field(
+        default="news-service:*", description="Cache invalidation pattern"
+    )
+    cache_invalidation_delay_seconds: int = Field(
+        default=5, description="Delay before cache invalidation"
+    )
+
     # Rate limiting
     rate_limit_requests_per_minute: int = 100
 
     # Cron job configuration
     cron_job_enabled: bool = True
-    cron_job_schedule: str = "0 */1 * * *"  # Every hour
+    cron_job_schedule: str = "0 */6 * * *"  # Every 6 hours (changed from every hour)
     cron_job_max_items_per_source: int = 100
     cron_job_sources: List[str] = Field(
         default_factory=lambda: ["coindesk", "cointelegraph"]
@@ -291,6 +351,31 @@ class Settings(BaseSettings):
             )
         return v
 
+    @field_validator("cache_ttl_search_news")
+    @classmethod
+    def validate_cache_ttl_search_news(cls, v):
+        if v < 60 or v > 7200:
+            raise ValueError(
+                "cache_ttl_search_news must be between 60 and 7200 seconds"
+            )
+        return v
+
+    @field_validator("cache_ttl_recent_news")
+    @classmethod
+    def validate_cache_ttl_recent_news(cls, v):
+        if v < 60 or v > 3600:
+            raise ValueError(
+                "cache_ttl_recent_news must be between 60 and 3600 seconds"
+            )
+        return v
+
+    @field_validator("redis_max_connections")
+    @classmethod
+    def validate_redis_max_connections(cls, v):
+        if v < 1 or v > 100:
+            raise ValueError("redis_max_connections must be between 1 and 100")
+        return v
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -367,6 +452,35 @@ class Settings(BaseSettings):
             "max_retry_delay_seconds": self.eureka_max_retry_delay_seconds,
             "enable_auto_re_registration": self.eureka_enable_auto_re_registration,
             "re_registration_delay_seconds": self.eureka_re_registration_delay_seconds,
+        }
+
+    @property
+    def cache_config(self) -> dict:
+        """Get cache configuration"""
+        return {
+            "enable_caching": self.enable_caching,
+            "redis_host": self.redis_host,
+            "redis_port": self.redis_port,
+            "redis_db": self.redis_db,
+            "redis_password": self.redis_password,
+            "redis_key_prefix": self.redis_key_prefix,
+            "redis_connection_timeout": self.redis_connection_timeout,
+            "redis_socket_timeout": self.redis_socket_timeout,
+            "redis_socket_connect_timeout": self.redis_socket_connect_timeout,
+            "redis_socket_keepalive": self.redis_socket_keepalive,
+            "redis_retry_on_timeout": self.redis_retry_on_timeout,
+            "redis_max_connections": self.redis_max_connections,
+            "cache_ttl_search_news": self.cache_ttl_search_news,
+            "cache_ttl_recent_news": self.cache_ttl_recent_news,
+            "cache_ttl_news_by_source": self.cache_ttl_news_by_source,
+            "cache_ttl_news_by_keywords": self.cache_ttl_news_by_keywords,
+            "cache_ttl_news_by_tags": self.cache_ttl_news_by_tags,
+            "cache_ttl_available_tags": self.cache_ttl_available_tags,
+            "cache_ttl_repository_stats": self.cache_ttl_repository_stats,
+            "cache_ttl_news_item": self.cache_ttl_news_item,
+            "cache_invalidation_enabled": self.cache_invalidation_enabled,
+            "cache_invalidation_pattern": self.cache_invalidation_pattern,
+            "cache_invalidation_delay_seconds": self.cache_invalidation_delay_seconds,
         }
 
 

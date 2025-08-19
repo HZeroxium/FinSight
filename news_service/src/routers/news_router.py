@@ -11,8 +11,13 @@ from ..schemas.news_schemas import (
     NewsResponse,
     TimeRangeSearchParams,
 )
-from ..utils.dependencies import get_news_service
+from ..utils.dependencies import get_news_service, require_admin_access
 from ..utils.response_converters import build_news_response, build_filters_summary
+from ..utils.cache_utils import (
+    get_cache_statistics as get_cache_statistics_util,
+    check_cache_health as check_cache_health_util,
+    invalidate_all_news_cache as invalidate_all_news_cache_util,
+)
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
 # Initialize router
@@ -465,4 +470,97 @@ async def news_health_check(
                 "error": str(e),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
+        )
+
+
+# Cache management endpoints (admin only)
+@router.get("/cache/stats", response_model=Dict[str, Any])
+async def cache_stats(
+    _: bool = Depends(require_admin_access),
+) -> Dict[str, Any]:
+    """
+    Get cache statistics and information (Admin only)
+
+    Returns:
+        Dict containing cache statistics, hit rates, and key information
+    """
+    try:
+        logger.info("Getting cache statistics")
+        stats = await get_cache_statistics_util()
+
+        return {
+            "cache_statistics": stats,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting cache statistics: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get cache statistics: {str(e)}"
+        )
+
+
+@router.get("/cache/health")
+async def cache_health(
+    _: bool = Depends(require_admin_access),
+) -> Dict[str, Any]:
+    """
+    Check cache health status (Admin only)
+
+    Returns:
+        Dict containing cache health status
+    """
+    try:
+        logger.info("Checking cache health")
+        is_healthy = await check_cache_health_util()
+
+        return {
+            "status": "healthy" if is_healthy else "unhealthy",
+            "cache_accessible": is_healthy,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Cache health check failed: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "cache_accessible": False,
+                "error": str(e),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+
+@router.post("/cache/invalidate")
+async def cache_invalidate(
+    _: bool = Depends(require_admin_access),
+) -> Dict[str, Any]:
+    """
+    Invalidate all news cache entries (Admin only)
+
+    This endpoint clears all cached data for news endpoints.
+    Use this after data updates to ensure fresh data is served.
+
+    Returns:
+        Dict containing invalidation result
+    """
+    try:
+        logger.info("Invalidating all news cache")
+        success = await invalidate_all_news_cache_util()
+
+        if success:
+            return {
+                "status": "success",
+                "message": "All news cache entries invalidated successfully",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to invalidate cache")
+
+    except Exception as e:
+        logger.error(f"Error invalidating cache: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to invalidate cache: {str(e)}"
         )

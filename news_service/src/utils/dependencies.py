@@ -14,10 +14,11 @@ from ..repositories.mongo_news_repository import MongoNewsRepository
 from ..services.news_service import NewsService
 from ..services.search_service import SearchService
 from ..services.news_collector_service import NewsCollectorService
-from ..services.job_service import JobManagementService
+from ..services.job_management_service import JobManagementService
 from ..services.eureka_client_service import EurekaClientService
 from ..adapters.rabbitmq_broker import RabbitMQBroker
 from ..adapters.tavily_search_engine import TavilySearchEngine
+from ..utils.cache_utils import get_cache_manager, CacheManager
 from common.logger import LoggerFactory, LoggerType, LogLevel
 from ..core.config import settings
 
@@ -34,6 +35,11 @@ class Container(containers.DeclarativeContainer):
         name="dependency-container",
         logger_type=LoggerType.STANDARD,
         level=LogLevel.INFO,
+    )
+
+    # Cache Manager
+    cache_manager = providers.Singleton(
+        get_cache_manager,
     )
 
     # Eureka Client Service
@@ -105,6 +111,11 @@ async def initialize_services() -> None:
     logger.info("Initializing services...")
 
     try:
+        # Initialize cache manager first
+        logger.info("🚀 Initializing cache manager...")
+        cache_manager = await get_cache_manager()
+        logger.info("✅ Cache manager initialized successfully")
+
         # Initialize Eureka client service
         eureka_service = container.eureka_client_service()
         if settings.enable_eureka_client:
@@ -199,6 +210,9 @@ class ServiceContext:
     def get_eureka_client_service(self) -> EurekaClientService:
         return container.eureka_client_service()
 
+    async def get_cache_manager(self) -> CacheManager:
+        return await get_cache_manager()
+
 
 def get_news_collector_service() -> NewsCollectorService:
     """Get news collector service instance"""
@@ -277,6 +291,16 @@ def get_eureka_client_service() -> EurekaClientService:
     except Exception as e:
         logger = container.logger()
         logger.error(f"Failed to get Eureka client service: {e}")
+        raise
+
+
+async def get_cache_manager_dependency() -> CacheManager:
+    """Get cache manager as FastAPI dependency"""
+    try:
+        return await get_cache_manager()
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to get cache manager: {e}")
         raise
 
 
@@ -398,4 +422,5 @@ def get_container_info() -> Dict[str, Any]:
         "eureka_enabled": settings.enable_eureka_client,
         "eureka_server_url": settings.eureka_server_url,
         "eureka_app_name": settings.eureka_app_name,
+        "cache_config": settings.cache_config,
     }

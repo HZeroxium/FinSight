@@ -7,9 +7,10 @@ Entry point for the News Crawler Service REST API.
 
 import sys
 import asyncio
+import time
 import uvicorn
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -25,11 +26,12 @@ from .utils.dependencies import (
     initialize_services,
     cleanup_services,
 )
+from .utils.cache_utils import check_cache_health, get_cache_statistics
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
 # Setup application logger
 logger = LoggerFactory.get_logger(
-    name="news-crawler-main",
+    name="news-service",
     logger_type=LoggerType.STANDARD,
     level=LogLevel.INFO,
     console_level=LogLevel.INFO,
@@ -66,6 +68,14 @@ async def lifespan(app: FastAPI):
     eureka_enabled = getattr(settings, "enable_eureka_client", True)
     if eureka_enabled:
         logger.info(f"🔗 Eureka Client: {settings.eureka_server_url}")
+
+    # Check if caching is enabled
+    if settings.enable_caching:
+        logger.info(
+            f"💾 Cache: Redis {settings.redis_host}:{settings.redis_port} (DB: {settings.redis_db})"
+        )
+    else:
+        logger.info("💾 Cache: Disabled")
 
     startup_errors = []
 
@@ -159,6 +169,27 @@ async def lifespan(app: FastAPI):
             logger.warning(f"⚠️ Search service health check error: {health_error}")
             startup_errors.append(f"Search service health error: {str(health_error)}")
 
+        # Step 7: Cache health check
+        if settings.enable_caching:
+            logger.info("📋 Step 7: Checking cache health...")
+            try:
+                cache_healthy = await asyncio.wait_for(
+                    check_cache_health(), timeout=5.0
+                )
+
+                if cache_healthy:
+                    logger.info("✅ Cache health check passed")
+                else:
+                    logger.warning("⚠️ Cache health check failed")
+                    startup_errors.append("Cache health issues")
+
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Cache health check timed out")
+                startup_errors.append("Cache health check timeout")
+            except Exception as cache_error:
+                logger.warning(f"⚠️ Cache health check error: {cache_error}")
+                startup_errors.append(f"Cache health error: {str(cache_error)}")
+
         # Final startup validation
         if startup_errors:
             logger.warning(f"⚠️ Service started with warnings: {startup_errors}")
@@ -234,6 +265,35 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all HTTP requests with timing information."""
+    start_time = time.time()
+
+    # Log request
+    logger.info(
+        f"Request: {request.method} {request.url.path} "
+        f"from {request.client.host if request.client else 'unknown'}"
+    )
+
+    # Process request
+    response = await call_next(request)
+
+    # Log response
+    process_time = time.time() - start_time
+    logger.info(
+        f"Response: {response.status_code} "
+        f"({process_time:.3f}s) for {request.method} {request.url.path}"
+    )
+
+    # Add timing header
+    response.headers["X-Process-Time"] = str(process_time)
+
+    return response
+
 
 # Include routers
 # app.include_router(search.router)
@@ -332,6 +392,22 @@ async def health_check():
         health_status["components"]["database"] = "healthy"
         health_status["metrics"]["total_articles"] = news_stats.get("total_articles", 0)
 
+        # Check cache health if enabled
+        if settings.enable_caching:
+            try:
+                cache_healthy = await check_cache_health()
+                health_status["components"]["cache"] = (
+                    "healthy" if cache_healthy else "unhealthy"
+                )
+
+                # Add cache statistics
+                cache_stats = await get_cache_statistics()
+                health_status["metrics"]["cache_stats"] = cache_stats
+
+            except Exception as cache_error:
+                health_status["components"]["cache"] = "unhealthy"
+                health_status["metrics"]["cache_error"] = str(cache_error)
+
         # Overall health determination
         unhealthy_components = [
             k
@@ -378,7 +454,7 @@ async def get_metrics():
         news_service = get_news_service()
         stats = await news_service.get_repository_stats()
 
-        return {
+        metrics = {
             "service": settings.app_name,
             "version": "1.0.0",
             "environment": settings.environment,
@@ -393,6 +469,16 @@ async def get_metrics():
                 "rate_limit": settings.rate_limit_requests_per_minute,
             },
         }
+
+        # Add cache metrics if enabled
+        if settings.enable_caching:
+            try:
+                cache_stats = await get_cache_statistics()
+                metrics["cache_stats"] = cache_stats
+            except Exception as cache_error:
+                metrics["cache_error"] = str(cache_error)
+
+        return metrics
 
     except Exception as e:
         logger.error(f"Metrics retrieval failed: {str(e)}")

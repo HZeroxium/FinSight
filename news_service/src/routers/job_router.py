@@ -5,11 +5,10 @@ REST API router for cron job management operations.
 Provides endpoints to manage the news crawler background job service.
 """
 
-from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 
-from ..services.job_service import JobManagementService
+from ..services.job_management_service import JobManagementService
 from ..schemas.job_schemas import (
     JobStatusResponse,
     JobStartRequest,

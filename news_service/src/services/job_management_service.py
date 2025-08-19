@@ -5,13 +5,15 @@ Job management service providing business logic for cron job REST API.
 Wraps the NewsCrawlerJobService and provides clean API for job operations.
 """
 
-import os
 import asyncio
-from typing import Optional, Dict, Any, List
+from typing import Optional
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..news_crawler_job import NewsCrawlerJobService, JobConfig as DataclassJobConfig
+from ..services.news_crawler_job_service import (
+    NewsCrawlerJobService,
+    JobConfig as DataclassJobConfig,
+)
 from ..schemas.job_schemas import (
     JobConfigModel,
     JobStatus,
@@ -24,6 +26,7 @@ from ..schemas.job_schemas import (
     JobConfigUpdateRequest,
     JobOperationResponse,
 )
+from ..utils.cache_utils import invalidate_all_news_cache
 from ..core.config import settings
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
@@ -321,6 +324,24 @@ class JobManagementService:
                 max_items=request.max_items_per_source,
             )
 
+            # Check if job was successful and invalidate cache
+            if (
+                result.get("success", False)
+                and result.get("total_items_collected", 0) > 0
+            ):
+                self.logger.info(
+                    f"Manual job {job_id} completed successfully, invalidating cache"
+                )
+                try:
+                    await invalidate_all_news_cache()
+                    self.logger.info(
+                        f"Cache invalidated after successful manual job {job_id}"
+                    )
+                except Exception as cache_error:
+                    self.logger.error(
+                        f"Failed to invalidate cache after manual job: {cache_error}"
+                    )
+
             end_time = datetime.now(timezone.utc)
             duration = (end_time - start_time).total_seconds()
 
@@ -468,3 +489,31 @@ class JobManagementService:
         except Exception as e:
             self.logger.error(f"Health check failed: {e}")
             return False
+
+    async def invalidate_cache_after_job_completion(self, job_result: dict) -> None:
+        """
+        Invalidate cache after job completion if job was successful.
+
+        Args:
+            job_result: Job execution result
+        """
+        try:
+            # Check if job was successful and collected items
+            if (
+                job_result.get("success", False)
+                and job_result.get("total_items_collected", 0) > 0
+            ):
+                self.logger.info("Job completed successfully, invalidating cache")
+
+                # Add delay before cache invalidation to ensure data is committed
+                await asyncio.sleep(settings.cache_invalidation_delay_seconds)
+
+                await invalidate_all_news_cache()
+                self.logger.info("Cache invalidated after successful job completion")
+            else:
+                self.logger.debug(
+                    "Job did not collect new items, skipping cache invalidation"
+                )
+
+        except Exception as e:
+            self.logger.error(f"Failed to invalidate cache after job completion: {e}")

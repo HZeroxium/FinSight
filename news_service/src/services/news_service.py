@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from ..interfaces.news_repository_interface import NewsRepositoryInterface
 from ..schemas.news_schemas import NewsItem, NewsSource
+from ..utils.cache_utils import CacheEndpoint, get_cache_manager
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
@@ -78,6 +79,9 @@ class NewsService:
             # Store the item
             item_id = await self.repository.save_news_item(news_item)
 
+            # Invalidate relevant caches after storing new item
+            await self._invalidate_related_caches(news_item)
+
             self.logger.debug(f"Stored news item: {item_id}")
             return NewsStorageResult(item_id=item_id, is_duplicate=False, success=True)
 
@@ -119,6 +123,10 @@ class NewsService:
                 if result.error_message:
                     errors.append(result.error_message)
 
+        # Invalidate all cache after bulk storage
+        if stored_count > 0:
+            await self._invalidate_all_cache()
+
         result_summary = {
             "total_items": len(news_items),
             "stored_count": stored_count,
@@ -146,7 +154,28 @@ class NewsService:
             Optional[NewsItem]: News item if found
         """
         try:
-            return await self.repository.get_news_item(item_id)
+            # Try to get from cache first
+            cache_manager = await get_cache_manager()
+            cached_item = await cache_manager.get_cached_data(
+                CacheEndpoint.NEWS_ITEM, item_id
+            )
+
+            if cached_item is not None:
+                self.logger.debug(f"Cache hit for news item: {item_id}")
+                return NewsItem(**cached_item)
+
+            # Get from repository
+            item = await self.repository.get_news_item(item_id)
+
+            if item:
+                # Cache the result
+                await cache_manager.set_cached_data(
+                    CacheEndpoint.NEWS_ITEM, item.model_dump(), item_id
+                )
+                self.logger.debug(f"Cached news item: {item_id}")
+
+            return item
+
         except Exception as e:
             self.logger.error(f"Failed to get news item {item_id}: {str(e)}")
             return None
@@ -166,7 +195,19 @@ class NewsService:
                 f"Searching news with filters: {search_request.model_dump()}"
             )
 
-            return await self.repository.search_news(
+            # Try to get from cache first
+            cache_manager = await get_cache_manager()
+            cache_key = self._generate_search_cache_key(search_request)
+            cached_result = await cache_manager.get_cached_data(
+                CacheEndpoint.SEARCH_NEWS, cache_key
+            )
+
+            if cached_result is not None:
+                self.logger.debug(f"Cache hit for search: {cache_key}")
+                return [NewsItem(**item) for item in cached_result]
+
+            # Execute search
+            items = await self.repository.search_news(
                 source=search_request.source,
                 keywords=search_request.keywords,
                 tags=search_request.tags,
@@ -175,6 +216,16 @@ class NewsService:
                 limit=search_request.limit,
                 offset=search_request.offset,
             )
+
+            # Cache the result
+            items_data = [item.model_dump() for item in items]
+            await cache_manager.set_cached_data(
+                CacheEndpoint.SEARCH_NEWS, items_data, cache_key
+            )
+            self.logger.debug(f"Cached search result: {cache_key}")
+
+            return items
+
         except Exception as e:
             self.logger.error(f"Failed to search news: {str(e)}")
             return []
@@ -194,9 +245,30 @@ class NewsService:
             List[NewsItem]: Recent news items
         """
         try:
-            return await self.repository.get_recent_news(
+            # Try to get from cache first
+            cache_manager = await get_cache_manager()
+            cached_result = await cache_manager.get_cached_data(
+                CacheEndpoint.RECENT_NEWS, source, hours, limit
+            )
+
+            if cached_result is not None:
+                self.logger.debug(f"Cache hit for recent news: {source}, {hours}h")
+                return [NewsItem(**item) for item in cached_result]
+
+            # Get from repository
+            items = await self.repository.get_recent_news(
                 source=source, hours=hours, limit=limit
             )
+
+            # Cache the result
+            items_data = [item.model_dump() for item in items]
+            await cache_manager.set_cached_data(
+                CacheEndpoint.RECENT_NEWS, items_data, source, hours, limit
+            )
+            self.logger.debug(f"Cached recent news: {source}, {hours}h")
+
+            return items
+
         except Exception as e:
             self.logger.error(f"Failed to get recent news: {str(e)}")
             return []
@@ -325,7 +397,27 @@ class NewsService:
             List[str]: Unique tags sorted by frequency
         """
         try:
-            return await self.repository.get_unique_tags(source=source, limit=limit)
+            # Try to get from cache first
+            cache_manager = await get_cache_manager()
+            cached_result = await cache_manager.get_cached_data(
+                CacheEndpoint.AVAILABLE_TAGS, source, limit
+            )
+
+            if cached_result is not None:
+                self.logger.debug(f"Cache hit for available tags: {source}")
+                return cached_result
+
+            # Get from repository
+            tags = await self.repository.get_unique_tags(source=source, limit=limit)
+
+            # Cache the result
+            await cache_manager.set_cached_data(
+                CacheEndpoint.AVAILABLE_TAGS, tags, source, limit
+            )
+            self.logger.debug(f"Cached available tags: {source}")
+
+            return tags
+
         except Exception as e:
             self.logger.error(f"Failed to get unique tags: {str(e)}")
             return []
@@ -343,6 +435,8 @@ class NewsService:
         try:
             result = await self.repository.delete_news_item(item_id)
             if result:
+                # Invalidate related caches
+                await self._invalidate_related_caches_by_id(item_id)
                 self.logger.info(f"Deleted news item: {item_id}")
             return result
         except Exception as e:
@@ -357,7 +451,25 @@ class NewsService:
             Dict[str, Any]: Repository statistics
         """
         try:
-            return await self.repository.get_repository_stats()
+            # Try to get from cache first
+            cache_manager = await get_cache_manager()
+            cached_result = await cache_manager.get_cached_data(
+                CacheEndpoint.REPOSITORY_STATS
+            )
+
+            if cached_result is not None:
+                self.logger.debug("Cache hit for repository stats")
+                return cached_result
+
+            # Get from repository
+            stats = await self.repository.get_repository_stats()
+
+            # Cache the result
+            await cache_manager.set_cached_data(CacheEndpoint.REPOSITORY_STATS, stats)
+            self.logger.debug("Cached repository stats")
+
+            return stats
+
         except Exception as e:
             self.logger.error(f"Failed to get repository stats: {str(e)}")
             return {}
@@ -392,6 +504,10 @@ class NewsService:
                 if item.metadata.get("_id"):
                     if await self.delete_news_item(str(item.metadata["_id"])):
                         deleted_count += 1
+
+            # Invalidate all cache after cleanup
+            if deleted_count > 0:
+                await self._invalidate_all_cache()
 
             self.logger.info(f"Cleaned up {deleted_count} old news items")
 
@@ -436,3 +552,90 @@ class NewsService:
             self.logger.warning(f"Error checking duplicates: {str(e)}")
             # If we can't check, assume it's not a duplicate to avoid losing data
             return False
+
+    def _generate_search_cache_key(self, search_request: NewsSearchRequest) -> str:
+        """Generate cache key for search request"""
+        key_parts = [
+            str(search_request.source.value) if search_request.source else "all",
+            str(search_request.limit),
+            str(search_request.offset),
+        ]
+
+        if search_request.keywords:
+            key_parts.append("keywords_" + "_".join(search_request.keywords))
+
+        if search_request.tags:
+            key_parts.append("tags_" + "_".join(search_request.tags))
+
+        if search_request.start_date:
+            key_parts.append(f"start_{search_request.start_date.isoformat()}")
+
+        if search_request.end_date:
+            key_parts.append(f"end_{search_request.end_date.isoformat()}")
+
+        return "_".join(key_parts)
+
+    async def _invalidate_related_caches(self, news_item: NewsItem) -> None:
+        """Invalidate caches related to a news item"""
+        try:
+            cache_manager = await get_cache_manager()
+
+            # Invalidate source-specific caches
+            await cache_manager.invalidate_endpoint_cache(
+                CacheEndpoint.NEWS_BY_SOURCE, news_item.source
+            )
+
+            # Invalidate tag-related caches
+            if news_item.tags:
+                for tag in news_item.tags:
+                    await cache_manager.invalidate_endpoint_cache(
+                        CacheEndpoint.NEWS_BY_TAGS, [tag]
+                    )
+
+            # Invalidate recent news cache
+            await cache_manager.invalidate_endpoint_cache(CacheEndpoint.RECENT_NEWS)
+
+            # Invalidate available tags cache
+            await cache_manager.invalidate_endpoint_cache(CacheEndpoint.AVAILABLE_TAGS)
+
+            # Invalidate repository stats cache
+            await cache_manager.invalidate_endpoint_cache(
+                CacheEndpoint.REPOSITORY_STATS
+            )
+
+            self.logger.debug(
+                f"Invalidated related caches for news item: {news_item.title[:50]}"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error invalidating related caches: {e}")
+
+    async def _invalidate_related_caches_by_id(self, item_id: str) -> None:
+        """Invalidate caches related to a news item by ID"""
+        try:
+            cache_manager = await get_cache_manager()
+
+            # Invalidate the specific news item cache
+            await cache_manager.invalidate_endpoint_cache(
+                CacheEndpoint.NEWS_ITEM, item_id
+            )
+
+            # Invalidate other related caches
+            await cache_manager.invalidate_endpoint_cache(CacheEndpoint.RECENT_NEWS)
+            await cache_manager.invalidate_endpoint_cache(
+                CacheEndpoint.REPOSITORY_STATS
+            )
+
+            self.logger.debug(f"Invalidated related caches for news item ID: {item_id}")
+
+        except Exception as e:
+            self.logger.error(f"Error invalidating related caches by ID: {e}")
+
+    async def _invalidate_all_cache(self) -> None:
+        """Invalidate all cache entries"""
+        try:
+            cache_manager = await get_cache_manager()
+            await cache_manager.invalidate_all_cache()
+            self.logger.info("Invalidated all cache entries")
+        except Exception as e:
+            self.logger.error(f"Error invalidating all cache: {e}")
