@@ -4,8 +4,8 @@
 Data access layer repositories.
 """
 
-from .mongodb_sentiment_repository import MongoDBSentimentRepository
+from .mongo_news_repository import MongoNewsRepository
 
 __all__ = [
-    "MongoDBSentimentRepository",
+    "MongoNewsRepository",
 ]

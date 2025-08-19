@@ -5,14 +5,13 @@ Interface definitions for the sentiment analysis service.
 """
 
 from .sentiment_analyzer import SentimentAnalyzer, SentimentAnalysisError
-from .sentiment_repository import SentimentRepository, SentimentRepositoryError
 from .message_broker import MessageBroker, MessageBrokerError
+from .news_repository_interface import NewsRepositoryInterface
 
 __all__ = [
     "SentimentAnalyzer",
     "SentimentAnalysisError",
-    "SentimentRepository",
-    "SentimentRepositoryError",
+    "NewsRepositoryInterface",
     "MessageBroker",
     "MessageBrokerError",
 ]

@@ -12,11 +12,12 @@ from fastapi.responses import JSONResponse
 
 from .core.config import settings
 from .routers import sentiment
-from .services.message_consumer import MessageConsumerService
+from .services.news_message_consumer_service import NewsMessageConsumerService
 from .utils.dependencies import (
     get_sentiment_service,
-    get_sentiment_repository,
+    get_news_repository,
     get_message_broker,
+    get_news_message_consumer,
 )
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
@@ -31,7 +32,7 @@ logger = LoggerFactory.get_logger(
 )
 
 # Global variable for message consumer
-message_consumer: MessageConsumerService = None
+message_consumer: NewsMessageConsumerService = None
 
 
 @asynccontextmanager
@@ -45,12 +46,12 @@ async def lifespan(app: FastAPI):
 
     # Initialize services
     sentiment_service = get_sentiment_service()
-    sentiment_repository = get_sentiment_repository()
+    news_repository = get_news_repository()
     message_broker = get_message_broker()
 
     # Initialize database indexes
     try:
-        await sentiment_repository.initialize()
+        await news_repository.initialize()
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
@@ -58,10 +59,7 @@ async def lifespan(app: FastAPI):
     # Initialize message consumer only if RabbitMQ is available
     consumer_task = None
     try:
-        message_consumer = MessageConsumerService(
-            message_broker=message_broker,
-            sentiment_service=sentiment_service,
-        )
+        message_consumer = get_news_message_consumer()
 
         # Start consuming in background task and keep reference
         consumer_task = asyncio.create_task(message_consumer.start_consuming())
@@ -102,7 +100,7 @@ async def lifespan(app: FastAPI):
         if message_consumer:
             await message_consumer.stop_consuming()
 
-        await sentiment_repository.close()
+        await news_repository.close()
         logger.info("All services cleaned up successfully")
     except Exception as e:
         logger.error(f"Error during cleanup: {str(e)}")

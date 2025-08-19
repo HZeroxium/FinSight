@@ -320,7 +320,7 @@ async def health_check(
 
         dependencies = {
             "sentiment_analyzer": "healthy" if is_healthy else "unhealthy",
-            "sentiment_repository": "healthy" if is_healthy else "unhealthy",
+            "news_repository": "healthy" if is_healthy else "unhealthy",
         }
 
         return HealthCheckSchema(

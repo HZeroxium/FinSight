@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from ..interfaces.sentiment_analyzer import SentimentAnalyzer, SentimentAnalysisError
-from ..interfaces.sentiment_repository import SentimentRepository
+from ..interfaces.news_repository_interface import NewsRepositoryInterface
 from ..interfaces.message_broker import MessageBroker
 from ..models.sentiment import (
     SentimentRequest,
@@ -38,7 +38,7 @@ class SentimentService:
     def __init__(
         self,
         analyzer: SentimentAnalyzer,
-        repository: SentimentRepository,
+        news_repository: NewsRepositoryInterface,
         message_broker: Optional[MessageBroker] = None,
     ):
         """
@@ -46,11 +46,11 @@ class SentimentService:
 
         Args:
             analyzer: Sentiment analyzer implementation
-            repository: Sentiment repository for storage
+            news_repository: News repository for database operations
             message_broker: Optional message broker for publishing results
         """
         self.analyzer = analyzer
-        self.repository = repository
+        self.news_repository = news_repository
         self.message_broker = message_broker
 
         # Initialize cache for sentiment results
@@ -287,12 +287,31 @@ class SentimentService:
             Optional[ProcessedSentiment]: Stored sentiment or None
         """
         try:
-            sentiment = await self.repository.get_sentiment_by_article_id(article_id)
-            if sentiment:
+            news_item = await self.news_repository.get_news_item(article_id)
+            if news_item and news_item.has_sentiment():
                 logger.debug(f"Retrieved sentiment for article: {article_id}")
+                # Convert news model sentiment to ProcessedSentiment format
+                # This is a simplified conversion - you may need to adjust based on your needs
+                return ProcessedSentiment(
+                    id=article_id,
+                    article_id=article_id,
+                    title=news_item.title,
+                    text_content=news_item.title + " " + (news_item.description or ""),
+                    label=SentimentLabel(news_item.sentiment_label),
+                    scores=[
+                        SentimentScore(label=SentimentLabel(label), score=score)
+                        for label, score in (news_item.sentiment_scores or {}).items()
+                    ],
+                    confidence=news_item.sentiment_confidence or 0.0,
+                    reasoning=news_item.sentiment_reasoning,
+                    processed_at=news_item.sentiment_analyzed_at
+                    or datetime.now(timezone.utc),
+                    model_version=news_item.sentiment_analyzer_version,
+                    source_url=news_item.url,
+                )
             else:
                 logger.debug(f"No sentiment found for article: {article_id}")
-            return sentiment
+                return None
 
         except Exception as e:
             logger.error(
@@ -313,7 +332,60 @@ class SentimentService:
             List[ProcessedSentiment]: Matching sentiments
         """
         try:
-            sentiments = await self.repository.search_sentiments(filter_params)
+            # Convert filter parameters to news repository search parameters
+            news_items = await self.news_repository.search_news(
+                start_date=filter_params.date_from,
+                end_date=filter_params.date_to,
+                has_sentiment=True,  # Only get items with sentiment analysis
+                limit=filter_params.limit,
+                offset=filter_params.offset,
+            )
+
+            # Convert news items to ProcessedSentiment format and apply additional filters
+            sentiments = []
+            for news_item in news_items:
+                if not news_item.has_sentiment():
+                    continue
+
+                # Apply sentiment label filter
+                if (
+                    filter_params.sentiment_label
+                    and news_item.sentiment_label != filter_params.sentiment_label.value
+                ):
+                    continue
+
+                # Apply confidence filters
+                if (
+                    filter_params.min_confidence
+                    and news_item.sentiment_confidence < filter_params.min_confidence
+                ):
+                    continue
+                if (
+                    filter_params.max_confidence
+                    and news_item.sentiment_confidence > filter_params.max_confidence
+                ):
+                    continue
+
+                # Convert to ProcessedSentiment
+                processed_sentiment = ProcessedSentiment(
+                    id=news_item.id,
+                    article_id=news_item.id,
+                    title=news_item.title,
+                    text_content=news_item.title + " " + (news_item.description or ""),
+                    label=SentimentLabel(news_item.sentiment_label),
+                    scores=[
+                        SentimentScore(label=SentimentLabel(label), score=score)
+                        for label, score in (news_item.sentiment_scores or {}).items()
+                    ],
+                    confidence=news_item.sentiment_confidence or 0.0,
+                    reasoning=news_item.sentiment_reasoning,
+                    processed_at=news_item.sentiment_analyzed_at
+                    or datetime.now(timezone.utc),
+                    model_version=news_item.sentiment_analyzer_version,
+                    source_url=news_item.url,
+                )
+                sentiments.append(processed_sentiment)
+
             logger.info(f"Found {len(sentiments)} sentiments matching filters")
             return sentiments
 
@@ -339,11 +411,60 @@ class SentimentService:
             SentimentAggregation: Aggregated statistics
         """
         try:
-            aggregation = await self.repository.get_sentiment_aggregation(
-                date_from=date_from,
-                date_to=date_to,
-                source_domain=source_domain,
+            # Get all news items with sentiment in the date range
+            news_items = await self.news_repository.search_news(
+                start_date=date_from,
+                end_date=date_to,
+                has_sentiment=True,
+                limit=1000,  # Large limit to get all items for aggregation
             )
+
+            # Calculate aggregation manually
+            total_count = len(news_items)
+            positive_count = 0
+            negative_count = 0
+            neutral_count = 0
+            total_confidence = 0.0
+            sentiment_distribution = {}
+
+            for news_item in news_items:
+                if not news_item.has_sentiment():
+                    continue
+
+                label = news_item.sentiment_label.lower()
+                sentiment_distribution[label] = sentiment_distribution.get(label, 0) + 1
+
+                if label == "positive":
+                    positive_count += 1
+                elif label == "negative":
+                    negative_count += 1
+                elif label == "neutral":
+                    neutral_count += 1
+
+                total_confidence += news_item.sentiment_confidence or 0.0
+
+            # Convert counts to percentages for distribution
+            if total_count > 0:
+                sentiment_distribution = {
+                    label: (count / total_count) * 100
+                    for label, count in sentiment_distribution.items()
+                }
+                average_confidence = total_confidence / total_count
+            else:
+                average_confidence = 0.0
+
+            aggregation = SentimentAggregation(
+                total_count=total_count,
+                positive_count=positive_count,
+                negative_count=negative_count,
+                neutral_count=neutral_count,
+                average_confidence=average_confidence,
+                sentiment_distribution=sentiment_distribution,
+                time_period=(
+                    f"{date_from} to {date_to}" if date_from and date_to else None
+                ),
+            )
+
             logger.info(
                 f"Retrieved sentiment aggregation: {aggregation.total_count} total items"
             )
@@ -359,6 +480,7 @@ class SentimentService:
                 neutral_count=0,
                 average_confidence=0.0,
                 sentiment_distribution={},
+                time_period=None,
             )
 
     async def _save_sentiment_result(
@@ -404,9 +526,18 @@ class SentimentService:
                 source_domain=source_domain,
             )
 
-            # Save to repository
-            sentiment_id = await self.repository.save_sentiment(processed_sentiment)
-            logger.debug(f"Saved sentiment result with ID: {sentiment_id}")
+            # Update news item with sentiment results
+            await self.news_repository.update_news_sentiment(
+                item_id=article_id,
+                sentiment_label=result.label.value,
+                sentiment_scores={
+                    score.label.value: score.score for score in result.scores
+                },
+                sentiment_confidence=result.confidence,
+                sentiment_reasoning=result.reasoning,
+                analyzer_version=settings.openai_model,
+            )
+            logger.debug(f"Updated news item with sentiment results: {article_id}")
 
         except Exception as e:
             logger.error(f"Failed to save sentiment result: {str(e)}")
@@ -501,8 +632,8 @@ class SentimentService:
             # Check repository health (try a simple operation)
             repository_healthy = True
             try:
-                # Try to check if a non-existent sentiment exists
-                await self.repository.sentiment_exists("health_check_test")
+                # Try a simple health check on the repository
+                await self.news_repository.health_check()
             except Exception:
                 repository_healthy = False
 
