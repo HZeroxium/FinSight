@@ -28,12 +28,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --upgrade pip setuptools wheel
 
 # Copy and install common module first
-COPY common /opt/common
+COPY common_module /opt/common
 WORKDIR /opt/common
-RUN pip install -e .
+RUN pip install --no-deps -e .
 
 # Copy requirements and install Python dependencies
-COPY news_crawler/requirements.txt /tmp/requirements.txt
+COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
 
 
@@ -74,10 +74,10 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 # Copy application code with proper ownership
-COPY --chown=appuser:appuser news_crawler/src/ /app/src/
-COPY --chown=appuser:appuser news_crawler/*.py /app/
-COPY --chown=appuser:appuser news_crawler/requirements.txt /app/
-COPY --chown=appuser:appuser news_crawler/scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY --chown=appuser:appuser src/ /app/src/
+COPY --chown=appuser:appuser src/*.py /app/
+COPY --chown=appuser:appuser requirements.txt /app/
+COPY --chown=appuser:appuser scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
 
 # Create required directories and set permissions
 RUN mkdir -p /app/logs /app/data && \

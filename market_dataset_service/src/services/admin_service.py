@@ -7,8 +7,8 @@ Provides administrative operations for the backtesting system,
 including data management, server statistics, and maintenance operations.
 """
 
-from typing import Dict, Any
-from datetime import datetime
+from typing import Dict, Any, List, TYPE_CHECKING
+from datetime import datetime, timezone
 
 from ..interfaces.market_data_repository import MarketDataRepository
 from ..services.market_data_service import MarketDataService
@@ -22,8 +22,18 @@ from ..schemas.admin_schemas import (
     TimeframeConvertRequest,
     TimeframeConvertResponse,
     SystemHealthResponse,
+    QuickPipelineResponse,
+    QuickSymbolPipelineResult,
+    QuickUploadResult,
 )
 from ..utils.datetime_utils import DateTimeUtils
+from ..schemas.enums import RepositoryType, TimeFrame, Exchange
+from ..schemas.job_schemas import ManualJobRequest
+
+if TYPE_CHECKING:  # avoid runtime imports to prevent circular dependencies
+    from ..services.market_data_job_service import MarketDataJobManagementService
+    from ..services.market_data_storage_service import MarketDataStorageService
+    from ..misc.timeframe_load_convert_save import CrossRepositoryTimeFramePipeline
 
 
 class AdminService:
@@ -39,6 +49,9 @@ class AdminService:
         market_data_service: MarketDataService,
         collector_service: MarketDataCollectorService,
         repository: MarketDataRepository,
+        storage_service: "MarketDataStorageService",
+        market_data_job_service: "MarketDataJobManagementService",
+        cross_repository_pipeline: "CrossRepositoryTimeFramePipeline",
     ):
         """
         Initialize admin service.
@@ -51,6 +64,9 @@ class AdminService:
         self.market_data_service = market_data_service
         self.collector_service = collector_service
         self.repository = repository
+        self.storage_service = storage_service
+        self.market_data_job_service = market_data_job_service
+        self.cross_repository_pipeline = cross_repository_pipeline
         self.timeframe_converter = TimeFrameConverter()
         self.logger = LoggerFactory.get_logger(name="admin_service")
 
@@ -87,7 +103,7 @@ class AdminService:
                 available_timeframes=timeframes,
                 storage_info=storage_info,
                 uptime_seconds=uptime_seconds,
-                server_timestamp=datetime.utcnow(),
+                server_timestamp=datetime.now(timezone.utc),
                 symbols=symbols,
                 exchanges=exchanges,
             )
@@ -133,7 +149,7 @@ class AdminService:
                 data_fresh=data_fresh,
                 memory_usage_percent=memory_usage * 100,
                 disk_usage_percent=disk_usage * 100,
-                checks_timestamp=datetime.utcnow(),
+                checks_timestamp=datetime.now(timezone.utc),
             )
 
             self.logger.info(f"System health check completed: {health.status}")
@@ -147,7 +163,7 @@ class AdminService:
                 data_fresh=False,
                 memory_usage_percent=0,
                 disk_usage_percent=0,
-                checks_timestamp=datetime.utcnow(),
+                checks_timestamp=datetime.now(timezone.utc),
                 error_message=str(e),
             )
 
@@ -332,6 +348,235 @@ class AdminService:
                 operation_timestamp=DateTimeUtils.now_utc(),
                 error_message=str(e),
             )
+
+    async def run_quick_collect_convert_upload_pipeline(
+        self,
+        config: Dict[str, Any],
+    ) -> QuickPipelineResponse:
+        """Run a streamlined pipeline: collect(1h) → convert(timeframes) → upload.
+
+        Args:
+            config: Configuration loaded from JSON file specifying symbols, formats, timeframes, and date range.
+
+        Returns:
+            QuickPipelineResponse: Aggregated results across all symbols.
+        """
+        started_at = DateTimeUtils.now_utc()
+        symbol_results: List[QuickSymbolPipelineResult] = []
+
+        exchange: str = config.get("exchange", Exchange.BINANCE.value)
+        symbols: List[str] = config.get("symbols", [])
+        source_timeframe: str = config.get("source_timeframe", TimeFrame.HOUR_1.value)
+        target_timeframes: List[str] = config.get(
+            "target_timeframes", [TimeFrame.DAY_1.value]
+        )
+        source_format: str = config.get("source_format", RepositoryType.CSV.value)
+        target_format: str = config.get("target_format", RepositoryType.PARQUET.value)
+        start_date: str = config.get("start_date")
+        end_date: str = config.get("end_date")
+        overwrite_existing: bool = bool(config.get("overwrite_existing", False))
+
+        self.logger.info(
+            f"Quick pipeline started for {len(symbols)} symbols: source={source_format}, target={target_format}, "
+            f"src_tf={source_timeframe}, tgt_tfs={target_timeframes}, range={start_date}..{end_date}"
+        )
+
+        # Step 1: Collect data (reuse MarketDataJobManagementService manual job)
+        try:
+            job_service = self.market_data_job_service
+            manual_req = ManualJobRequest(
+                symbols=symbols,
+                timeframes=[source_timeframe],
+                max_lookback_days=config.get("max_lookback_days", 30),
+                exchange=exchange,
+            )
+            job_result = await job_service.run_manual_job(manual_req)
+            collection_status = job_result.status
+            collected_map = {
+                sym: job_result.records_collected
+                for sym in (job_result.symbols or symbols)
+            }
+        except Exception as e:
+            self.logger.error(f"Collection step failed: {e}")
+            collection_status = "failed"
+            collected_map = {sym: 0 for sym in symbols}
+
+        # Step 2 & 3 per symbol: convert timeframes via pipeline and then upload
+        storage_service = self.storage_service
+        pipeline = self.cross_repository_pipeline
+
+        # Configure repositories for pipeline according to formats
+        try:
+            if source_format == target_format:
+                if source_format == RepositoryType.CSV.value:
+                    from ..adapters.csv_market_data_repository import (
+                        CSVMarketDataRepository,
+                    )
+
+                    pipeline.source_repository = CSVMarketDataRepository()
+                    pipeline.target_repository = CSVMarketDataRepository()
+                elif source_format == RepositoryType.PARQUET.value:
+                    from ..adapters.parquet_market_data_repository import (
+                        ParquetMarketDataRepository,
+                    )
+
+                    pipeline.source_repository = ParquetMarketDataRepository()
+                    pipeline.target_repository = ParquetMarketDataRepository()
+                else:
+                    raise ValueError(f"Unsupported format: {source_format}")
+            else:
+                if (
+                    source_format == RepositoryType.CSV.value
+                    and target_format == RepositoryType.PARQUET.value
+                ):
+                    from ..adapters.csv_market_data_repository import (
+                        CSVMarketDataRepository,
+                    )
+                    from ..adapters.parquet_market_data_repository import (
+                        ParquetMarketDataRepository,
+                    )
+
+                    pipeline.source_repository = CSVMarketDataRepository()
+                    pipeline.target_repository = ParquetMarketDataRepository()
+                elif (
+                    source_format == RepositoryType.PARQUET.value
+                    and target_format == RepositoryType.CSV.value
+                ):
+                    from ..adapters.parquet_market_data_repository import (
+                        ParquetMarketDataRepository,
+                    )
+                    from ..adapters.csv_market_data_repository import (
+                        CSVMarketDataRepository,
+                    )
+
+                    pipeline.source_repository = ParquetMarketDataRepository()
+                    pipeline.target_repository = CSVMarketDataRepository()
+                else:
+                    raise ValueError(
+                        f"Unsupported format combination: {source_format} -> {target_format}"
+                    )
+            pipeline.target_timeframes = target_timeframes
+        except Exception as e:
+            self.logger.error(f"Failed to configure conversion pipeline: {e}")
+
+        for symbol in symbols:
+            per_symbol_errors: List[Dict[str, Any]] = []
+            upload_results: List[QuickUploadResult] = []
+            converted_ok: List[str] = []
+
+            # Conversion step
+            try:
+                # Determine actual date range if not provided
+                actual_start = start_date
+                actual_end = end_date
+                if not start_date or not end_date:
+                    # infer from source repository
+                    try:
+                        data_range = await pipeline.source_repository.get_data_range(
+                            exchange=exchange,
+                            symbol=symbol,
+                            data_type="ohlcv",
+                            timeframe=source_timeframe,
+                        )
+                        if data_range:
+                            actual_start = start_date or data_range.get("start_date")
+                            actual_end = end_date or data_range.get("end_date")
+                    except Exception as e:
+                        self.logger.warning(f"Range detection failed for {symbol}: {e}")
+                conv_result = await pipeline.run_cross_repository_pipeline(
+                    symbols=[symbol],
+                    exchange=exchange,
+                    start_date=actual_start or start_date,
+                    end_date=actual_end or end_date,
+                    overwrite_existing=overwrite_existing,
+                )
+                if conv_result.get("errors"):
+                    per_symbol_errors.extend(conv_result["errors"])
+                converted_ok = target_timeframes
+                conversion_status = "completed"
+            except Exception as e:
+                conversion_status = "failed"
+                per_symbol_errors.append({"stage": "convert", "error": str(e)})
+
+            # Upload step: for each timeframe, upload dataset via storage service
+            for tf in converted_ok:
+                try:
+                    # Ensure the data exists in target repository format; convert_dataset_format does upload when upload_result=True
+                    up = await storage_service.convert_dataset_format(
+                        exchange=exchange,
+                        symbol=symbol,
+                        timeframe=tf,
+                        start_date=start_date
+                        or (actual_start if "actual_start" in locals() else None),
+                        end_date=end_date
+                        or (actual_end if "actual_end" in locals() else None),
+                        source_format=target_format,  # already converted to target_format above
+                        target_format=target_format,
+                        upload_result=True,
+                        target_timeframes=None,
+                        overwrite_existing=overwrite_existing,
+                    )
+
+                    upload_results.append(
+                        QuickUploadResult(
+                            symbol=symbol,
+                            timeframe=tf,
+                            success=bool(up.get("success", False)),
+                            object_key=up.get("object_key"),
+                            message=up.get("message"),
+                        )
+                    )
+                except Exception as e:
+                    upload_results.append(
+                        QuickUploadResult(
+                            symbol=symbol,
+                            timeframe=tf,
+                            success=False,
+                            object_key=None,
+                            message=str(e),
+                        )
+                    )
+                    per_symbol_errors.append(
+                        {"stage": "upload", "timeframe": tf, "error": str(e)}
+                    )
+
+            symbol_results.append(
+                QuickSymbolPipelineResult(
+                    symbol=symbol,
+                    collection_status=collection_status,
+                    collection_records=int(collected_map.get(symbol, 0) or 0),
+                    conversion_status=conversion_status,
+                    converted_timeframes=converted_ok,
+                    upload_results=upload_results,
+                    errors=per_symbol_errors,
+                )
+            )
+
+        finished_at = DateTimeUtils.now_utc()
+        duration = (finished_at - started_at).total_seconds()
+        any_errors = (
+            any(r.errors for r in symbol_results) or collection_status != "completed"
+        )
+
+        return QuickPipelineResponse(
+            exchange=exchange,
+            symbols=symbols,
+            source_timeframe=source_timeframe,
+            target_timeframes=target_timeframes,
+            source_format=source_format,
+            target_format=target_format,
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_seconds=duration,
+            results_by_symbol=symbol_results,
+            success=not any_errors,
+            message=(
+                "Pipeline completed"
+                if not any_errors
+                else "Pipeline completed with errors"
+            ),
+            metadata={"overwrite_existing": overwrite_existing},
+        )
 
     async def cleanup_old_data(
         self,

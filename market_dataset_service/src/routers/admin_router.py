@@ -23,12 +23,15 @@ from ..schemas.admin_schemas import (
     SystemHealthResponse,
     CleanupRequest,
     CleanupResponse,
+    QuickPipelineResponse,
 )
 from ..core.config import Settings
 from common.logger import LoggerFactory
 from ..factories.admin_factory import get_admin_service
 from ..utils.datetime_utils import DateTimeUtils
 from ..utils.dependencies import verify_api_key as require_admin_access
+import json
+from pathlib import Path
 
 
 # Security scheme for API key authentication
@@ -484,4 +487,53 @@ async def get_current_configuration(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get configuration: {str(e)}",
+        )
+
+
+@router.post("/pipeline/quick-run", response_model=QuickPipelineResponse)
+async def run_quick_pipeline(
+    _: bool = Depends(require_admin_access),
+    admin_service: AdminService = Depends(get_admin_service),
+) -> QuickPipelineResponse:
+    """
+    Run a quick pipeline to collect 1h data → convert to multiple timeframes → upload datasets.
+
+    Configuration is loaded from `market_data_quick_run_convert_upload.json` at the module root.
+    """
+    try:
+        config_path = Path("market_data_quick_run_convert_upload.json")
+        if not config_path.exists() or config_path.read_text().strip() == "":
+            # Provide sensible defaults if file is missing or empty
+            default_config = {
+                "exchange": "binance",
+                "symbols": ["BTCUSDT", "ETHUSDT"],
+                "source_timeframe": "1h",
+                "target_timeframes": ["4h", "1d"],
+                "source_format": "csv",
+                "target_format": "parquet",
+                "overwrite_existing": False,
+                "max_lookback_days": 30,
+            }
+            logger.warning(
+                "Quick pipeline config not found or empty. Using defaults in-memory."
+            )
+            config = default_config
+        else:
+            with config_path.open("r", encoding="utf-8") as f:
+                config = json.load(f)
+
+        logger.info(
+            "Executing quick collect→convert→upload pipeline using config file: "
+            f"{config_path.resolve()}"
+        )
+
+        result = await admin_service.run_quick_collect_convert_upload_pipeline(config)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Quick pipeline execution failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Quick pipeline execution failed: {str(e)}",
         )
