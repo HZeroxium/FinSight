@@ -16,6 +16,7 @@ from ..services.search_service import SearchService
 from ..services.news_collector_service import NewsCollectorService
 from ..services.job_management_service import JobManagementService
 from ..services.eureka_client_service import EurekaClientService
+from ..services.news_message_producer_service import NewsMessageProducerService
 from ..adapters.rabbitmq_broker import RabbitMQBroker
 from ..adapters.tavily_search_engine import TavilySearchEngine
 from ..utils.cache_utils import get_cache_manager, CacheManager
@@ -47,6 +48,18 @@ class Container(containers.DeclarativeContainer):
         EurekaClientService,
     )
 
+    # Message Broker (RabbitMQ)
+    message_broker = providers.Singleton(
+        RabbitMQBroker,
+        connection_url=config.rabbitmq_url.as_(str),
+    )
+
+    # News Message Producer Service
+    news_message_producer = providers.Singleton(
+        NewsMessageProducerService,
+        message_broker=message_broker,
+    )
+
     # MongoDB Repository
     mongo_repository = providers.Singleton(
         MongoNewsRepository,
@@ -58,6 +71,8 @@ class Container(containers.DeclarativeContainer):
     news_service = providers.Singleton(
         NewsService,
         repository=mongo_repository,
+        cache_manager=cache_manager,
+        message_producer=news_message_producer,
     )
 
     # News Collector Service
@@ -65,12 +80,6 @@ class Container(containers.DeclarativeContainer):
         NewsCollectorService,
         news_service=news_service,
         use_cache=config.use_cache.as_(bool),
-    )
-
-    # Message Broker (RabbitMQ)
-    message_broker = providers.Singleton(
-        RabbitMQBroker,
-        connection_url=config.rabbitmq_url.as_(str),
     )
 
     # Search Engine (Tavily)

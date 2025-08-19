@@ -17,7 +17,7 @@ logger = LoggerFactory.get_logger(
 )
 
 
-class SentimentConsumerService:
+class SentimentMessageConsumerService:
     """
     Service for consuming and processing sentiment analysis results from RabbitMQ.
     """

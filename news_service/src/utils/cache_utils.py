@@ -5,8 +5,7 @@ Cache utilities for news service.
 Provides cache management, key generation, and invalidation mechanisms.
 """
 
-import asyncio
-from typing import Optional, Dict, Any, List, Callable
+from typing import Optional, Dict, Any, Callable
 from datetime import datetime, timezone
 from enum import Enum
 

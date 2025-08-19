@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 
 from .core.config import settings
 from .routers import news_router, job_router, eureka_router
-from .services.sentiment_consumer import SentimentConsumerService
+from .services.sentiment_message_consumer_service import SentimentMessageConsumerService
 from .grpc_services import create_grpc_server, GrpcServer
 from .utils.dependencies import (
     get_search_service,
@@ -40,7 +40,7 @@ logger = LoggerFactory.get_logger(
 )
 
 # Global variables for services
-sentiment_consumer: SentimentConsumerService = None
+sentiment_consumer: SentimentMessageConsumerService = None
 grpc_server: GrpcServer = None
 eureka_client_service = None
 
@@ -127,7 +127,9 @@ async def lifespan(app: FastAPI):
         logger.info("📋 Step 5: Initializing sentiment consumer...")
         try:
             message_broker = get_message_broker()
-            sentiment_consumer = SentimentConsumerService(message_broker=message_broker)
+            sentiment_consumer = SentimentMessageConsumerService(
+                message_broker=message_broker
+            )
 
             # Start consuming in background task with error handling
             consumer_task = asyncio.create_task(sentiment_consumer.start_consuming())

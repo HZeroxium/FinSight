@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from ..interfaces.news_repository_interface import NewsRepositoryInterface
 from ..schemas.news_schemas import NewsItem, NewsSource
 from ..utils.cache_utils import CacheEndpoint, get_cache_manager, CacheManager
+from .news_message_producer_service import NewsMessageProducerService
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
@@ -41,14 +42,19 @@ class NewsService:
         self,
         repository: NewsRepositoryInterface,
         cache_manager: Optional[CacheManager] = None,
+        message_producer: Optional[NewsMessageProducerService] = None,
     ):
         """
         Initialize news service
 
         Args:
             repository: News repository implementation
+            cache_manager: Optional cache manager for performance
+            message_producer: Optional message producer for sentiment analysis
         """
         self.repository = repository
+        self.message_producer = message_producer
+
         self.logger = LoggerFactory.get_logger(
             name="news-service",
             logger_type=LoggerType.STANDARD,
@@ -58,6 +64,7 @@ class NewsService:
             log_file="logs/news_service.log",
         )
         self.logger.info("NewsService initialized")
+
         # Cache manager (injected if available, otherwise lazily initialized once)
         self._cache_manager: Optional[CacheManager] = cache_manager
         self._cache_initialized: bool = cache_manager is not None
@@ -76,7 +83,7 @@ class NewsService:
 
     async def store_news_item(self, news_item: NewsItem) -> NewsStorageResult:
         """
-        Store a single news item with duplicate detection
+        Store a single news item with duplicate detection and optional message publishing
 
         Args:
             news_item: News item to store
@@ -98,6 +105,21 @@ class NewsService:
 
             # Store the item
             item_id = await self.repository.save_news_item(news_item)
+
+            # Publish to sentiment analysis queue if message producer is available
+            if self.message_producer and item_id:
+                try:
+                    await self.message_producer.publish_news_for_sentiment(
+                        news_item=news_item, article_id=item_id
+                    )
+                    self.logger.debug(
+                        f"Published news item to sentiment queue: {item_id}"
+                    )
+                except Exception as e:
+                    # Don't fail the storage operation if publishing fails
+                    self.logger.warning(
+                        f"Failed to publish news item to sentiment queue: {e}"
+                    )
 
             # Invalidate relevant caches after storing new item
             await self._invalidate_related_caches(news_item)
