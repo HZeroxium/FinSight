@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from ..interfaces.news_repository_interface import NewsRepositoryInterface
 from ..schemas.news_schemas import NewsItem, NewsSource
-from ..utils.cache_utils import CacheEndpoint, get_cache_manager
+from ..utils.cache_utils import CacheEndpoint, get_cache_manager, CacheManager
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
@@ -37,7 +37,11 @@ class NewsService:
     Handles business logic, validation, and provides clean API for news operations.
     """
 
-    def __init__(self, repository: NewsRepositoryInterface):
+    def __init__(
+        self,
+        repository: NewsRepositoryInterface,
+        cache_manager: Optional[CacheManager] = None,
+    ):
         """
         Initialize news service
 
@@ -48,11 +52,27 @@ class NewsService:
         self.logger = LoggerFactory.get_logger(
             name="news-service",
             logger_type=LoggerType.STANDARD,
-            level=LogLevel.INFO,
+            level=LogLevel.DEBUG,
             file_level=LogLevel.DEBUG,
+            console_level=LogLevel.DEBUG,
             log_file="logs/news_service.log",
         )
         self.logger.info("NewsService initialized")
+        # Cache manager (injected if available, otherwise lazily initialized once)
+        self._cache_manager: Optional[CacheManager] = cache_manager
+        self._cache_initialized: bool = cache_manager is not None
+
+    async def _ensure_cache_manager(self) -> CacheManager:
+        """Ensure a single CacheManager instance is available and reused.
+
+        Returns:
+            CacheManager: Ready-to-use cache manager instance
+        """
+        if not self._cache_initialized or self._cache_manager is None:
+            self._cache_manager = await get_cache_manager()
+            self._cache_initialized = True
+            self.logger.debug("[CACHE] CacheManager initialized for NewsService")
+        return self._cache_manager
 
     async def store_news_item(self, news_item: NewsItem) -> NewsStorageResult:
         """
@@ -154,15 +174,18 @@ class NewsService:
             Optional[NewsItem]: News item if found
         """
         try:
+            cache_manager = await self._ensure_cache_manager()
+
             # Try to get from cache first
-            cache_manager = await get_cache_manager()
             cached_item = await cache_manager.get_cached_data(
                 CacheEndpoint.NEWS_ITEM, item_id
             )
 
             if cached_item is not None:
-                self.logger.debug(f"Cache hit for news item: {item_id}")
+                self.logger.debug(f"[CACHE] HIT news_item id={item_id}")
                 return NewsItem(**cached_item)
+
+            self.logger.debug(f"[CACHE] MISS news_item id={item_id}")
 
             # Get from repository
             item = await self.repository.get_news_item(item_id)
@@ -172,7 +195,9 @@ class NewsService:
                 await cache_manager.set_cached_data(
                     CacheEndpoint.NEWS_ITEM, item.model_dump(), item_id
                 )
-                self.logger.debug(f"Cached news item: {item_id}")
+                self.logger.debug(f"[CACHE] SET news_item id={item_id}")
+            else:
+                self.logger.debug(f"[CACHE] NO_DATA news_item id={item_id}")
 
             return item
 
@@ -195,16 +220,19 @@ class NewsService:
                 f"Searching news with filters: {search_request.model_dump()}"
             )
 
-            # Try to get from cache first
-            cache_manager = await get_cache_manager()
+            cache_manager = await self._ensure_cache_manager()
             cache_key = self._generate_search_cache_key(search_request)
+
+            # Try to get from cache first
             cached_result = await cache_manager.get_cached_data(
                 CacheEndpoint.SEARCH_NEWS, cache_key
             )
 
             if cached_result is not None:
-                self.logger.debug(f"Cache hit for search: {cache_key}")
+                self.logger.debug(f"[CACHE] HIT search key={cache_key}")
                 return [NewsItem(**item) for item in cached_result]
+
+            self.logger.debug(f"[CACHE] MISS search key={cache_key}")
 
             # Execute search
             items = await self.repository.search_news(
@@ -222,7 +250,7 @@ class NewsService:
             await cache_manager.set_cached_data(
                 CacheEndpoint.SEARCH_NEWS, items_data, cache_key
             )
-            self.logger.debug(f"Cached search result: {cache_key}")
+            self.logger.debug(f"[CACHE] SET search key={cache_key}")
 
             return items
 
@@ -245,15 +273,21 @@ class NewsService:
             List[NewsItem]: Recent news items
         """
         try:
+            cache_manager = await self._ensure_cache_manager()
             # Try to get from cache first
-            cache_manager = await get_cache_manager()
             cached_result = await cache_manager.get_cached_data(
                 CacheEndpoint.RECENT_NEWS, source, hours, limit
             )
 
             if cached_result is not None:
-                self.logger.debug(f"Cache hit for recent news: {source}, {hours}h")
+                self.logger.debug(
+                    f"[CACHE] HIT recent source={getattr(source,'value',None)} hours={hours} limit={limit}"
+                )
                 return [NewsItem(**item) for item in cached_result]
+
+            self.logger.debug(
+                f"[CACHE] MISS recent source={getattr(source,'value',None)} hours={hours} limit={limit}"
+            )
 
             # Get from repository
             items = await self.repository.get_recent_news(
@@ -265,7 +299,9 @@ class NewsService:
             await cache_manager.set_cached_data(
                 CacheEndpoint.RECENT_NEWS, items_data, source, hours, limit
             )
-            self.logger.debug(f"Cached recent news: {source}, {hours}h")
+            self.logger.debug(
+                f"[CACHE] SET recent source={getattr(source,'value',None)} hours={hours} limit={limit}"
+            )
 
             return items
 
@@ -397,15 +433,21 @@ class NewsService:
             List[str]: Unique tags sorted by frequency
         """
         try:
+            cache_manager = await self._ensure_cache_manager()
             # Try to get from cache first
-            cache_manager = await get_cache_manager()
             cached_result = await cache_manager.get_cached_data(
                 CacheEndpoint.AVAILABLE_TAGS, source, limit
             )
 
             if cached_result is not None:
-                self.logger.debug(f"Cache hit for available tags: {source}")
+                self.logger.debug(
+                    f"[CACHE] HIT available_tags source={getattr(source,'value',None)} limit={limit}"
+                )
                 return cached_result
+
+            self.logger.debug(
+                f"[CACHE] MISS available_tags source={getattr(source,'value',None)} limit={limit}"
+            )
 
             # Get from repository
             tags = await self.repository.get_unique_tags(source=source, limit=limit)
@@ -414,7 +456,9 @@ class NewsService:
             await cache_manager.set_cached_data(
                 CacheEndpoint.AVAILABLE_TAGS, tags, source, limit
             )
-            self.logger.debug(f"Cached available tags: {source}")
+            self.logger.debug(
+                f"[CACHE] SET available_tags source={getattr(source,'value',None)} limit={limit} count={len(tags)}"
+            )
 
             return tags
 
@@ -451,22 +495,24 @@ class NewsService:
             Dict[str, Any]: Repository statistics
         """
         try:
+            cache_manager = await self._ensure_cache_manager()
             # Try to get from cache first
-            cache_manager = await get_cache_manager()
             cached_result = await cache_manager.get_cached_data(
                 CacheEndpoint.REPOSITORY_STATS
             )
 
             if cached_result is not None:
-                self.logger.debug("Cache hit for repository stats")
+                self.logger.debug("[CACHE] HIT repository_stats")
                 return cached_result
+
+            self.logger.debug("[CACHE] MISS repository_stats")
 
             # Get from repository
             stats = await self.repository.get_repository_stats()
 
             # Cache the result
             await cache_manager.set_cached_data(CacheEndpoint.REPOSITORY_STATS, stats)
-            self.logger.debug("Cached repository stats")
+            self.logger.debug("[CACHE] SET repository_stats")
 
             return stats
 
@@ -578,7 +624,7 @@ class NewsService:
     async def _invalidate_related_caches(self, news_item: NewsItem) -> None:
         """Invalidate caches related to a news item"""
         try:
-            cache_manager = await get_cache_manager()
+            cache_manager = await self._ensure_cache_manager()
 
             # Invalidate source-specific caches
             await cache_manager.invalidate_endpoint_cache(
@@ -635,7 +681,10 @@ class NewsService:
         """Invalidate all cache entries"""
         try:
             cache_manager = await get_cache_manager()
-            await cache_manager.invalidate_all_cache()
-            self.logger.info("Invalidated all cache entries")
+            success = await cache_manager.invalidate_all_cache()
+            if success:
+                self.logger.info("[CACHE] INVALIDATE_ALL completed")
+            else:
+                self.logger.warning("[CACHE] INVALIDATE_ALL no entries found")
         except Exception as e:
-            self.logger.error(f"Error invalidating all cache: {e}")
+            self.logger.error(f"[CACHE] INVALIDATE_ALL error: {e}")

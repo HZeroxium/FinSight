@@ -2,8 +2,8 @@
 # Pulls pre-built images from registry
 
 services:
-  news-crawler-server:
-    container_name: news-crawler-server
+  news-service:
+    container_name: news-service
     image: hzeroxium/news-service:latest
     ports:
       - "8000:8000"

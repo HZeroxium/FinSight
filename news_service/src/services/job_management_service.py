@@ -324,23 +324,30 @@ class JobManagementService:
                 max_items=request.max_items_per_source,
             )
 
-            # Check if job was successful and invalidate cache
-            if (
-                result.get("success", False)
-                and result.get("total_items_collected", 0) > 0
-            ):
-                self.logger.info(
-                    f"Manual job {job_id} completed successfully, invalidating cache"
+            # Invalidate cache if new items were stored
+            try:
+                total_stored = result.get("results", {}).get("total_items_stored", 0)
+                if total_stored and total_stored > 0:
+                    await asyncio.sleep(
+                        max(0, int(settings.cache_invalidation_delay_seconds))
+                    )
+                    success = await invalidate_all_news_cache()
+                    if success:
+                        self.logger.info(
+                            f"[CACHE] INVALIDATE_ALL after manual job {job_id} (stored={total_stored})"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"[CACHE] INVALIDATE_ALL had no entries after manual job {job_id}"
+                        )
+                else:
+                    self.logger.debug(
+                        f"[CACHE] Skip invalidate: no new stored items for manual job {job_id}"
+                    )
+            except Exception as cache_error:
+                self.logger.error(
+                    f"[CACHE] Failed to invalidate cache after manual job {job_id}: {cache_error}"
                 )
-                try:
-                    await invalidate_all_news_cache()
-                    self.logger.info(
-                        f"Cache invalidated after successful manual job {job_id}"
-                    )
-                except Exception as cache_error:
-                    self.logger.error(
-                        f"Failed to invalidate cache after manual job: {cache_error}"
-                    )
 
             end_time = datetime.now(timezone.utc)
             duration = (end_time - start_time).total_seconds()

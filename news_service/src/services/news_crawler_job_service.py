@@ -35,6 +35,7 @@ from ..schemas.news_schemas import NewsSource
 from ..core.news_collector_factory import CollectorType
 from ..core.config import settings
 from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..utils.cache_utils import invalidate_all_news_cache
 
 
 @dataclass
@@ -273,6 +274,32 @@ class NewsCrawlerJobService:
             }
 
             self.logger.info(f"✅ Job {job_id} completed successfully: {summary}")
+
+            # Invalidate cache after successful job if items were stored
+            try:
+                total_stored = results.get("total_items_stored", 0)
+                if total_stored and total_stored > 0:
+                    # Optional delay to ensure DB writes fully committed
+                    await asyncio.sleep(
+                        max(0, int(settings.cache_invalidation_delay_seconds))
+                    )
+                    success = await invalidate_all_news_cache()
+                    if success:
+                        self.logger.info(
+                            f"[CACHE] INVALIDATE_ALL after job {job_id} (stored={total_stored})"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"[CACHE] INVALIDATE_ALL had no entries after job {job_id}"
+                        )
+                else:
+                    self.logger.debug(
+                        f"[CACHE] Skip invalidate: no new stored items for job {job_id}"
+                    )
+            except Exception as cache_err:
+                self.logger.error(
+                    f"[CACHE] Failed to invalidate after job {job_id}: {cache_err}"
+                )
 
             # Send notifications if configured
             if config.notification.get("enabled", False):

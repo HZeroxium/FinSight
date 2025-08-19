@@ -57,7 +57,7 @@ class CacheManager:
                 self._cache_instance = CacheFactory.get_cache(
                     name="news-service-memory",
                     cache_type=CacheType.MEMORY,
-                    key_prefix=settings.redis_key_prefix,
+                    # key_prefix=settings.redis_key_prefix,
                 )
             else:
                 self.logger.info("Initializing Redis cache for news service")
