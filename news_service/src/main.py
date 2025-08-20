@@ -135,17 +135,19 @@ async def lifespan(app: FastAPI):
             consumer_task = asyncio.create_task(sentiment_consumer.start_consuming())
 
             # Give consumer time to start properly
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(10.0)
 
             if sentiment_consumer.is_running():
                 logger.info("✅ Sentiment consumer started successfully")
             else:
-                logger.warning("⚠️ Sentiment consumer failed to start properly")
-                startup_errors.append("Sentiment consumer startup issues")
+                logger.warning(
+                    "⚠️ Sentiment consumer failed to start properly - continuing without message broker"
+                )
 
         except Exception as consumer_error:
-            logger.error(f"⚠️ Failed to start sentiment consumer: {consumer_error}")
-            startup_errors.append(f"Sentiment consumer error: {str(consumer_error)}")
+            logger.warning(
+                f"⚠️ Message broker unavailable, continuing without consumer: {consumer_error}"
+            )
             sentiment_consumer = None
 
         # Step 6: Health check for search service (with timeout and error handling)

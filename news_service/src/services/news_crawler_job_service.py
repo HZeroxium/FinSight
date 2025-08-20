@@ -83,6 +83,9 @@ class NewsCrawlerJobService:
         config_file: str = None,
         pid_file: str = None,
         log_file: str = None,
+        repository: Optional[MongoNewsRepository] = None,
+        news_service: Optional[NewsService] = None,
+        collector_service: Optional[NewsCollectorService] = None,
     ):
         """
         Initialize the news crawler job service.
@@ -93,6 +96,9 @@ class NewsCrawlerJobService:
             config_file: Job configuration file path
             pid_file: Process ID file path
             log_file: Log file path
+            repository: Pre-configured repository instance
+            news_service: Pre-configured news service instance
+            collector_service: Pre-configured collector service instance
         """
         self.mongo_url = mongo_url or settings.mongodb_url
         self.database_name = database_name or settings.mongodb_database
@@ -109,11 +115,11 @@ class NewsCrawlerJobService:
             log_file=self.log_file,
         )
 
-        # Components
+        # Components - can be injected or created lazily
         self.scheduler: Optional[AsyncIOScheduler] = None
-        self.repository: Optional[MongoNewsRepository] = None
-        self.news_service: Optional[NewsService] = None
-        self.collector_service: Optional[NewsCollectorService] = None
+        self.repository: Optional[MongoNewsRepository] = repository
+        self.news_service: Optional[NewsService] = news_service
+        self.collector_service: Optional[NewsCollectorService] = collector_service
         self.is_running = False
         self.job_stats = {
             "total_jobs": 0,
@@ -129,21 +135,53 @@ class NewsCrawlerJobService:
         try:
             self.logger.info("🚀 Initializing News Crawler Job Service")
 
-            # Initialize repository
-            self.repository = MongoNewsRepository(
-                mongo_url=self.mongo_url, database_name=self.database_name
-            )
-            await self.repository.initialize()
-            self.logger.info("✅ MongoDB repository initialized")
+            # Initialize repository if not already provided
+            if not self.repository:
+                self.repository = MongoNewsRepository(
+                    mongo_url=self.mongo_url, database_name=self.database_name
+                )
+                await self.repository.initialize()
+                self.logger.info("✅ MongoDB repository initialized")
+            else:
+                self.logger.info("✅ Using injected MongoDB repository")
 
-            # Initialize services
-            self.news_service = NewsService(self.repository)
-            self.collector_service = NewsCollectorService(
-                news_service=self.news_service,
-                use_cache=settings.enable_caching,
-                enable_fallback=True,
-            )
-            self.logger.info("✅ News services initialized")
+            # Initialize message producer with broker if needed
+            if not self.news_service:
+                from ..adapters.rabbitmq_broker import RabbitMQBroker
+                from ..services.news_message_producer_service import (
+                    NewsMessageProducerService,
+                )
+
+                try:
+                    message_broker = RabbitMQBroker(
+                        connection_url=settings.rabbitmq_url
+                    )
+                    message_producer = NewsMessageProducerService(message_broker)
+                    self.logger.info("✅ Message producer initialized")
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to initialize message producer: {e}, continuing without it"
+                    )
+                    message_producer = None
+
+                # Initialize services with message producer
+                self.news_service = NewsService(
+                    repository=self.repository, message_producer=message_producer
+                )
+                self.logger.info("✅ News service initialized")
+            else:
+                self.logger.info("✅ Using injected news service")
+
+            # Initialize collector service if not already provided
+            if not self.collector_service:
+                self.collector_service = NewsCollectorService(
+                    news_service=self.news_service,
+                    use_cache=settings.enable_caching,
+                    enable_fallback=True,
+                )
+                self.logger.info("✅ News collector service initialized")
+            else:
+                self.logger.info("✅ Using injected news collector service")
 
             # Initialize scheduler
             self.scheduler = AsyncIOScheduler(timezone=timezone.utc)
@@ -235,7 +273,20 @@ class NewsCrawlerJobService:
         try:
             # Ensure services are initialized
             if not all([self.repository, self.news_service, self.collector_service]):
+                self.logger.info("Services not initialized, initializing now...")
                 await self.initialize()
+
+            # Debug logging to check service types
+            self.logger.debug(f"Repository type: {type(self.repository)}")
+            self.logger.debug(f"News service type: {type(self.news_service)}")
+            self.logger.debug(f"Collector service type: {type(self.collector_service)}")
+
+            # Verify collector service has the required method
+            if not hasattr(self.collector_service, "collect_and_store_batch"):
+                self.logger.error(
+                    f"Collector service {type(self.collector_service)} missing method collect_and_store_batch"
+                )
+                raise AttributeError("Collector service is missing required method")
 
             # Convert sources to NewsSource enums
             sources = [NewsSource(source) for source in config.sources]

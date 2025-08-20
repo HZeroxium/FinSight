@@ -19,9 +19,8 @@ from ..schemas.job_schemas import (
     JobConfigUpdateRequest,
     JobOperationResponse,
     JobStatsModel,
-    JobStatus,
 )
-from ..utils.dependencies import get_job_service, require_admin_access
+from ..utils.dependencies import get_job_management_service, require_admin_access
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
 # Initialize router
@@ -39,7 +38,7 @@ logger = LoggerFactory.get_logger(
 
 @router.get("/status", response_model=JobStatusResponse)
 async def get_job_status(
-    job_service: JobManagementService = Depends(get_job_service),
+    job_service: JobManagementService = Depends(get_job_management_service),
     _: bool = Depends(require_admin_access),
 ) -> JobStatusResponse:
     """
@@ -76,7 +75,7 @@ async def get_job_status(
 @router.post("/start", response_model=JobOperationResponse)
 async def start_job(
     request: JobStartRequest = JobStartRequest(),
-    job_service: JobManagementService = Depends(get_job_service),
+    job_service: JobManagementService = Depends(get_job_management_service),
     _: bool = Depends(require_admin_access),
 ) -> JobOperationResponse:
     """
@@ -117,7 +116,7 @@ async def start_job(
 @router.post("/stop", response_model=JobOperationResponse)
 async def stop_job(
     request: JobStopRequest = JobStopRequest(),
-    job_service: JobManagementService = Depends(get_job_service),
+    job_service: JobManagementService = Depends(get_job_management_service),
     _: bool = Depends(require_admin_access),
 ) -> JobOperationResponse:
     """
@@ -153,7 +152,7 @@ async def stop_job(
 async def run_manual_job(
     request: ManualJobRequest = ManualJobRequest(),
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    job_service: JobManagementService = Depends(get_job_service),
+    job_service: JobManagementService = Depends(get_job_management_service),
     _: bool = Depends(require_admin_access),
 ) -> ManualJobResponse:
     """
@@ -189,7 +188,7 @@ async def run_manual_job(
 
 @router.get("/config", response_model=JobConfigModel)
 async def get_job_config(
-    job_service: JobManagementService = Depends(get_job_service),
+    job_service: JobManagementService = Depends(get_job_management_service),
     _: bool = Depends(require_admin_access),
 ) -> JobConfigModel:
     """
@@ -220,7 +219,7 @@ async def get_job_config(
 @router.put("/config", response_model=JobOperationResponse)
 async def update_job_config(
     request: JobConfigUpdateRequest,
-    job_service: JobManagementService = Depends(get_job_service),
+    job_service: JobManagementService = Depends(get_job_management_service),
     _: bool = Depends(require_admin_access),
 ) -> JobOperationResponse:
     """
@@ -256,7 +255,7 @@ async def update_job_config(
 
 @router.get("/stats", response_model=JobStatsModel)
 async def get_job_stats(
-    job_service: JobManagementService = Depends(get_job_service),
+    job_service: JobManagementService = Depends(get_job_management_service),
     _: bool = Depends(require_admin_access),
 ) -> JobStatsModel:
     """
@@ -286,7 +285,7 @@ async def get_job_stats(
 
 @router.get("/health")
 async def job_health_check(
-    job_service: JobManagementService = Depends(get_job_service),
+    job_service: JobManagementService = Depends(get_job_management_service),
     _: bool = Depends(require_admin_access),
 ) -> dict:
     """

@@ -161,28 +161,28 @@ class Settings(BaseSettings):
     )
 
     # RabbitMQ configuration - centralized messaging settings
-    rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
-    rabbitmq_article_exchange: str = "news_crawler_exchange"
-    rabbitmq_analytics_exchange: str = "analytics_exchange"
+    rabbitmq_url: str = Field(default="amqp://guest:guest@localhost:5672/")
+
+    # Single exchange for all news events
+    rabbitmq_exchange: str = Field(default="news.event")
 
     # Queue names
-    rabbitmq_queue_raw_articles: str = "raw_articles_queue"
-    rabbitmq_queue_processed_sentiments: str = "processed_sentiments_queue"
+    rabbitmq_queue_news_to_sentiment: str = Field(default="news.sentiment_analysis")
+    rabbitmq_queue_sentiment_results: str = Field(default="sentiment.results")
 
     # Routing keys
-    rabbitmq_routing_key_article_sentiment: str = "article.sentiment_analysis"
-    rabbitmq_routing_key_sentiment_processed: str = "sentiment.processed"
-    rabbitmq_routing_key_search_event: str = "search.event"
+    rabbitmq_routing_key_news_to_sentiment: str = Field(default="news.sentiment.analyze")
+    rabbitmq_routing_key_sentiment_results: str = Field(default="sentiment.results.processed")
 
     # Crawler configuration
-    enable_advanced_crawling: bool = True
-    max_concurrent_crawls: int = 10
-    crawl_timeout: int = 30
-    crawl_retry_attempts: int = 3
+    enable_advanced_crawling: bool = Field(default=True)
+    max_concurrent_crawls: int = Field(default=10)
+    crawl_timeout: int = Field(default=30)
+    crawl_retry_attempts: int = Field(default=3)
 
     # Cache configuration
-    enable_caching: bool = True
-    cache_ttl_seconds: int = 300
+    enable_caching: bool = Field(default=True)
+    cache_ttl_seconds: int = Field(default=300)
 
     # Redis Cache Configuration
     redis_host: str = Field(default="localhost", description="Redis host")

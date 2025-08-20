@@ -194,3 +194,24 @@ class NewsStatsResponse(BaseModel):
     oldest_article: Optional[datetime] = Field(None, description="Oldest article date")
     newest_article: Optional[datetime] = Field(None, description="Newest article date")
     database_info: Dict[str, Any] = Field(..., description="Database information")
+
+
+class NewsSearchRequest(BaseModel):
+    """Request model for news search operations"""
+
+    source: Optional[NewsSource] = Field(None, description="Filter by news source")
+    keywords: Optional[List[str]] = Field(None, description="Keywords to search")
+    tags: Optional[List[str]] = Field(None, description="Tags to filter by")
+    start_date: Optional[datetime] = Field(None, description="Start date filter")
+    end_date: Optional[datetime] = Field(None, description="End date filter")
+    limit: int = Field(100, ge=1, le=1000, description="Maximum items to return")
+    offset: int = Field(0, ge=0, description="Number of items to skip")
+
+
+class NewsStorageResult(BaseModel):
+    """Result model for news storage operations"""
+
+    item_id: Optional[str] = Field(None, description="ID of stored item")
+    is_duplicate: bool = Field(False, description="Whether item was a duplicate")
+    success: bool = Field(True, description="Whether operation succeeded")
+    error_message: Optional[str] = Field(None, description="Error message if failed")

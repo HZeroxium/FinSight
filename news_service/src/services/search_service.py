@@ -348,14 +348,14 @@ class SearchService:
             # Ensure exchange exists
             try:
                 await self.message_broker.declare_exchange(
-                    settings.rabbitmq_article_exchange, "topic"
+                    settings.rabbitmq_news_exchange, "topic"
                 )
                 logger.debug(
-                    f"Exchange {settings.rabbitmq_article_exchange} created/verified successfully"
+                    f"Exchange {settings.rabbitmq_news_exchange} created/verified successfully"
                 )
             except Exception as exchange_error:
                 logger.warning(
-                    f"Failed to create exchange {settings.rabbitmq_article_exchange}: {exchange_error}"
+                    f"Failed to create exchange {settings.rabbitmq_news_exchange}: {exchange_error}"
                 )
 
             # Publish each article for sentiment analysis using schema
@@ -382,8 +382,8 @@ class SearchService:
 
                     # Publish to sentiment analysis queue using config
                     success = await self.message_broker.publish(
-                        exchange=settings.rabbitmq_article_exchange,
-                        routing_key=settings.rabbitmq_routing_key_article_sentiment,
+                        exchange=settings.rabbitmq_news_exchange,
+                        routing_key=settings.rabbitmq_routing_key_news_sentiment,
                         message=article_message.model_dump(),
                     )
 

@@ -30,12 +30,8 @@ class NewsMessageProducerService:
             message_broker: Message broker instance for publishing
         """
         self.message_broker = message_broker
-        self._exchange_name = getattr(
-            settings, "rabbitmq_news_exchange", "news_exchange"
-        )
-        self._routing_key = getattr(
-            settings, "rabbitmq_routing_key_news_sentiment", "sentiment.analysis.news"
-        )
+        self._exchange_name = settings.rabbitmq_exchange
+        self._routing_key = settings.rabbitmq_routing_key_news_to_sentiment
         logger.info("NewsMessageProducerService initialized")
 
     async def publish_news_for_sentiment(
@@ -60,17 +56,21 @@ class NewsMessageProducerService:
             return False
 
         try:
+            # Ensure broker is connected
+            if not await self._ensure_connection():
+                logger.warning("Failed to establish message broker connection")
+                return False
+
             # Create message schema
             message_data = self._create_news_message(
                 news_item, article_id, additional_metadata
             )
 
             # Publish message
-            await self.message_broker.publish_message(
-                exchange_name=self._exchange_name,
+            await self.message_broker.publish(
+                exchange=self._exchange_name,
                 routing_key=self._routing_key,
                 message=message_data.model_dump(mode="json"),
-                message_type="news_for_sentiment",
             )
 
             logger.info(
@@ -254,20 +254,49 @@ class NewsMessageProducerService:
         """
         return self.message_broker is not None
 
+    async def _ensure_connection(self) -> bool:
+        """Ensure message broker connection and setup infrastructure."""
+        try:
+            # Check if already connected
+            if await self.message_broker.health_check():
+                return True
 
-# Legacy class for backward compatibility
-class MessagePublisherService(NewsMessageProducerService):
-    """Legacy class - use NewsMessageProducerService instead."""
+            # Connect to broker
+            await self.message_broker.connect()
 
-    def __init__(self, message_broker: MessageBroker) -> None:
-        super().__init__(message_broker)
-        logger.warning(
-            "MessagePublisherService is deprecated, use NewsMessageProducerService instead"
-        )
+            # Setup exchange and queue infrastructure
+            await self._setup_infrastructure()
 
-    async def publish_new_article(self, item: NewsItem, article_id: str) -> bool:
-        """Legacy method - use publish_news_for_sentiment instead."""
-        logger.warning(
-            "publish_new_article is deprecated, use publish_news_for_sentiment instead"
-        )
-        return await self.publish_news_for_sentiment(item, article_id)
+            return True
+        except Exception as e:
+            logger.warning(
+                f"Message broker unavailable, continuing without publishing: {e}"
+            )
+            return False
+
+    async def _setup_infrastructure(self) -> None:
+        """Setup RabbitMQ exchanges and queues."""
+        try:
+            # Declare the news.event exchange
+            await self.message_broker.declare_exchange(
+                exchange=self._exchange_name, exchange_type="topic", durable=True
+            )
+
+            # Declare queue for news to sentiment analysis
+            await self.message_broker.declare_queue(
+                queue=settings.rabbitmq_queue_news_to_sentiment, durable=True
+            )
+
+            # Bind queue to exchange
+            await self.message_broker.bind_queue(
+                queue=settings.rabbitmq_queue_news_to_sentiment,
+                exchange=self._exchange_name,
+                routing_key=self._routing_key,
+            )
+
+            logger.info("Message broker infrastructure setup completed")
+        except Exception as e:
+            logger.warning(
+                f"Message broker infrastructure setup failed, continuing without publishing: {e}"
+            )
+            # Don't raise to avoid blocking the service

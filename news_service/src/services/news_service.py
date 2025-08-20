@@ -1,35 +1,18 @@
 # services/news_service.py
 
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
-from pydantic import BaseModel, Field
 
 from ..interfaces.news_repository_interface import NewsRepositoryInterface
-from ..schemas.news_schemas import NewsItem, NewsSource
+from ..schemas.news_schemas import (
+    NewsItem,
+    NewsSource,
+    NewsStorageResult,
+    NewsSearchRequest,
+)
 from ..utils.cache_utils import CacheEndpoint, get_cache_manager, CacheManager
 from .news_message_producer_service import NewsMessageProducerService
 from common.logger import LoggerFactory, LoggerType, LogLevel
-
-
-class NewsSearchRequest(BaseModel):
-    """Request model for news search operations"""
-
-    source: Optional[NewsSource] = Field(None, description="Filter by news source")
-    keywords: Optional[List[str]] = Field(None, description="Keywords to search")
-    tags: Optional[List[str]] = Field(None, description="Tags to filter by")
-    start_date: Optional[datetime] = Field(None, description="Start date filter")
-    end_date: Optional[datetime] = Field(None, description="End date filter")
-    limit: int = Field(100, ge=1, le=1000, description="Maximum items to return")
-    offset: int = Field(0, ge=0, description="Number of items to skip")
-
-
-class NewsStorageResult(BaseModel):
-    """Result model for news storage operations"""
-
-    item_id: Optional[str] = Field(None, description="ID of stored item")
-    is_duplicate: bool = Field(False, description="Whether item was a duplicate")
-    success: bool = Field(True, description="Whether operation succeeded")
-    error_message: Optional[str] = Field(None, description="Error message if failed")
 
 
 class NewsService:
@@ -105,6 +88,13 @@ class NewsService:
 
             # Store the item
             item_id = await self.repository.save_news_item(news_item)
+
+            self.logger.debug(f"Published news item with ID: {item_id}")
+
+            if not self.message_producer:
+                self.logger.warning(
+                    "Message producer not available, skipping publishing"
+                )
 
             # Publish to sentiment analysis queue if message producer is available
             if self.message_producer and item_id:

@@ -14,7 +14,6 @@ from ..repositories.mongo_news_repository import MongoNewsRepository
 from ..services.news_service import NewsService
 from ..services.search_service import SearchService
 from ..services.news_collector_service import NewsCollectorService
-from ..services.job_management_service import JobManagementService
 from ..services.eureka_client_service import EurekaClientService
 from ..services.news_message_producer_service import NewsMessageProducerService
 from ..adapters.rabbitmq_broker import RabbitMQBroker
@@ -93,13 +92,6 @@ class Container(containers.DeclarativeContainer):
         SearchService,
         search_engine=search_engine,
         message_broker=message_broker,
-    )
-
-    # Job Management Service
-    job_service = providers.Singleton(
-        JobManagementService,
-        mongo_url=config.mongo_url.as_(str),
-        database_name=config.database_name.as_(str),
     )
 
 
@@ -213,9 +205,6 @@ class ServiceContext:
     def get_message_broker(self) -> RabbitMQBroker:
         return container.message_broker()
 
-    def get_job_service(self) -> JobManagementService:
-        return container.job_service()
-
     def get_eureka_client_service(self) -> EurekaClientService:
         return container.eureka_client_service()
 
@@ -283,16 +272,6 @@ def get_search_engine() -> TavilySearchEngine:
         raise
 
 
-def get_job_service() -> JobManagementService:
-    """Get job management service instance"""
-    try:
-        return container.job_service()
-    except Exception as e:
-        logger = container.logger()
-        logger.error(f"Failed to get job service: {e}")
-        raise
-
-
 def get_eureka_client_service() -> EurekaClientService:
     """Get Eureka client service instance"""
     try:
@@ -310,6 +289,123 @@ async def get_cache_manager_dependency() -> CacheManager:
     except Exception as e:
         logger = container.logger()
         logger.error(f"Failed to get cache manager: {e}")
+        raise
+
+
+def create_job_management_service(
+    mongo_url: str = None,
+    database_name: str = None,
+    config_file: str = None,
+    pid_file: str = None,
+    log_file: str = None,
+):
+    """Factory function to create JobManagementService instance"""
+    # Import here to avoid circular import
+    from ..services.job_management_service import JobManagementService
+
+    # Create factory for NewsCrawlerJobService that doesn't inject dependencies upfront
+    def job_service_factory():
+        return create_news_crawler_job_service(
+            mongo_url=mongo_url or settings.mongodb_url,
+            database_name=database_name or settings.mongodb_database,
+            config_file=config_file,
+            pid_file=pid_file,
+            log_file=log_file,
+        )
+
+    return JobManagementService(
+        mongo_url=mongo_url or settings.mongodb_url,
+        database_name=database_name or settings.mongodb_database,
+        config_file=config_file,
+        pid_file=pid_file,
+        log_file=log_file,
+        job_service_factory=job_service_factory,
+    )
+
+
+async def create_news_crawler_job_service_async(
+    mongo_url: str = None,
+    database_name: str = None,
+    config_file: str = None,
+    pid_file: str = None,
+    log_file: str = None,
+):
+    """Async factory function to create NewsCrawlerJobService instance"""
+    # Import here to avoid circular import
+    from ..services.news_crawler_job_service import NewsCrawlerJobService
+
+    # Get dependencies from container (make sure they're resolved)
+    try:
+        repository = container.mongo_repository()
+        news_service = container.news_service()
+        collector_service = container.news_collector_service()
+
+        # Ensure all services are properly initialized
+        if hasattr(repository, "initialize") and not repository._initialized:
+            await repository.initialize()
+
+        return NewsCrawlerJobService(
+            mongo_url=mongo_url or settings.mongodb_url,
+            database_name=database_name or settings.mongodb_database,
+            config_file=config_file,
+            pid_file=pid_file,
+            log_file=log_file,
+            repository=repository,
+            news_service=news_service,
+            collector_service=collector_service,
+        )
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to create NewsCrawlerJobService: {e}")
+        # Fallback to creating without dependencies
+        return NewsCrawlerJobService(
+            mongo_url=mongo_url or settings.mongodb_url,
+            database_name=database_name or settings.mongodb_database,
+            config_file=config_file,
+            pid_file=pid_file,
+            log_file=log_file,
+        )
+
+
+def create_news_crawler_job_service(
+    mongo_url: str = None,
+    database_name: str = None,
+    config_file: str = None,
+    pid_file: str = None,
+    log_file: str = None,
+):
+    """Factory function to create NewsCrawlerJobService instance"""
+    # Import here to avoid circular import
+    from ..services.news_crawler_job_service import NewsCrawlerJobService
+
+    # Create without dependencies - let the service handle its own initialization
+    return NewsCrawlerJobService(
+        mongo_url=mongo_url or settings.mongodb_url,
+        database_name=database_name or settings.mongodb_database,
+        config_file=config_file,
+        pid_file=pid_file,
+        log_file=log_file,
+        # Don't inject dependencies here to avoid Future/Promise issues
+    )
+
+
+def get_job_management_service():
+    """Get job management service instance"""
+    try:
+        return create_job_management_service()
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to get job management service: {e}")
+        raise
+
+
+def get_news_crawler_job_service():
+    """Get news crawler job service instance"""
+    try:
+        return create_news_crawler_job_service()
+    except Exception as e:
+        logger = container.logger()
+        logger.error(f"Failed to get news crawler job service: {e}")
         raise
 
 

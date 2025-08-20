@@ -44,6 +44,7 @@ class JobManagementService:
         config_file: str = None,
         pid_file: str = None,
         log_file: str = None,
+        job_service_factory=None,  # Factory function for creating NewsCrawlerJobService
     ):
         """
         Initialize job management service.
@@ -54,12 +55,14 @@ class JobManagementService:
             config_file: Job configuration file path
             pid_file: Process ID file path
             log_file: Log file path
+            job_service_factory: Factory function to create NewsCrawlerJobService
         """
         self.mongo_url = mongo_url or settings.mongodb_url
         self.database_name = database_name or settings.mongodb_database
         self.config_file = Path(config_file or settings.cron_job_config_file)
         self.pid_file = Path(pid_file or settings.cron_job_pid_file)
         self.log_file = log_file or settings.cron_job_log_file
+        self.job_service_factory = job_service_factory
 
         # Initialize logger
         self.logger = LoggerFactory.get_logger(
@@ -77,13 +80,20 @@ class JobManagementService:
     def _get_job_service(self) -> NewsCrawlerJobService:
         """Get or create the internal job service instance."""
         if self._job_service is None:
-            self._job_service = NewsCrawlerJobService(
-                mongo_url=self.mongo_url,
-                database_name=self.database_name,
-                config_file=str(self.config_file),
-                pid_file=str(self.pid_file),
-                log_file=self.log_file,
-            )
+            if self.job_service_factory:
+                # Use factory function (dependency injection)
+                self._job_service = self.job_service_factory()
+            else:
+                # Fallback to direct instantiation (avoid circular import)
+                from ..services.news_crawler_job_service import NewsCrawlerJobService
+
+                self._job_service = NewsCrawlerJobService(
+                    mongo_url=self.mongo_url,
+                    database_name=self.database_name,
+                    config_file=str(self.config_file),
+                    pid_file=str(self.pid_file),
+                    log_file=self.log_file,
+                )
         return self._job_service
 
     def _convert_to_dataclass_config(

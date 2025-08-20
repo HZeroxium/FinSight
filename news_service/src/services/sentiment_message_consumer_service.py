@@ -60,7 +60,7 @@ class SentimentMessageConsumerService:
 
             # Start consuming from processed sentiment queue
             await self.message_broker.consume(
-                queue=settings.rabbitmq_queue_processed_sentiments,
+                queue=settings.rabbitmq_queue_sentiment_results,
                 callback=self._process_sentiment_result_message,
                 auto_ack=False,
             )
@@ -87,27 +87,22 @@ class SentimentMessageConsumerService:
         try:
             # Declare exchanges using config
             await self.message_broker.declare_exchange(
-                settings.rabbitmq_article_exchange, "topic", durable=True
-            )
-
-            # Declare sentiment analysis exchange
-            await self.message_broker.declare_exchange(
-                "sentiment_analysis_exchange", "topic", durable=True
+                settings.rabbitmq_exchange, "topic", durable=True
             )
 
             # Declare queues using config
             await self.message_broker.declare_queue(
-                settings.rabbitmq_queue_raw_articles, durable=True
+                settings.rabbitmq_queue_news_to_sentiment, durable=True
             )
             await self.message_broker.declare_queue(
-                settings.rabbitmq_queue_processed_sentiments, durable=True
+                settings.rabbitmq_queue_sentiment_results, durable=True
             )
 
-            # Bind processed sentiments queue to sentiment analysis exchange using config
+            # Bind processed sentiments queue to exchange using config
             await self.message_broker.bind_queue(
-                settings.rabbitmq_queue_processed_sentiments,
-                "sentiment_analysis_exchange",
-                settings.rabbitmq_routing_key_sentiment_processed,
+                settings.rabbitmq_queue_sentiment_results,
+                settings.rabbitmq_exchange,
+                settings.rabbitmq_routing_key_sentiment_results,
             )
 
             logger.info("Sentiment consumer infrastructure setup completed")
