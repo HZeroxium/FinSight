@@ -71,35 +71,3 @@ class SentimentResultMessageSchema(BaseModel):
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional processing metadata"
     )
-
-
-# Legacy schema for backward compatibility
-class ArticleMessageSchema(BaseModel):
-    """Legacy schema - deprecated, use NewsMessageSchema instead."""
-
-    id: str = Field(..., description="Unique article identifier")
-    url: str = Field(..., description="Article URL")
-    title: str = Field(..., description="Article title")
-    content: str = Field(..., description="Article content")
-    source: Optional[str] = Field(None, description="Article source")
-    published_at: Optional[str] = Field(
-        None, description="Publication timestamp ISO format"
-    )
-    score: Optional[float] = Field(None, description="Search relevance score")
-    metadata: Optional[Dict[str, Any]] = Field(
-        default_factory=dict, description="Additional metadata"
-    )
-    search_query: Optional[str] = Field(None, description="Original search query")
-    search_timestamp: str = Field(..., description="Search timestamp ISO format")
-
-
-class SearchEventMessageSchema(BaseModel):
-    """Schema for search analytics events."""
-
-    event_type: str = Field(..., description="Event type")
-    query: str = Field(..., description="Search query")
-    topic: Optional[str] = Field(None, description="Search topic")
-    results_count: int = Field(..., description="Number of results")
-    response_time: Optional[float] = Field(None, description="Response time")
-    crawler_used: bool = Field(default=False, description="Whether crawler was used")
-    timestamp: str = Field(..., description="Event timestamp ISO format")

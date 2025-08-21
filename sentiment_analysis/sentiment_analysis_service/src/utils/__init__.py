@@ -9,8 +9,7 @@ from .dependencies import (
     get_news_repository,
     get_message_broker,
     get_sentiment_service,
-    get_sentiment_message_producer,
-    get_news_message_consumer,
+    get_news_consumer_service,
 )
 
 __all__ = [
@@ -18,6 +17,5 @@ __all__ = [
     "get_news_repository",
     "get_message_broker",
     "get_sentiment_service",
-    "get_sentiment_message_producer",
-    "get_news_message_consumer",
+    "get_news_consumer_service",
 ]

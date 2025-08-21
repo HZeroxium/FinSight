@@ -8,20 +8,12 @@ from .sentiment import (
     SentimentLabel,
     SentimentScore,
     SentimentAnalysisResult,
-    ProcessedSentiment,
     SentimentRequest,
-    SentimentQueryFilter,
-    SentimentAggregation,
-    PyObjectId,
 )
 
 __all__ = [
     "SentimentLabel",
     "SentimentScore",
     "SentimentAnalysisResult",
-    "ProcessedSentiment",
     "SentimentRequest",
-    "SentimentQueryFilter",
-    "SentimentAggregation",
-    "PyObjectId",
 ]

@@ -1,19 +1,16 @@
 # utils/dependencies.py
 
 """
-Dependency injection utilities for sentiment analysis service.
+Dependency injection utilities for sentiment analysis service using dependency_injector.
 """
 
-from functools import lru_cache
+from dependency_injector import containers, providers
 
 from ..adapters.openai_sentiment_analyzer import OpenAISentimentAnalyzer
 from ..adapters.rabbitmq_broker import RabbitMQBroker
 from ..repositories.mongo_news_repository import MongoNewsRepository
 from ..services.sentiment_service import SentimentService
-from ..services.news_message_consumer_service import NewsMessageConsumerService
-from ..services.sentiment_message_producer_service import (
-    SentimentMessageProducerService,
-)
+from ..services.news_consumer_service import NewsConsumerService
 from ..core.config import settings
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
@@ -23,71 +20,130 @@ logger = LoggerFactory.get_logger(
 )
 
 
-@lru_cache()
-def get_sentiment_analyzer() -> OpenAISentimentAnalyzer:
-    """Get sentiment analyzer instance."""
-    logger.info("Creating OpenAI sentiment analyzer instance")
-    return OpenAISentimentAnalyzer(
-        api_key=settings.openai_api_key,
-        model=settings.openai_model,
-        temperature=settings.openai_temperature,
-        max_tokens=settings.openai_max_tokens,
-        max_retries=settings.analysis_retry_attempts,
+class Container(containers.DeclarativeContainer):
+    """Dependency injection container for sentiment analysis service."""
+
+    # Configuration
+    config = providers.Configuration()
+
+    # Logger
+    logger = providers.Singleton(
+        LoggerFactory.get_logger,
+        name="sentiment-service",
+        logger_type=LoggerType.STANDARD,
+        level=LogLevel.INFO,
     )
 
-
-@lru_cache()
-def get_news_repository() -> MongoNewsRepository:
-    """Get news repository instance."""
-    logger.info("Creating MongoDB news repository instance")
-    return MongoNewsRepository(
-        mongo_url=settings.mongodb_url,
-        database_name=settings.mongodb_database,
+    # Sentiment Analyzer
+    sentiment_analyzer = providers.Singleton(
+        OpenAISentimentAnalyzer,
+        api_key=config.openai_api_key.as_(str),
+        model=config.openai_model.as_(str),
+        temperature=config.openai_temperature.as_(float),
+        max_tokens=config.openai_max_tokens.as_(int),
+        max_retries=config.analysis_retry_attempts.as_(int),
     )
 
+    # Message Broker
+    message_broker = providers.Singleton(
+        RabbitMQBroker,
+        connection_url=config.rabbitmq_url.as_(str),
+    )
 
-@lru_cache()
-def get_message_broker() -> RabbitMQBroker:
-    """Get message broker instance."""
-    logger.info("Creating RabbitMQ broker instance")
-    return RabbitMQBroker(connection_url=settings.rabbitmq_url)
+    # News Repository
+    news_repository = providers.Singleton(
+        MongoNewsRepository,
+        mongo_url=config.mongodb_url.as_(str),
+        database_name=config.mongodb_database.as_(str),
+    )
 
-
-@lru_cache()
-def get_sentiment_service() -> SentimentService:
-    """Get sentiment service instance."""
-    logger.info("Creating sentiment service instance")
-    analyzer = get_sentiment_analyzer()
-    news_repository = get_news_repository()
-    message_broker = get_message_broker()
-
-    return SentimentService(
-        analyzer=analyzer,
+    # Sentiment Service
+    sentiment_service = providers.Singleton(
+        SentimentService,
+        analyzer=sentiment_analyzer,
         news_repository=news_repository,
         message_broker=message_broker,
     )
 
-
-@lru_cache()
-def get_sentiment_message_producer() -> SentimentMessageProducerService:
-    """Get sentiment message producer instance."""
-    logger.info("Creating sentiment message producer instance")
-    message_broker = get_message_broker()
-    return SentimentMessageProducerService(message_broker=message_broker)
-
-
-@lru_cache()
-def get_news_message_consumer() -> NewsMessageConsumerService:
-    """Get news message consumer instance."""
-    logger.info("Creating news message consumer instance")
-    message_broker = get_message_broker()
-    sentiment_service = get_sentiment_service()
-    news_repository = get_news_repository()
-    sentiment_producer = get_sentiment_message_producer()
-
-    return NewsMessageConsumerService(
+    # News Consumer Service
+    news_consumer_service = providers.Singleton(
+        NewsConsumerService,
         message_broker=message_broker,
         sentiment_service=sentiment_service,
-        news_repository=news_repository,
-        sentiment_producer=sentiment_producer,
     )
+
+
+# Global container instance
+container = Container()
+
+# Configure container with settings
+container.config.openai_api_key.from_value(settings.openai_api_key)
+container.config.openai_model.from_value(settings.openai_model)
+container.config.openai_temperature.from_value(settings.openai_temperature)
+container.config.openai_max_tokens.from_value(settings.openai_max_tokens)
+container.config.analysis_retry_attempts.from_value(settings.analysis_retry_attempts)
+container.config.rabbitmq_url.from_value(settings.rabbitmq_url)
+container.config.mongodb_url.from_value(settings.mongodb_url)
+container.config.mongodb_database.from_value(settings.mongodb_database)
+
+
+async def initialize_services() -> None:
+    """Initialize all async services with proper error handling."""
+    logger.info("Initializing sentiment analysis services...")
+
+    try:
+        # Initialize news repository
+        news_repo = container.news_repository()
+        await news_repo.initialize()
+        logger.info("✅ News repository initialized successfully")
+
+        logger.info("✅ All sentiment analysis services initialized successfully")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize sentiment analysis services: {e}")
+        # Don't raise - allow service to start without message broker
+        logger.warning(
+            "Service will continue without full message broker functionality"
+        )
+
+
+async def cleanup_services() -> None:
+    """Cleanup all async services."""
+    logger.info("Cleaning up sentiment analysis services...")
+
+    try:
+        # Close repository connections
+        news_repo = container.news_repository()
+        await news_repo.close()
+        logger.info("✅ Repository connections closed")
+
+        logger.info("✅ All sentiment analysis services cleaned up successfully")
+
+    except Exception as e:
+        logger.error(f"❌ Error during sentiment analysis service cleanup: {e}")
+
+
+# Dependency provider functions
+def get_sentiment_analyzer() -> OpenAISentimentAnalyzer:
+    """Get sentiment analyzer instance."""
+    return container.sentiment_analyzer()
+
+
+def get_news_repository() -> MongoNewsRepository:
+    """Get news repository instance."""
+    return container.news_repository()
+
+
+def get_message_broker() -> RabbitMQBroker:
+    """Get message broker instance."""
+    return container.message_broker()
+
+
+def get_sentiment_service() -> SentimentService:
+    """Get sentiment service instance."""
+    return container.sentiment_service()
+
+
+def get_news_consumer_service() -> NewsConsumerService:
+    """Get news consumer service instance."""
+    return container.news_consumer_service()

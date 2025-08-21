@@ -49,9 +49,7 @@ async def lifespan(app: FastAPI):
     # Check if Eureka client is enabled
     eureka_enabled = getattr(settings, "enable_eureka_client", True)
     if eureka_enabled:
-        logger.info(
-            f"🔗 Eureka Client: {getattr(settings, 'eureka_server_url', 'http://localhost:8761')}"
-        )
+        logger.info(f"🔗 Eureka Client: {settings.eureka_server_url}")
 
     startup_errors = []
 

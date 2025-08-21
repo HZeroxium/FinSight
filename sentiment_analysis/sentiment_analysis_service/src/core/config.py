@@ -26,27 +26,29 @@ class Settings(BaseSettings):
 
     # MongoDB configuration
     mongodb_url: str = "mongodb://localhost:27017"
-    mongodb_database: str = "sentiment_analysis"
-    mongodb_collection_sentiments: str = "sentiments"
+    mongodb_database: str = "finsight_news"  # Shared database with news service
+    mongodb_collection_news: str = "news"
 
-    # RabbitMQ configuration - synchronized with news crawler
+    # RabbitMQ configuration - synchronized with news service
     rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
-    rabbitmq_article_exchange: str = "news_crawler_exchange"
-    rabbitmq_sentiment_exchange: str = "sentiment_analysis_exchange"
+
+    # Single exchange for all news events
+    rabbitmq_exchange: str = "news.event"
 
     # Queue names
-    rabbitmq_queue_raw_articles: str = "raw_articles_queue"
-    rabbitmq_queue_processed_sentiments: str = "processed_sentiments_queue"
+    rabbitmq_queue_news_to_sentiment: str = "news.sentiment_analysis"
+    rabbitmq_queue_sentiment_results: str = "sentiment.results"
 
     # Routing keys
-    rabbitmq_routing_key_article_sentiment: str = "article.sentiment_analysis"
-    rabbitmq_routing_key_sentiment_processed: str = "sentiment.processed"
+    rabbitmq_routing_key_news_to_sentiment: str = "news.sentiment.analyze"
+    rabbitmq_routing_key_sentiment_results: str = "sentiment.results.processed"
 
     # Processing configuration
     enable_batch_processing: bool = True
     max_concurrent_analysis: int = 5
     analysis_timeout: int = 30
     analysis_retry_attempts: int = 3
+    analyzer_version: str = "openai-gpt-4o-mini"
     batch_size: int = 10
 
     # Cache configuration
