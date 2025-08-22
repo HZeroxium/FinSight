@@ -1,19 +1,20 @@
 # models/news_model.py
 
 """
-News model for MongoDB storage in sentiment analysis service.
+MongoDB model for news items - synchronized with news_service
 """
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field, field_serializer, field_validator
 from bson import ObjectId
+import hashlib
 
 from ..schemas.news_schemas import NewsSource, NewsItem
 
 
 class NewsModel(BaseModel):
-    """MongoDB model for news items with sentiment analysis fields"""
+    """MongoDB model for news items - matches news_service exactly"""
 
     id: Optional[str] = Field(default=None, alias="_id")
     source: NewsSource = Field(..., description="News source identifier")
@@ -30,22 +31,6 @@ class NewsModel(BaseModel):
     tags: List[str] = Field(default_factory=list, description="Article tags/categories")
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional fields"
-    )
-
-    # Sentiment analysis fields
-    sentiment_label: Optional[str] = Field(None, description="Sentiment classification")
-    sentiment_scores: Optional[Dict[str, float]] = Field(
-        None, description="Sentiment scores"
-    )
-    sentiment_confidence: Optional[float] = Field(
-        None, description="Analysis confidence"
-    )
-    sentiment_reasoning: Optional[str] = Field(None, description="Analysis reasoning")
-    sentiment_analyzed_at: Optional[datetime] = Field(
-        None, description="When sentiment was analyzed"
-    )
-    sentiment_analyzer_version: Optional[str] = Field(
-        None, description="Analyzer version used"
     )
 
     # Indexing fields for fast lookups
@@ -72,20 +57,25 @@ class NewsModel(BaseModel):
         return value
 
     @classmethod
-    def from_news_item(
-        cls, news_item: NewsItem, url_hash: str, guid_source_hash: Optional[str] = None
-    ) -> "NewsModel":
+    def from_news_item(cls, news_item: "NewsItem") -> "NewsModel":
         """
-        Create NewsModel from NewsItem
+        Create NewsModel from NewsItem schema
 
         Args:
-            news_item: NewsItem schema
-            url_hash: Hash of URL for duplicate detection
-            guid_source_hash: Hash of GUID+source for duplicate detection
+            news_item: NewsItem to convert
 
         Returns:
-            NewsModel: MongoDB model instance
+            NewsModel: Converted news model
         """
+        # Create URL hash for duplicate detection
+        url_hash = hashlib.md5(str(news_item.url).encode()).hexdigest()
+
+        # Create GUID+source hash if GUID exists
+        guid_source_hash = None
+        if news_item.guid:
+            guid_source_key = f"{news_item.source.value}:{news_item.guid}"
+            guid_source_hash = hashlib.md5(guid_source_key.encode()).hexdigest()
+
         return cls(
             source=news_item.source,
             title=news_item.title,
@@ -94,19 +84,24 @@ class NewsModel(BaseModel):
             published_at=news_item.published_at,
             author=news_item.author,
             guid=news_item.guid,
-            tags=news_item.tags or [],
-            metadata=news_item.metadata or {},
+            tags=news_item.tags,
+            metadata=news_item.metadata,
             url_hash=url_hash,
             guid_source_hash=guid_source_hash,
         )
 
-    def to_news_item(self) -> NewsItem:
+    def to_news_item(self) -> "NewsItem":
         """
-        Convert NewsModel to NewsItem
+        Convert NewsModel to NewsItem schema
 
         Returns:
-            NewsItem: Pydantic schema
+            NewsItem: Converted news item
         """
+        # Add _id to metadata if available
+        metadata = self.metadata.copy()
+        if self.id:
+            metadata["_id"] = self.id
+
         return NewsItem(
             source=self.source,
             title=self.title,
@@ -116,7 +111,7 @@ class NewsModel(BaseModel):
             author=self.author,
             guid=self.guid,
             tags=self.tags,
-            metadata=self.metadata,
+            metadata=metadata,
         )
 
     def update_sentiment(
@@ -128,7 +123,7 @@ class NewsModel(BaseModel):
         analyzer_version: Optional[str] = None,
     ) -> None:
         """
-        Update sentiment analysis fields
+        Update sentiment analysis fields in metadata
 
         Args:
             label: Sentiment classification
@@ -137,12 +132,22 @@ class NewsModel(BaseModel):
             reasoning: Optional analysis reasoning
             analyzer_version: Optional analyzer version
         """
-        self.sentiment_label = label
-        self.sentiment_scores = scores
-        self.sentiment_confidence = confidence
-        self.sentiment_reasoning = reasoning
-        self.sentiment_analyzer_version = analyzer_version
-        self.sentiment_analyzed_at = datetime.now(timezone.utc)
+        sentiment_data = {
+            "sentiment_label": label,
+            "sentiment_scores": scores,
+            "sentiment_confidence": confidence,
+            "sentiment_analyzed_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if reasoning:
+            sentiment_data["sentiment_reasoning"] = reasoning
+        if analyzer_version:
+            sentiment_data["sentiment_analyzer_version"] = analyzer_version
+
+        # Store sentiment data in metadata
+        if "sentiment" not in self.metadata:
+            self.metadata["sentiment"] = {}
+        self.metadata["sentiment"].update(sentiment_data)
 
     def has_sentiment(self) -> bool:
         """
@@ -151,4 +156,23 @@ class NewsModel(BaseModel):
         Returns:
             bool: True if sentiment analysis exists
         """
-        return self.sentiment_label is not None
+        return (
+            "sentiment" in self.metadata
+            and "sentiment_label" in self.metadata["sentiment"]
+        )
+
+    def get_sentiment_label(self) -> Optional[str]:
+        """Get sentiment label from metadata"""
+        return self.metadata.get("sentiment", {}).get("sentiment_label")
+
+    def get_sentiment_scores(self) -> Optional[Dict[str, float]]:
+        """Get sentiment scores from metadata"""
+        return self.metadata.get("sentiment", {}).get("sentiment_scores")
+
+    def get_sentiment_confidence(self) -> Optional[float]:
+        """Get sentiment confidence from metadata"""
+        return self.metadata.get("sentiment", {}).get("sentiment_confidence")
+
+    def get_sentiment_reasoning(self) -> Optional[str]:
+        """Get sentiment reasoning from metadata"""
+        return self.metadata.get("sentiment", {}).get("sentiment_reasoning")

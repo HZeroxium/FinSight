@@ -12,6 +12,7 @@ from ..interfaces.news_repository_interface import NewsRepositoryInterface
 from ..interfaces.message_broker import MessageBroker, MessageBrokerError
 from ..models.sentiment import SentimentAnalysisResult
 from ..core.config import settings
+from ..schemas.message_schemas import SentimentResultMessageSchema, NewsMessageSchema
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
@@ -62,10 +63,10 @@ class SentimentService:
             # Combine title and content for analysis
             text_to_analyze = title
             if content:
-                text_to_analyze += f"\n\n{content}"
+                text_to_analyze = f"{title}\n\n{content}"
 
             # Perform sentiment analysis
-            result = await self.analyzer.analyze_sentiment(text_to_analyze)
+            result = await self.analyzer.analyze(text_to_analyze)
 
             self.logger.info(
                 f"Sentiment analysis completed for news {news_id}: {result.label}"
@@ -94,11 +95,18 @@ class SentimentService:
             bool: True if successful
         """
         try:
+            # Convert SentimentScore to dictionary for MongoDB compatibility
+            sentiment_scores_dict = {
+                "positive": result.scores.positive,
+                "negative": result.scores.negative,
+                "neutral": result.scores.neutral,
+            }
+
             # Update sentiment data directly using repository
             success = await self.news_repository.update_news_sentiment(
                 item_id=news_id,
-                sentiment_label=result.label,
-                sentiment_scores=result.scores,
+                sentiment_label=result.label.value,  # Convert enum to string
+                sentiment_scores=sentiment_scores_dict,
                 sentiment_confidence=result.confidence,
                 sentiment_reasoning=result.reasoning,
                 analyzer_version=settings.analyzer_version,
@@ -187,7 +195,7 @@ class SentimentService:
             self.logger.error(f"Failed to publish sentiment result for {news_id}: {e}")
             return False
 
-    async def process_news_message(self, message: Dict[str, Any]) -> bool:
+    async def process_news_message(self, message: NewsMessageSchema) -> bool:
         """
         Process a news message from the queue - main processing logic.
 
@@ -199,12 +207,14 @@ class SentimentService:
         """
         try:
             # Extract message fields using NewsMessageSchema structure
-            news_id = message.get("article_id")
-            title = message.get("title")
-            description = message.get("description", "")
-            content = message.get("content", "")
-            url = message.get("url")
-            search_query = message.get("search_query")
+            news_id = message.id
+            title = message.title
+            description = message.description or ""
+            url = message.url
+            # Note: search_query is not part of NewsMessageSchema, use metadata if needed
+            search_query = (
+                message.metadata.get("search_query") if message.metadata else None
+            )
 
             if not news_id or not title:
                 self.logger.warning("Invalid news message: missing article_id or title")
@@ -213,7 +223,7 @@ class SentimentService:
             self.logger.info(f"Processing news message: {news_id} - '{title[:50]}...'")
 
             # Combine content sources for analysis
-            text_content = description or content
+            text_content = description
 
             # Analyze sentiment
             result = await self.analyze_news_sentiment(news_id, title, text_content)
@@ -227,16 +237,16 @@ class SentimentService:
                 # Continue to publish even if DB update fails
 
             # Publish result back to news service
-            content_preview = (
-                (text_content[:200] + "...")
-                if len(text_content) > 200
-                else text_content
-            )
-            if not await self.publish_sentiment_result(
-                news_id, result, title, url, search_query, content_preview
-            ):
-                self.logger.warning(f"Failed to publish sentiment result for {news_id}")
-                # Don't return False here as the analysis was successful
+            # content_preview = (
+            #     (text_content[:200] + "...")
+            #     if len(text_content) > 200
+            #     else text_content
+            # )
+            # if not await self.publish_sentiment_result(
+            #     news_id, result, title, url, search_query, content_preview
+            # ):
+            #     self.logger.warning(f"Failed to publish sentiment result for {news_id}")
+            #     # Don't return False here as the analysis was successful
 
             self.logger.info(
                 f"Successfully processed sentiment for {news_id}: {result.label}"

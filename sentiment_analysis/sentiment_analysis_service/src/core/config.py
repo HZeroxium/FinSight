@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # MongoDB configuration
     mongodb_url: str = "mongodb://localhost:27017"
     mongodb_database: str = "finsight_news"  # Shared database with news service
-    mongodb_collection_news: str = "news"
+    mongodb_collection_news: str = "news_items"
 
     # RabbitMQ configuration - synchronized with news service
     rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"

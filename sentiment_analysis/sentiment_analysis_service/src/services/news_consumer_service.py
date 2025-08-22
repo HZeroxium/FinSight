@@ -5,12 +5,12 @@ Consolidated news message consumer service for sentiment analysis.
 """
 
 import asyncio
-import json
 from typing import Dict, Any
 
 from ..interfaces.message_broker import MessageBroker, MessageBrokerError
 from .sentiment_service import SentimentService
 from ..core.config import settings
+from ..schemas.message_schemas import NewsMessageSchema
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
@@ -127,29 +127,35 @@ class NewsConsumerService:
         Process a news message using the sentiment service.
 
         Args:
-            message: News message data from NewsMessageSchema
+            message: Raw message data received from RabbitMQ as dictionary
         """
         try:
-            self.logger.debug(
-                f"Processing news message: {message.get('article_id', 'unknown')}"
+            # Get message ID for logging
+            message_id = message.get("id", "unknown")
+
+            self.logger.debug(f"Processing news message: {message_id}")
+
+            # Log message structure for debugging
+            self.logger.info(
+                f"Received message: {message_id} - {message.get('title', 'No title')[:50]}..."
             )
 
-            # Use sentiment service to process the message
-            # success = await self.sentiment_service.process_news_message(message)
+            # Convert dictionary to NewsMessageSchema for validation and processing
+            try:
+                news_message = NewsMessageSchema(**message)
+            except Exception as validation_error:
+                self.logger.error(
+                    f"Failed to validate message schema for {message_id}: {validation_error}"
+                )
+                return
 
-            # Current, only log the message
-            self.logger.info(f"Received news message: {json.dumps(message)}")
-
-            success = True
+            # Use sentiment service to process the validated message
+            success = await self.sentiment_service.process_news_message(news_message)
 
             if success:
-                self.logger.info(
-                    f"Successfully processed news message: {message.get('article_id', 'unknown')}"
-                )
+                self.logger.info(f"Successfully processed news message: {message_id}")
             else:
-                self.logger.error(
-                    f"Failed to process news message: {message.get('article_id', 'unknown')}"
-                )
+                self.logger.error(f"Failed to process news message: {message_id}")
 
         except Exception as e:
             self.logger.error(f"Error processing news message: {e}")
