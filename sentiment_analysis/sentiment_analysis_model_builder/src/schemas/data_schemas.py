@@ -1,7 +1,8 @@
+# schemas/data_schemas.py
+
 """Data schemas for sentiment analysis."""
 
 from datetime import datetime
-from pathlib import Path
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator

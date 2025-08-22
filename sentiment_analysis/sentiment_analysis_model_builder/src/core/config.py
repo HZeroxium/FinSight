@@ -1,3 +1,5 @@
+# core/config.py
+
 """Configuration management for the sentiment analysis model builder."""
 
 from pathlib import Path
@@ -15,8 +17,6 @@ from .enums import (
     LogLevel,
     EvaluationStrategy,
     SaveStrategy,
-    PaddingStrategy,
-    TruncationStrategy,
     MetricType,
 )
 
@@ -35,9 +35,16 @@ class PreprocessingConfig(BaseSettings):
     remove_urls: bool = Field(default=True, description="Remove URLs from text")
     remove_emails: bool = Field(default=True, description="Remove email addresses")
 
-    # Text length constraints
-    max_length: int = Field(default=512, description="Maximum sequence length")
-    min_length: int = Field(default=10, description="Minimum sequence length")
+    # Text length constraints (FinBERT supports max 512 tokens, ~2048 characters)
+    max_length: int = Field(
+        default=512, description="Maximum sequence length in tokens for model input"
+    )
+    max_character_length: int = Field(
+        default=2048, description="Maximum character length before tokenization"
+    )
+    min_length: int = Field(
+        default=10, description="Minimum sequence length in characters"
+    )
 
     # Label mapping
     label_mapping: Dict[str, int] = Field(
@@ -55,17 +62,27 @@ class PreprocessingConfig(BaseSettings):
         """Validate maximum sequence length."""
         if v < 64:
             raise ValueError("max_length must be at least 64")
-        if v > 2048:
-            raise ValueError("max_length must not exceed 2048")
+        if v > 512:
+            raise ValueError("max_length must not exceed 512 for FinBERT")
+        return v
+
+    @field_validator("max_character_length")
+    @classmethod
+    def validate_max_character_length(cls, v: int) -> int:
+        """Validate maximum character length."""
+        if v < 256:
+            raise ValueError("max_character_length must be at least 256")
+        if v > 8192:
+            raise ValueError("max_character_length must not exceed 8192")
         return v
 
     @field_validator("min_length")
     @classmethod
     def validate_min_length(cls, v: int, info: Any) -> int:
         """Validate minimum sequence length."""
-        max_length = info.data.get("max_length", 512)
-        if v >= max_length:
-            raise ValueError("min_length must be less than max_length")
+        max_char_length = info.data.get("max_character_length", 2048)
+        if v >= max_char_length:
+            raise ValueError("min_length must be less than max_character_length")
         if v < 1:
             raise ValueError("min_length must be at least 1")
         return v
@@ -78,14 +95,15 @@ class TrainingConfig(BaseSettings):
 
     # Model configuration
     backbone: ModelBackbone = Field(
-        default=ModelBackbone.FINBERT, description="Model backbone to use for training"
+        default=ModelBackbone.FINBERT,
+        description="Model backbone to use for training",
     )
 
     # Training hyperparameters
     batch_size: int = Field(default=16, description="Training batch size")
     eval_batch_size: int = Field(default=32, description="Evaluation batch size")
     learning_rate: float = Field(default=2e-5, description="Learning rate")
-    num_epochs: int = Field(default=3, description="Number of training epochs")
+    num_epochs: int = Field(default=1, description="Number of training epochs")
     warmup_steps: int = Field(default=500, description="Number of warmup steps")
     weight_decay: float = Field(default=0.01, description="Weight decay")
     gradient_clip_val: float = Field(default=1.0, description="Gradient clipping value")
@@ -228,16 +246,17 @@ class RegistryConfig(BaseSettings):
 
     # S3/MinIO configuration
     aws_access_key_id: Optional[str] = Field(
-        default=None, description="AWS access key ID for S3/MinIO"
+        default="minioadmin", description="AWS access key ID for S3/MinIO"
     )
     aws_secret_access_key: Optional[str] = Field(
-        default=None, description="AWS secret access key for S3/MinIO"
+        default="minioadmin", description="AWS secret access key for S3/MinIO"
     )
     aws_region: Optional[str] = Field(
         default=None, description="AWS region for S3/MinIO"
     )
     s3_endpoint_url: Optional[str] = Field(
-        default=None, description="S3 endpoint URL (for MinIO compatibility)"
+        default="http://localhost:9000",
+        description="S3 endpoint URL (for MinIO compatibility)",
     )
 
     @field_validator("tracking_uri")
@@ -256,11 +275,11 @@ class DataConfig(BaseSettings):
 
     # Input data - Make input_path optional with default
     input_path: Optional[Path] = Field(
-        default=Path("data/news_dataset_sample.json"),
+        default=Path("data/transformed_dataset_sample.parquet"),
         description="Path to input data file",
     )
     input_format: DataFormat = Field(
-        default=DataFormat.JSON, description="Format of input data"
+        default=DataFormat.PARQUET, description="Format of input data"
     )
 
     # Required columns
@@ -304,6 +323,87 @@ class DataConfig(BaseSettings):
         return v
 
 
+class APIConfig(BaseSettings):
+    """Configuration for API server."""
+
+    model_config = SettingsConfigDict(env_prefix="API_")
+
+    # Server settings
+    host: str = Field(default="0.0.0.0", description="API server host")
+    port: int = Field(default=8000, description="API server port")
+    debug: bool = Field(default=False, description="Enable debug mode")
+    reload: bool = Field(default=False, description="Enable auto-reload in development")
+
+    # API metadata
+    title: str = Field(
+        default="FinBERT Sentiment Analysis API", description="API title"
+    )
+    description: str = Field(
+        default="RESTful API for financial sentiment analysis using fine-tuned FinBERT",
+        description="API description",
+    )
+    version: str = Field(default="1.0.0", description="API version")
+
+    # Model settings
+    model_path: Path = Field(
+        default=Path("outputs/model"), description="Path to trained model"
+    )
+    preprocessing_config_path: Path = Field(
+        default=Path("outputs/preprocessing_config.json"),
+        description="Path to preprocessing configuration",
+    )
+    label_mapping_path: Path = Field(
+        default=Path("outputs/id2label.json"), description="Path to label mapping file"
+    )
+
+    # Inference settings
+    max_batch_size: int = Field(
+        default=32, description="Maximum batch size for inference"
+    )
+    max_text_length: int = Field(
+        default=512, description="Maximum text length for tokenization"
+    )
+    device: str = Field(
+        default="auto", description="Device for inference (auto, cpu, cuda)"
+    )
+
+    # CORS settings
+    allow_origins: list[str] = Field(default=["*"], description="Allowed CORS origins")
+    allow_credentials: bool = Field(
+        default=True, description="Allow credentials in CORS"
+    )
+    allow_methods: list[str] = Field(default=["*"], description="Allowed HTTP methods")
+    allow_headers: list[str] = Field(default=["*"], description="Allowed HTTP headers")
+
+    # Performance settings
+    workers: int = Field(default=1, description="Number of worker processes")
+    timeout: int = Field(default=30, description="Request timeout in seconds")
+
+    @field_validator("port")
+    @classmethod
+    def validate_port(cls, v: int) -> int:
+        """Validate port number."""
+        if v < 1 or v > 65535:
+            raise ValueError("Port must be between 1 and 65535")
+        return v
+
+    @field_validator("max_batch_size")
+    @classmethod
+    def validate_max_batch_size(cls, v: int) -> int:
+        """Validate maximum batch size."""
+        if v < 1 or v > 128:
+            raise ValueError("max_batch_size must be between 1 and 128")
+        return v
+
+    @field_validator("max_text_length")
+    @classmethod
+    def validate_max_text_length(cls, v: int) -> int:
+        """Validate maximum text length."""
+        if v < 64 or v > 512:
+            raise ValueError("max_text_length must be between 64 and 512")
+        return v
+
+
 class Config(BaseSettings):
     """Main configuration class combining all sub-configurations."""
 
@@ -317,6 +417,7 @@ class Config(BaseSettings):
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
     registry: RegistryConfig = Field(default_factory=RegistryConfig)
+    api: APIConfig = Field(default_factory=APIConfig)
 
     # Global settings
     log_level: LogLevel = Field(default=LogLevel.INFO, description="Logging level")

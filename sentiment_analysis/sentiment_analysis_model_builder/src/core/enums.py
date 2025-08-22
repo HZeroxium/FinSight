@@ -1,15 +1,18 @@
+# core/enums.py
+
 """Enums for the sentiment analysis model builder."""
 
-from enum import Enum, auto
+from enum import Enum
 
 
 class ModelBackbone(str, Enum):
     """Available model backbones for sentiment analysis."""
 
     FINBERT = "ProsusAI/finbert"
-    ROBERTA_BASE = "roberta-base"
-    DEBERTA_BASE = "microsoft/deberta-base"
-    BERT_BASE = "bert-base-uncased"
+    DISTILBERT = "distilbert/distilbert-base-uncased-finetuned-sst-2-english"
+    # ROBERTA_BASE = "roberta-base"
+    # DEBERTA_BASE = "microsoft/deberta-base"
+    # BERT_BASE = "bert-base-uncased"
 
 
 class ExportFormat(str, Enum):
@@ -125,3 +128,21 @@ class FileExtension(str, Enum):
     TXT = ".txt"
     YAML = ".yaml"
     YML = ".yml"
+
+
+class APIEndpoint(str, Enum):
+    """API endpoint paths."""
+
+    HEALTH = "/health"
+    PREDICT = "/predict"
+    BATCH_PREDICT = "/batch-predict"
+    MODEL_INFO = "/model-info"
+    METRICS = "/metrics"
+
+
+class ResponseStatus(str, Enum):
+    """API response status."""
+
+    SUCCESS = "success"
+    ERROR = "error"
+    WARNING = "warning"

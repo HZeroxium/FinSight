@@ -1,18 +1,24 @@
+# data/data_loader.py
+
 """Data loading and preprocessing for sentiment analysis training."""
 
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List
 
 import pandas as pd
 from loguru import logger
-from pydantic import BaseModel, Field
 
 from ..core.config import DataConfig, PreprocessingConfig
 from ..core.enums import DataFormat, SentimentLabel
 from ..schemas.data_schemas import NewsArticle
-from ..utils.text_utils import clean_text, normalize_text, validate_text_length
+from ..utils.text_utils import (
+    clean_text,
+    normalize_text,
+    validate_text_length,
+    extract_tickers,
+)
 
 
 class DataLoader:
@@ -217,6 +223,140 @@ class DataLoader:
 
         Args:
             item: Dictionary containing article data
+
+        Returns:
+            NewsArticle object
+        """
+        # Check if this is raw MongoDB format or transformed format
+        if self._is_raw_mongodb_format(item):
+            return self._create_article_from_mongodb_dict(item)
+        else:
+            return self._create_article_from_transformed_dict(item)
+
+    def _is_raw_mongodb_format(self, item: Dict[str, Any]) -> bool:
+        """Check if item is in raw MongoDB format.
+
+        Args:
+            item: Dictionary to check
+
+        Returns:
+            True if raw MongoDB format
+        """
+        # Check for MongoDB-specific fields
+        return (
+            "_id" in item
+            and "metadata" in item
+            and isinstance(item.get("metadata"), dict)
+        )
+
+    def _create_article_from_mongodb_dict(self, item: Dict[str, Any]) -> NewsArticle:
+        """Create NewsArticle from raw MongoDB dictionary.
+
+        Args:
+            item: Raw MongoDB dictionary
+
+        Returns:
+            NewsArticle object
+        """
+        # Extract text content from multiple fields
+        text_parts = []
+
+        title = item.get("title", "").strip()
+        if title:
+            text_parts.append(title)
+
+        description = item.get("description", "").strip()
+        if description:
+            text_parts.append(description)
+
+        metadata = item.get("metadata", {})
+        body = metadata.get("body", "").strip()
+        if body:
+            text_parts.append(body)
+
+        if not text_parts:
+            raise ValueError("No text content found")
+
+        text = " ".join(text_parts)
+
+        # Apply text preprocessing
+        text = clean_text(
+            text,
+            remove_html=self.preprocessing_config.remove_html,
+            remove_urls=self.preprocessing_config.remove_urls,
+            remove_emails=self.preprocessing_config.remove_emails,
+        )
+
+        text = normalize_text(
+            text,
+            lowercase=self.preprocessing_config.lowercase,
+            normalize_unicode=self.preprocessing_config.normalize_unicode,
+        )
+
+        # Validate text length using character length limit
+        if not validate_text_length(
+            text,
+            self.preprocessing_config.min_length,
+            self.preprocessing_config.max_character_length,
+        ):
+            raise ValueError(f"Text length validation failed: {len(text)} characters")
+
+        # Extract sentiment label
+        sentiment = metadata.get("sentiment", "").upper()
+        if not sentiment:
+            raise ValueError("No sentiment label found")
+
+        try:
+            label = SentimentLabel(sentiment)
+        except ValueError:
+            raise ValueError(f"Invalid sentiment label: {sentiment}")
+
+        # Extract metadata
+        article_id = item.get("_id", {}).get("$oid", "")
+        source = item.get("source", "")
+        url = item.get("url", "")
+        author = item.get("author", "")
+
+        # Parse published_at
+        published_at = None
+        pub_date = item.get("published_at", {})
+        if isinstance(pub_date, dict) and "$date" in pub_date:
+            try:
+                from datetime import datetime
+
+                published_at = datetime.fromisoformat(
+                    pub_date["$date"].replace("Z", "+00:00")
+                )
+            except ValueError:
+                logger.warning(f"Could not parse published_at: {pub_date}")
+
+        # Extract tickers from text and tags
+        tickers = extract_tickers(text)
+        tags = item.get("tags", [])
+        if tags:
+            for tag in tags:
+                if isinstance(tag, str) and len(tag) <= 5 and tag.isupper():
+                    tickers.append(tag)
+        tickers = list(set(tickers))  # Remove duplicates
+
+        return NewsArticle(
+            id=article_id,
+            text=text,
+            label=label,
+            title=title,
+            published_at=published_at,
+            tickers=tickers,
+            source=source,
+            url=url,
+        )
+
+    def _create_article_from_transformed_dict(
+        self, item: Dict[str, Any]
+    ) -> NewsArticle:
+        """Create NewsArticle from transformed dictionary.
+
+        Args:
+            item: Transformed dictionary
 
         Returns:
             NewsArticle object

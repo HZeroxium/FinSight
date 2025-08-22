@@ -1,14 +1,14 @@
+# models/trainer.py
+
 """Model training and evaluation for sentiment analysis."""
 
-import json
-import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import mlflow
 import numpy as np
 import torch
-from datasets import Dataset, DatasetDict
+from datasets import DatasetDict
 from loguru import logger
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from transformers import (
@@ -21,19 +21,13 @@ from transformers import (
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 
 from ..core.config import TrainingConfig
-from ..core.enums import (
-    EvaluationStrategy,
-    SaveStrategy,
-    PaddingStrategy,
-    TruncationStrategy,
-)
 from ..data.dataset import DatasetPreparator
 from ..schemas.training_schemas import (
     TrainingMetrics,
     EvaluationResult,
     ClassificationReport,
 )
-from ..utils.file_utils import save_json, ensure_directory
+from ..utils.file_utils import ensure_directory
 
 
 class SentimentTrainer:
@@ -72,7 +66,7 @@ class SentimentTrainer:
         """Train the sentiment analysis model.
 
         Args:
-            datasets: DatasetDict containing train/validation/test splits
+            datasets: DatasetDict containing train/validation/test data
             output_dir: Directory to save training outputs
             experiment_name: Name for MLflow experiment
 
@@ -91,19 +85,26 @@ class SentimentTrainer:
             # Load tokenizer and model
             tokenizer, model = self._load_tokenizer_and_model()
 
+            # Tokenize datasets first
+            tokenized_datasets = self._tokenize_datasets(datasets, tokenizer)
+
             # Prepare training arguments
             training_args = self._prepare_training_arguments(output_dir)
 
-            # Create trainer
-            trainer = self._create_trainer(model, tokenizer, datasets, training_args)
+            # Create trainer with tokenized datasets
+            trainer = self._create_trainer(
+                model, tokenizer, tokenized_datasets, training_args
+            )
 
             # Train the model
             logger.info("Starting model training")
             train_result = trainer.train()
 
-            # Evaluate the model
+            # Evaluate the model using tokenized datasets
             logger.info("Evaluating model performance")
-            eval_results = self._evaluate_model(trainer, datasets)
+            eval_results, classification_report_result = self._evaluate_model(
+                trainer, tokenized_datasets
+            )
 
             # Log metrics to MLflow
             self._log_metrics_to_mlflow(train_result, eval_results)
@@ -128,6 +129,7 @@ class SentimentTrainer:
             training_metrics = TrainingMetrics(
                 train_loss=train_result.training_loss,
                 eval_results=eval_results,
+                classification_report=classification_report_result,
                 run_id=run.info.run_id,
                 experiment_id=run.info.experiment_id,
             )
@@ -186,9 +188,9 @@ class SentimentTrainer:
             learning_rate=self.config.learning_rate,
             weight_decay=self.config.weight_decay,
             warmup_steps=self.config.warmup_steps,
-            gradient_clip_val=self.config.gradient_clip_val,
+            max_grad_norm=self.config.gradient_clip_val,  # Fixed parameter name
             # Evaluation and logging
-            evaluation_strategy=self.config.evaluation_strategy.value,
+            eval_strategy=self.config.evaluation_strategy.value,
             eval_steps=self.config.eval_steps,
             logging_steps=self.config.logging_steps,
             save_steps=self.config.save_steps,
@@ -201,7 +203,7 @@ class SentimentTrainer:
             seed=self.config.random_seed,
             dataloader_pin_memory=False,
             # Reporting
-            report_to=None,  # Disable wandb, use MLflow instead
+            report_to="none",  # Disable wandb, use MLflow instead
             run_name="sentiment-analysis-training",
             # Save strategy
             save_strategy=self.config.save_strategy.value,
@@ -213,7 +215,7 @@ class SentimentTrainer:
         self,
         model: AutoModelForSequenceClassification,
         tokenizer: AutoTokenizer,
-        datasets: DatasetDict,
+        tokenized_datasets: DatasetDict,
         training_args: TrainingArguments,
     ) -> Trainer:
         """Create the Hugging Face Trainer.
@@ -221,22 +223,19 @@ class SentimentTrainer:
         Args:
             model: The model to train
             tokenizer: The tokenizer for text processing
-            datasets: DatasetDict containing the data
+            tokenized_datasets: DatasetDict containing tokenized data
             training_args: Training arguments
 
         Returns:
             Configured Trainer instance
         """
-        # Tokenize datasets
-        tokenized_datasets = self._tokenize_datasets(datasets, tokenizer)
-
         # Create trainer
         trainer = Trainer(
             model=model,
             args=training_args,
             train_dataset=tokenized_datasets["train"],
             eval_dataset=tokenized_datasets["validation"],
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             compute_metrics=self._compute_metrics,
             callbacks=[
                 EarlyStoppingCallback(
@@ -264,17 +263,26 @@ class SentimentTrainer:
         def tokenize_function(examples):
             return tokenizer(
                 examples["text"],
-                truncation=tokenizer_config["truncation"],
-                padding=tokenizer_config["padding"],
-                max_length=tokenizer_config["max_length"],
+                truncation=tokenizer_config.truncation,
+                padding=tokenizer_config.padding,
+                max_length=tokenizer_config.max_length,
                 return_tensors=None,  # Return lists, not tensors
             )
 
         # Tokenize all datasets
         tokenized_datasets = {}
         for split_name, dataset in datasets.items():
-            tokenized_datasets[split_name] = dataset.map(
-                tokenize_function, batched=True, remove_columns=dataset.column_names
+            # Tokenize the dataset
+            tokenized_dataset = dataset.map(
+                tokenize_function,
+                batched=True,
+                remove_columns=[
+                    col for col in dataset.column_names if col not in ["label"]
+                ],
+            )
+            # Rename 'label' column to 'labels' for Hugging Face compatibility
+            tokenized_datasets[split_name] = tokenized_dataset.rename_column(
+                "label", "labels"
             )
 
         return DatasetDict(tokenized_datasets)
@@ -319,7 +327,7 @@ class SentimentTrainer:
 
     def _evaluate_model(
         self, trainer: Trainer, datasets: DatasetDict
-    ) -> Dict[str, EvaluationResult]:
+    ) -> Tuple[Dict[str, EvaluationResult], Optional[ClassificationReport]]:
         """Evaluate the trained model on all datasets.
 
         Args:
@@ -327,9 +335,10 @@ class SentimentTrainer:
             datasets: DatasetDict containing the data
 
         Returns:
-            Dictionary of evaluation results
+            Tuple of (evaluation results, classification report)
         """
         results = {}
+        classification_report_result = None
 
         # Evaluate on validation set
         if "validation" in datasets:
@@ -380,7 +389,7 @@ class SentimentTrainer:
             )
 
             # Convert to our schema
-            results["classification_report"] = ClassificationReport(
+            classification_report_result = ClassificationReport(
                 accuracy=report["accuracy"],
                 macro_avg=report["macro avg"],
                 weighted_avg=report["weighted avg"],
@@ -403,7 +412,7 @@ class SentimentTrainer:
                         f"  {label_name}: F1={metrics['f1-score']:.4f}, Precision={metrics['precision']:.4f}, Recall={metrics['recall']:.4f}"
                     )
 
-        return results
+        return results, classification_report_result
 
     def _save_model_and_tokenizer(
         self, trainer: Trainer, tokenizer: AutoTokenizer, model_path: Path

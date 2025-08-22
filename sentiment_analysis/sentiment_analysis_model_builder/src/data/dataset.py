@@ -1,8 +1,9 @@
+# data/dataset.py
+
 """Dataset preparation for Hugging Face training."""
 
-import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Tuple
 
 import numpy as np
 from datasets import Dataset, DatasetDict
@@ -12,9 +13,8 @@ from sklearn.utils.class_weight import compute_class_weight
 
 from .data_loader import NewsArticle
 from ..core.config import PreprocessingConfig, TrainingConfig
-from ..core.enums import DataSplit
-from ..schemas.data_schemas import TrainingExample, DatasetStats, TokenizerConfig
-from ..utils.file_utils import save_json, ensure_directory
+from ..schemas.data_schemas import TrainingExample, TokenizerConfig
+from ..utils.file_utils import save_json
 
 
 class DatasetPreparator:
@@ -57,12 +57,18 @@ class DatasetPreparator:
         # Split data into train/val/test
         train_data, val_data, test_data = self._split_data(training_data)
 
-        # Create Hugging Face datasets
+        # Create Hugging Face datasets (convert Pydantic models to dicts)
         datasets = DatasetDict(
             {
-                "train": Dataset.from_list(train_data),
-                "validation": Dataset.from_list(val_data),
-                "test": Dataset.from_list(test_data),
+                "train": Dataset.from_list(
+                    [example.model_dump() for example in train_data]
+                ),
+                "validation": Dataset.from_list(
+                    [example.model_dump() for example in val_data]
+                ),
+                "test": Dataset.from_list(
+                    [example.model_dump() for example in test_data]
+                ),
             }
         )
 

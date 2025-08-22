@@ -1,10 +1,10 @@
+# utils/text_utils.py
+
 """Text utility functions for sentiment analysis."""
 
 import re
 import unicodedata
-from typing import List, Optional
-
-from loguru import logger
+from typing import List
 
 
 def clean_text(

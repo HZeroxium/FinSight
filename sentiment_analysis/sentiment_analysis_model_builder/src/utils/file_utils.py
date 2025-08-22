@@ -1,9 +1,10 @@
+# utils/file_utils.py
+
 """File utility functions for sentiment analysis."""
 
 import json
-import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from loguru import logger
 

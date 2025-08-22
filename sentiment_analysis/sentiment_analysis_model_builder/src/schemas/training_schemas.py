@@ -1,11 +1,11 @@
+# schemas/training_schemas.py
+
 """Training schemas for sentiment analysis."""
 
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel, Field, field_validator
-
-from ..core.enums import MetricType, ModelStage
 
 
 class ClassificationReport(BaseModel):

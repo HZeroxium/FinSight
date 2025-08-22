@@ -1,9 +1,9 @@
+# registry/mlflow_registry.py
+
 """MLflow model registry integration for sentiment analysis models."""
 
-import json
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import boto3
 import mlflow
