@@ -2,8 +2,10 @@
 
 """Inference service for sentiment analysis using trained FinBERT model."""
 
+import json
 import time
-from typing import List, Dict, Any, Optional
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Tuple
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
@@ -72,7 +74,7 @@ class SentimentInferenceService:
                 model=self.model,
                 tokenizer=self.tokenizer,
                 device=0 if self.device == "cuda" else -1,
-                return_all_scores=True,
+                top_k=None,  # Return all scores (replaces deprecated return_all_scores=True)
                 truncation=True,
                 max_length=self.config.max_text_length,
             )
@@ -223,6 +225,7 @@ class SentimentInferenceService:
         try:
             # Preprocess text
             processed_text = self._preprocess_text(text)
+            logger.debug(f"Processed text: {processed_text[:100]}...")
 
             # Run inference in thread pool
             loop = asyncio.get_event_loop()
@@ -230,17 +233,22 @@ class SentimentInferenceService:
                 self._executor, self._predict_sync, processed_text
             )
 
+            logger.debug(f"Raw predictions: {predictions}")
+
             # Process results
-            result = self._process_predictions(predictions[0])
+            result = self._process_predictions(predictions)
 
             # Add timing
             processing_time_ms = (time.time() - start_time) * 1000
             result.processing_time_ms = round(processing_time_ms, 2)
 
+            logger.info(
+                f"Prediction completed: {result.label.value} (confidence: {result.confidence})"
+            )
             return result
 
         except Exception as e:
-            logger.error(f"Sentiment prediction failed: {e}")
+            logger.error(f"Sentiment prediction failed: {e}", exc_info=True)
             raise InferenceError(f"Prediction failed: {e}")
 
     async def predict_batch(self, texts: List[str]) -> List[SentimentResult]:
@@ -292,11 +300,25 @@ class SentimentInferenceService:
 
     def _predict_sync(self, text: str) -> List[Dict[str, Any]]:
         """Synchronous prediction for single text."""
-        return self.pipeline(text)
+        try:
+            # Pipeline returns list of predictions with all scores when top_k=None
+            result = self.pipeline(text, top_k=None)
+            logger.debug(f"Pipeline raw output: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Pipeline prediction failed: {e}")
+            raise
 
     def _predict_batch_sync(self, texts: List[str]) -> List[List[Dict[str, Any]]]:
         """Synchronous prediction for batch of texts."""
-        return self.pipeline(texts)
+        try:
+            # Pipeline returns nested list for batch: [[pred1, pred2, pred3] for text1, ...]
+            result = self.pipeline(texts, top_k=None)
+            logger.debug(f"Batch pipeline raw output: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Batch pipeline prediction failed: {e}")
+            raise
 
     def _process_predictions(
         self, predictions: List[Dict[str, Any]]
@@ -304,61 +326,111 @@ class SentimentInferenceService:
         """Process raw model predictions into SentimentResult.
 
         Args:
-            predictions: Raw predictions from the model
+            predictions: Raw predictions from the transformer pipeline
+                Format: [{"label": "LABEL_0", "score": 0.8}, {"label": "LABEL_1", "score": 0.15}, ...]
 
         Returns:
-            Processed SentimentResult
+            Processed SentimentResult with proper sentiment mapping
+
+        Raises:
+            InferenceError: If prediction processing fails
         """
         try:
-            # Convert predictions to scores
-            scores = {}
+            logger.debug(f"Processing predictions: {predictions}")
+
+            if not predictions or not isinstance(predictions, list):
+                raise InferenceError("Invalid predictions format")
+
+            # Initialize scores for all sentiment labels
+            scores = {
+                SentimentLabel.NEGATIVE: 0.0,
+                SentimentLabel.NEUTRAL: 0.0,
+                SentimentLabel.POSITIVE: 0.0,
+            }
+
+            # Process each prediction from the pipeline
             for pred in predictions:
+                if (
+                    not isinstance(pred, dict)
+                    or "label" not in pred
+                    or "score" not in pred
+                ):
+                    logger.warning(f"Skipping invalid prediction: {pred}")
+                    continue
+
                 label = pred["label"]
-                score = pred["score"]
+                score = float(pred["score"])
 
-                # Map label to sentiment
-                if label == "LABEL_0" or label == 0:
-                    scores["negative"] = score
-                elif label == "LABEL_1" or label == 1:
-                    scores["neutral"] = score
-                elif label == "LABEL_2" or label == 2:
-                    scores["positive"] = score
+                logger.debug(f"Processing prediction - Label: {label}, Score: {score}")
+
+                # Map model labels to sentiment labels
+                sentiment_label = None
+
+                # Handle direct sentiment label names (from fine-tuned model)
+                if label.upper() in [sl.value for sl in SentimentLabel]:
+                    sentiment_label = SentimentLabel(label.upper())
+                # Handle generic LABEL_X format (from base model)
+                elif label == "LABEL_0":
+                    # LABEL_0 maps to index 0 in our mapping (usually negative)
+                    sentiment_name = self.label_mapping.get(0, "NEGATIVE")
+                    sentiment_label = SentimentLabel(sentiment_name)
+                elif label == "LABEL_1":
+                    # LABEL_1 maps to index 1 in our mapping (usually neutral)
+                    sentiment_name = self.label_mapping.get(1, "NEUTRAL")
+                    sentiment_label = SentimentLabel(sentiment_name)
+                elif label == "LABEL_2":
+                    # LABEL_2 maps to index 2 in our mapping (usually positive)
+                    sentiment_name = self.label_mapping.get(2, "POSITIVE")
+                    sentiment_label = SentimentLabel(sentiment_name)
                 else:
-                    # Try to map using our label mapping
-                    for label_id, sentiment in self.label_mapping.items():
-                        if label == f"LABEL_{label_id}":
-                            scores[sentiment.lower()] = score
+                    # Try to handle other label formats
+                    logger.warning(f"Unexpected label format: {label}")
+                    if isinstance(label, str) and label.startswith("LABEL_"):
+                        try:
+                            label_id = int(label.split("_")[1])
+                            sentiment_name = self.label_mapping.get(label_id, "NEUTRAL")
+                            sentiment_label = SentimentLabel(sentiment_name)
+                        except (ValueError, IndexError):
+                            logger.error(f"Could not parse label: {label}")
+                            continue
+                    else:
+                        logger.error(f"Unknown label format: {label}")
+                        continue
 
-            # Ensure all scores are present
-            scores.setdefault("positive", 0.0)
-            scores.setdefault("negative", 0.0)
-            scores.setdefault("neutral", 0.0)
+                if sentiment_label:
+                    scores[sentiment_label] = score
 
-            # Find the predicted label
-            max_score = max(scores.values())
+            logger.debug(f"Final scores: {scores}")
+
+            # Find the predicted label (highest score)
+            if not any(scores.values()):
+                logger.error("All scores are 0, using fallback")
+                return SentimentResult(
+                    label=SentimentLabel.NEUTRAL,
+                    confidence=0.33,
+                    scores=SentimentScore(positive=0.33, negative=0.33, neutral=0.34),
+                )
+
+            # Get the sentiment with highest confidence
             predicted_label = max(scores, key=scores.get)
+            confidence = scores[predicted_label]
 
-            # Convert to enum
-            if predicted_label == "positive":
-                sentiment_label = SentimentLabel.POSITIVE
-            elif predicted_label == "negative":
-                sentiment_label = SentimentLabel.NEGATIVE
-            else:
-                sentiment_label = SentimentLabel.NEUTRAL
-
-            return SentimentResult(
-                label=sentiment_label,
-                confidence=round(max_score, 4),
+            result = SentimentResult(
+                label=predicted_label,
+                confidence=round(confidence, 4),
                 scores=SentimentScore(
-                    positive=round(scores["positive"], 4),
-                    negative=round(scores["negative"], 4),
-                    neutral=round(scores["neutral"], 4),
+                    positive=round(scores[SentimentLabel.POSITIVE], 4),
+                    negative=round(scores[SentimentLabel.NEGATIVE], 4),
+                    neutral=round(scores[SentimentLabel.NEUTRAL], 4),
                 ),
             )
 
+            logger.debug(f"Final result: {result}")
+            return result
+
         except Exception as e:
-            logger.error(f"Failed to process predictions: {e}")
-            # Return neutral fallback
+            logger.error(f"Failed to process predictions: {e}", exc_info=True)
+            # Return neutral fallback with proper error handling
             return SentimentResult(
                 label=SentimentLabel.NEUTRAL,
                 confidence=0.33,

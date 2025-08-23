@@ -1,6 +1,7 @@
+# cli.py
+
 """Command-line interface for the sentiment analysis model builder."""
 
-import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -11,13 +12,11 @@ from rich.console import Console
 from rich.table import Table
 
 from .core.config import Config
-from .core.enums import LogLevel
 from .data.data_loader import DataLoader
 from .data.dataset import DatasetPreparator
 from .models.trainer import SentimentTrainer
 from .models.exporter import ModelExporter
 from .registry.mlflow_registry import MLflowRegistry
-from .schemas.training_schemas import TrainingMetrics
 from .utils.file_utils import save_json, ensure_directory
 
 # Create Typer app
@@ -445,6 +444,146 @@ def info(
     except Exception as e:
         console.print(f"[red]Failed to display info: {e}[/red]")
         logger.exception("Failed to display info")
+        raise typer.Exit(1)
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", "--host", "-h", help="API server host"),
+    port: int = typer.Option(8000, "--port", "-p", help="API server port"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug mode"),
+    model_path: Optional[Path] = typer.Option(
+        None, "--model-path", "-m", help="Path to trained model"
+    ),
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to configuration file"
+    ),
+    log_level: str = typer.Option("INFO", "--log-level", "-l", help="Logging level"),
+):
+    """Start the sentiment analysis API server."""
+    setup_logging(log_level)
+
+    try:
+        import uvicorn
+        import os
+        import sys
+        from pathlib import Path
+
+        # Set environment variables for API configuration
+        os.environ["API_HOST"] = host
+        os.environ["API_PORT"] = str(port)
+        os.environ["API_DEBUG"] = str(debug).lower()
+        os.environ["API_RELOAD"] = str(reload).lower()
+
+        # Set model paths if provided
+        if model_path:
+            os.environ["API_MODEL_PATH"] = str(model_path)
+        else:
+            # Use default paths
+            current_dir = Path.cwd()
+            os.environ.setdefault(
+                "API_MODEL_PATH", str(current_dir / "outputs" / "model")
+            )
+            os.environ.setdefault(
+                "API_PREPROCESSING_CONFIG_PATH",
+                str(current_dir / "outputs" / "preprocessing_config.json"),
+            )
+            os.environ.setdefault(
+                "API_LABEL_MAPPING_PATH", str(current_dir / "outputs" / "id2label.json")
+            )
+
+        console.print(f"🚀 Starting FinBERT Sentiment Analysis API server...")
+        console.print(f"📍 Server: http://{host}:{port}")
+        console.print(f"📚 Documentation: http://{host}:{port}/docs")
+        console.print(f"🔍 Health check: http://{host}:{port}/api/v1/health")
+
+        # Import the app
+        from .api.app import app as fastapi_app
+
+        # Run the server
+        uvicorn.run(
+            fastapi_app,
+            host=host,
+            port=port,
+            reload=reload,
+            workers=1,  # Always use 1 worker for model loading
+            log_level=log_level.lower(),
+            access_log=True,
+        )
+
+    except ImportError as e:
+        console.print(f"❌ Missing dependencies: {e}", style="red")
+        console.print(
+            "Install API dependencies with: pip install fastapi uvicorn", style="yellow"
+        )
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"❌ Failed to start API server: {e}", style="red")
+        raise typer.Exit(1)
+
+
+@app.command()
+def predict(
+    text: str = typer.Argument(..., help="Text to analyze for sentiment"),
+    model_path: Optional[Path] = typer.Option(
+        None, "--model-path", "-m", help="Path to trained model"
+    ),
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to configuration file"
+    ),
+    log_level: str = typer.Option("INFO", "--log-level", "-l", help="Logging level"),
+):
+    """Predict sentiment for a single text using the trained model."""
+    setup_logging(log_level)
+
+    try:
+        import asyncio
+        from .services.inference_service import SentimentInferenceService
+        from .core.config import Config, APIConfig
+
+        # Load configuration
+        config = Config()
+        if model_path:
+            config.api.model_path = model_path
+
+        console.print(f"🔮 Analyzing sentiment for: {text[:100]}...", style="bold blue")
+
+        async def run_prediction():
+            # Initialize inference service
+            inference_service = SentimentInferenceService(config.api)
+            await inference_service.initialize()
+
+            # Predict sentiment
+            result = await inference_service.predict_sentiment(text)
+
+            # Display results
+            table = Table(title="Sentiment Analysis Result")
+            table.add_column("Metric", style="cyan")
+            table.add_column("Value", style="green")
+
+            table.add_row("Text", text[:50] + "..." if len(text) > 50 else text)
+            table.add_row("Sentiment", str(result.label.value))
+            table.add_row("Confidence", f"{result.confidence:.4f}")
+            table.add_row("Positive Score", f"{result.scores.positive:.4f}")
+            table.add_row("Negative Score", f"{result.scores.negative:.4f}")
+            table.add_row("Neutral Score", f"{result.scores.neutral:.4f}")
+            if result.processing_time_ms:
+                table.add_row("Processing Time", f"{result.processing_time_ms:.2f}ms")
+
+            console.print(table)
+
+            # Cleanup
+            await inference_service.cleanup()
+
+        # Run the prediction
+        asyncio.run(run_prediction())
+
+    except ImportError as e:
+        console.print(f"❌ Missing dependencies: {e}", style="red")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"❌ Prediction failed: {e}", style="red")
         raise typer.Exit(1)
 
 
