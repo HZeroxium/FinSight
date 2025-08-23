@@ -1,2 +1,5 @@
 sentiment_analysis_model_builder/.venv
 sentiment_analysis_model_builder.egg-info
+wandb
+mlruns
+outputs
