@@ -3,6 +3,7 @@
 """Command-line interface for the sentiment analysis model builder."""
 
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +19,7 @@ from .models.trainer import SentimentTrainer
 from .models.exporter import ModelExporter
 from .registry.mlflow_registry import MLflowRegistry
 from .utils.file_utils import save_json, ensure_directory
+from .utils.model_evaluator import ModelEvaluator
 
 # Create Typer app
 app = typer.Typer(
@@ -585,6 +587,146 @@ def predict(
         raise typer.Exit(1)
     except Exception as e:
         console.print(f"❌ Prediction failed: {e}", style="red")
+        raise typer.Exit(1)
+
+
+@app.command()
+def evaluate(
+    model_name_or_path: str = typer.Argument(
+        ..., help="Model name (for pretrained) or path (for fine-tuned model)"
+    ),
+    data_path: Optional[Path] = typer.Option(
+        None, "--data", "-d", help="Path to evaluation data file"
+    ),
+    output_dir: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output directory for evaluation results"
+    ),
+    pretrained: bool = typer.Option(
+        False, "--pretrained", help="Evaluate pretrained model (vs fine-tuned)"
+    ),
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to configuration file"
+    ),
+    log_level: str = typer.Option("INFO", "--log-level", "-l", help="Logging level"),
+):
+    """Evaluate a sentiment analysis model on the given dataset."""
+    try:
+        # Setup logging
+        setup_logging(log_level)
+
+        # Load configuration
+        if config_file:
+            config = Config(_env_file=config_file)
+        else:
+            config = Config()
+
+        # Override config with CLI arguments
+        if data_path:
+            config.data.input_path = data_path
+        if output_dir:
+            config.output_dir = output_dir
+        else:
+            # Set default output directory for evaluation
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            model_safe_name = model_name_or_path.replace("/", "_").replace("\\", "_")
+            config.output_dir = Path(f"evaluation_{model_safe_name}_{timestamp}")
+
+        # Validate data path
+        if not config.data.input_path or not config.data.input_path.exists():
+            console.print(
+                f"[red]Error: Evaluation data file not found: {config.data.input_path}[/red]"
+            )
+            raise typer.Exit(1)
+
+        console.print(f"[green]Starting model evaluation[/green]")
+        console.print(f"  Model: {model_name_or_path}")
+        console.print(f"  Model type: {'Pretrained' if pretrained else 'Fine-tuned'}")
+        console.print(f"  Data path: {config.data.input_path}")
+        console.print(f"  Output directory: {config.output_dir}")
+
+        # Create output directory
+        ensure_directory(config.output_dir)
+
+        # Initialize components
+        data_loader = DataLoader(config.data, config.preprocessing)
+        evaluator = ModelEvaluator(config.preprocessing, config.training)
+
+        # Load and validate data
+        console.print("\n[yellow]Loading evaluation data...[/yellow]")
+        articles = data_loader.load_data()
+
+        if not data_loader.validate_data(articles):
+            console.print("[red]Error: Data validation failed[/red]")
+            raise typer.Exit(1)
+
+        console.print(f"Loaded {len(articles)} articles for evaluation")
+
+        # Run evaluation
+        console.print(
+            f"\n[yellow]Evaluating {'pretrained' if pretrained else 'fine-tuned'} model...[/yellow]"
+        )
+
+        if pretrained:
+            metrics = evaluator.evaluate_pretrained_model(
+                model_name_or_path=model_name_or_path,
+                articles=articles,
+                output_dir=config.output_dir,
+            )
+        else:
+            model_path = Path(model_name_or_path)
+            if not model_path.exists():
+                console.print(f"[red]Error: Model path not found: {model_path}[/red]")
+                raise typer.Exit(1)
+
+            metrics = evaluator.evaluate_finetuned_model(
+                model_path=model_path,
+                articles=articles,
+                output_dir=config.output_dir,
+            )
+
+        # Display results
+        console.print(f"\n[green]Evaluation completed successfully![/green]")
+        console.print(f"  Results saved to: {config.output_dir}")
+
+        # Create and display results table
+        table = Table(title="Evaluation Results")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Accuracy", f"{metrics.accuracy:.4f}")
+        table.add_row("F1 Macro", f"{metrics.f1_macro:.4f}")
+        table.add_row("F1 Weighted", f"{metrics.f1_weighted:.4f}")
+        table.add_row("Precision Macro", f"{metrics.precision_macro:.4f}")
+        table.add_row("Recall Macro", f"{metrics.recall_macro:.4f}")
+        table.add_row("Runtime (seconds)", f"{metrics.runtime_seconds:.2f}")
+        table.add_row("Samples/second", f"{metrics.samples_per_second:.2f}")
+
+        console.print(table)
+
+        # Display per-class metrics
+        if metrics.per_class_metrics:
+            console.print(f"\n[bold]Per-Class Metrics:[/bold]")
+            class_table = Table()
+            class_table.add_column("Class", style="cyan")
+            class_table.add_column("Precision", style="green")
+            class_table.add_column("Recall", style="green")
+            class_table.add_column("F1-Score", style="green")
+            class_table.add_column("Support", style="yellow")
+
+            for class_name, class_metrics in metrics.per_class_metrics.items():
+                class_table.add_row(
+                    class_name,
+                    f"{class_metrics.get('precision', 0.0):.4f}",
+                    f"{class_metrics.get('recall', 0.0):.4f}",
+                    f"{class_metrics.get('f1-score', 0.0):.4f}",
+                    str(int(class_metrics.get("support", 0))),
+                )
+
+            console.print(class_table)
+
+    except Exception as e:
+        console.print(f"[red]Evaluation failed: {e}[/red]")
+        logger.exception("Evaluation failed")
         raise typer.Exit(1)
 
 

@@ -18,7 +18,6 @@ from transformers import (
     EarlyStoppingCallback,
     Trainer,
     TrainingArguments,
-    DataCollatorWithPadding,
 )
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 
@@ -285,7 +284,7 @@ class SentimentTrainer:
             seed=self.config.random_seed,
             dataloader_pin_memory=False,
             # Reporting
-            report_to="none",  # Disable wandb, use MLflow instead
+            report_to="mlflow",  # Disable wandb, use MLflow instead
             run_name="sentiment-analysis-training",
             # Save strategy
             save_strategy=self.config.save_strategy.value,
@@ -536,16 +535,47 @@ class SentimentTrainer:
 
         logger.info("Training artifacts saved")
 
+    @staticmethod
+    def _normalize_value_for_mlflow(v: Any) -> str:
+        """Normalize config values to MLflow-safe strings/numbers."""
+        try:
+            from enum import Enum
+
+            if isinstance(v, Path):
+                return str(v)
+            if isinstance(v, Enum):
+                return v.value  # enum -> raw value
+            if isinstance(v, (bool, int, float, str)):
+                return v
+            # fallback: stringify (e.g., nested dicts)
+            return str(v)
+        except Exception:
+            return str(v)
+
     def _log_config_to_mlflow(self) -> None:
-        """Log training configuration to MLflow."""
-        config_dict = self.config.model_dump()
-        mlflow.log_params(config_dict)
+        """Log training configuration to MLflow with namespacing to avoid collisions."""
+        cfg = self.config.model_dump()
 
-        # Log model backbone separately
-        mlflow.log_param("model_backbone", self.config.backbone.value)
+        # Flatten one level and prefix with "cfg."
+        flat_params: Dict[str, Any] = {"cfg.backbone": self.config.backbone.value}
+        for section_name, section_dict in cfg.items():
+            if isinstance(section_dict, dict):
+                for k, v in section_dict.items():
+                    key = f"cfg.{section_name}.{k}"
+                    flat_params[key] = self._normalize_value_for_mlflow(v)
+            else:
+                flat_params[f"cfg.{section_name}"] = self._normalize_value_for_mlflow(
+                    section_dict
+                )
 
-        # Log label mapping
-        mlflow.log_dict(self.dataset_preparator.label_mapping, "label_mapping.json")
+        # Log parameters
+        mlflow.log_params(flat_params)
+
+        # Log label mapping separately as an artifact-style dict
+        mlflow.log_dict(
+            self.dataset_preparator.label_mapping,
+            artifact_file="label_mapping.json",
+        )
 
     def _log_metrics_to_mlflow(
         self, train_result: Any, eval_results: Dict[str, EvaluationResult]

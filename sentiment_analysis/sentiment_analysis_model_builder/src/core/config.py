@@ -131,8 +131,8 @@ class TrainingConfig(BaseSettings):
     evaluation_strategy: EvaluationStrategy = Field(
         default=EvaluationStrategy.STEPS, description="Evaluation strategy"
     )
-    eval_steps: int = Field(default=100, description="Evaluation steps")
-    logging_steps: int = Field(default=10, description="Logging steps")
+    eval_steps: int = Field(default=20, description="Evaluation steps")
+    logging_steps: int = Field(default=20, description="Logging steps")
     save_steps: int = Field(default=500, description="Save steps")
     save_total_limit: int = Field(default=3, description="Save total limit")
     save_strategy: SaveStrategy = Field(

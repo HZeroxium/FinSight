@@ -10,7 +10,6 @@ import boto3
 import mlflow
 from loguru import logger
 from mlflow.tracking import MlflowClient
-from mlflow.exceptions import MlflowException
 
 from ..core.config import RegistryConfig, ModelStage
 
