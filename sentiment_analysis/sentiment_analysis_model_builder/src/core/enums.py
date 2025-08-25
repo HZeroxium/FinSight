@@ -9,7 +9,8 @@ class ModelBackbone(str, Enum):
     """Available model backbones for sentiment analysis."""
 
     FINBERT = "ProsusAI/finbert"
-    DISTILBERT = "distilbert/distilbert-base-uncased-finetuned-sst-2-english"
+    DISTILBERT_SST2 = "distilbert/distilbert-base-uncased-finetuned-sst-2-english"
+    ALBERT_BASE_V2 = "albert-base-v2"
     # ROBERTA_BASE = "roberta-base"
     # DEBERTA_BASE = "microsoft/deberta-base"
     # BERT_BASE = "bert-base-uncased"

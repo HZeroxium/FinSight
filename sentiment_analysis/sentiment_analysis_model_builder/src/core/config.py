@@ -103,7 +103,7 @@ class TrainingConfig(BaseSettings):
     batch_size: int = Field(default=16, description="Training batch size")
     eval_batch_size: int = Field(default=32, description="Evaluation batch size")
     learning_rate: float = Field(default=2e-5, description="Learning rate")
-    num_epochs: int = Field(default=1, description="Number of training epochs")
+    num_epochs: int = Field(default=3, description="Number of training epochs")
     warmup_steps: int = Field(default=500, description="Number of warmup steps")
     weight_decay: float = Field(default=0.01, description="Weight decay")
     gradient_clip_val: float = Field(default=1.0, description="Gradient clipping value")
@@ -132,7 +132,7 @@ class TrainingConfig(BaseSettings):
         default=EvaluationStrategy.STEPS, description="Evaluation strategy"
     )
     eval_steps: int = Field(default=100, description="Evaluation steps")
-    logging_steps: int = Field(default=50, description="Logging steps")
+    logging_steps: int = Field(default=10, description="Logging steps")
     save_steps: int = Field(default=500, description="Save steps")
     save_total_limit: int = Field(default=3, description="Save total limit")
     save_strategy: SaveStrategy = Field(
@@ -225,10 +225,14 @@ class RegistryConfig(BaseSettings):
 
     # MLflow settings
     tracking_uri: str = Field(
-        default="sqlite:///mlruns.db", description="MLflow tracking URI"
+        default="http://localhost:5000", description="MLflow tracking server URI"
     )
     registry_uri: Optional[str] = Field(
         default=None, description="MLflow model registry URI"
+    )
+    backend_store_uri: str = Field(
+        default="sqlite:///mlflow.db",
+        description="MLflow backend store URI (SQLite for local)",
     )
 
     # Model registry
@@ -239,25 +243,30 @@ class RegistryConfig(BaseSettings):
         default=ModelStage.STAGING, description="Initial stage for the registered model"
     )
 
-    # Artifact storage
-    artifact_location: Optional[str] = Field(
-        default=None, description="Artifact storage location (S3/MinIO)"
+    # Artifact storage (MinIO/S3)
+    artifact_location: str = Field(
+        default="s3://mlflow-artifacts/",
+        description="Artifact storage location (S3/MinIO)",
     )
 
-    # S3/MinIO configuration
-    aws_access_key_id: Optional[str] = Field(
-        default="minioadmin", description="AWS access key ID for S3/MinIO"
+    # MinIO configuration
+    aws_access_key_id: str = Field(
+        default="minioadmin", description="MinIO access key ID"
     )
-    aws_secret_access_key: Optional[str] = Field(
-        default="minioadmin", description="AWS secret access key for S3/MinIO"
+    aws_secret_access_key: str = Field(
+        default="minioadmin", description="MinIO secret access key"
     )
-    aws_region: Optional[str] = Field(
-        default=None, description="AWS region for S3/MinIO"
+    aws_region: str = Field(
+        default="us-east-1", description="AWS region (required for S3 client)"
     )
-    s3_endpoint_url: Optional[str] = Field(
+    s3_endpoint_url: str = Field(
         default="http://localhost:9000",
-        description="S3 endpoint URL (for MinIO compatibility)",
+        description="MinIO endpoint URL",
     )
+
+    # MLflow server settings
+    mlflow_host: str = Field(default="0.0.0.0", description="MLflow server host")
+    mlflow_port: int = Field(default=5000, description="MLflow server port")
 
     @field_validator("tracking_uri")
     @classmethod
@@ -265,6 +274,14 @@ class RegistryConfig(BaseSettings):
         """Validate MLflow tracking URI."""
         if not v:
             raise ValueError("Tracking URI cannot be empty")
+        return v
+
+    @field_validator("mlflow_port")
+    @classmethod
+    def validate_mlflow_port(cls, v: int) -> int:
+        """Validate MLflow server port."""
+        if v < 1 or v > 65535:
+            raise ValueError("MLflow port must be between 1 and 65535")
         return v
 
 

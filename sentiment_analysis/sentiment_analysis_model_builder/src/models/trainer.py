@@ -4,6 +4,7 @@
 
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+import os
 
 import mlflow
 import numpy as np
@@ -17,6 +18,7 @@ from transformers import (
     EarlyStoppingCallback,
     Trainer,
     TrainingArguments,
+    DataCollatorWithPadding,
 )
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 
@@ -57,11 +59,64 @@ class SentimentTrainer:
             torch.cuda.manual_seed(self.config.random_seed)
             torch.cuda.manual_seed_all(self.config.random_seed)
 
+    def _setup_mlflow_environment(self, registry_config: Any) -> None:
+        """Setup MLflow environment variables.
+
+        Args:
+            registry_config: Registry configuration object
+        """
+        if hasattr(registry_config, "tracking_uri"):
+            mlflow.set_tracking_uri(registry_config.tracking_uri)
+            logger.info(f"MLflow tracking URI set to: {registry_config.tracking_uri}")
+
+        # Set environment variables for S3/MinIO integration
+        if (
+            hasattr(registry_config, "aws_access_key_id")
+            and registry_config.aws_access_key_id
+        ):
+            os.environ["AWS_ACCESS_KEY_ID"] = registry_config.aws_access_key_id
+            logger.info("AWS_ACCESS_KEY_ID environment variable set")
+
+        if (
+            hasattr(registry_config, "aws_secret_access_key")
+            and registry_config.aws_secret_access_key
+        ):
+            os.environ["AWS_SECRET_ACCESS_KEY"] = registry_config.aws_secret_access_key
+            logger.info("AWS_SECRET_ACCESS_KEY environment variable set")
+
+        if hasattr(registry_config, "aws_region") and registry_config.aws_region:
+            os.environ["AWS_DEFAULT_REGION"] = registry_config.aws_region
+            logger.info(f"AWS_DEFAULT_REGION set to: {registry_config.aws_region}")
+
+        if (
+            hasattr(registry_config, "s3_endpoint_url")
+            and registry_config.s3_endpoint_url
+        ):
+            os.environ["MLFLOW_S3_ENDPOINT_URL"] = registry_config.s3_endpoint_url
+            logger.info(
+                f"MLFLOW_S3_ENDPOINT_URL set to: {registry_config.s3_endpoint_url}"
+            )
+
+        # Also set artifact root if available
+        if (
+            hasattr(registry_config, "artifact_location")
+            and registry_config.artifact_location
+        ):
+            os.environ["MLFLOW_DEFAULT_ARTIFACT_ROOT"] = (
+                registry_config.artifact_location
+            )
+            logger.info(
+                f"MLFLOW_DEFAULT_ARTIFACT_ROOT set to: {registry_config.artifact_location}"
+            )
+
+        logger.info("MLflow environment configured for training")
+
     def train(
         self,
         datasets: DatasetDict,
         output_dir: Path,
         experiment_name: str = "sentiment-analysis",
+        registry_config: Optional[Any] = None,
     ) -> Tuple[AutoModelForSequenceClassification, AutoTokenizer, TrainingMetrics]:
         """Train the sentiment analysis model.
 
@@ -69,14 +124,28 @@ class SentimentTrainer:
             datasets: DatasetDict containing train/validation/test data
             output_dir: Directory to save training outputs
             experiment_name: Name for MLflow experiment
+            registry_config: MLflow registry configuration
 
         Returns:
             Tuple of (trained_model, tokenizer, training_metrics)
         """
         logger.info(f"Starting training with {self.config.backbone}")
 
-        # Setup MLflow
-        mlflow.set_experiment(experiment_name)
+        # Setup MLflow environment variables if registry config is provided
+        if registry_config:
+            self._setup_mlflow_environment(registry_config)
+        else:
+            logger.warning(
+                "No registry config provided - MLflow artifact logging may not work properly"
+            )
+
+        # Setup MLflow experiment
+        try:
+            mlflow.set_experiment(experiment_name)
+            logger.info(f"MLflow experiment set to: {experiment_name}")
+        except Exception as e:
+            logger.error(f"Failed to set MLflow experiment: {e}")
+            raise
 
         with mlflow.start_run() as run:
             # Log configuration
@@ -113,17 +182,30 @@ class SentimentTrainer:
             model_path = output_dir / "model"
             self._save_model_and_tokenizer(trainer, tokenizer, model_path)
 
-            # Log artifacts to MLflow
-            mlflow.log_artifact(str(model_path), "model")
+            # Log artifacts to MLflow with error handling
+            try:
+                logger.info("Logging model artifacts to MLflow...")
+                mlflow.log_artifact(str(model_path), "model")
+                logger.info("Model artifacts logged successfully")
+            except Exception as e:
+                logger.error(f"Failed to log model artifacts: {e}")
+                logger.warning("Continuing without artifact logging...")
 
             # Save preprocessing config and label mapping
             self._save_training_artifacts(output_dir)
 
-            # Log artifacts to MLflow
-            mlflow.log_artifact(
-                str(output_dir / "preprocessing_config.json"), "preprocessing_config"
-            )
-            mlflow.log_artifact(str(output_dir / "id2label.json"), "label_mapping")
+            # Log additional artifacts to MLflow with error handling
+            try:
+                logger.info("Logging preprocessing artifacts to MLflow...")
+                mlflow.log_artifact(
+                    str(output_dir / "preprocessing_config.json"),
+                    "preprocessing_config",
+                )
+                mlflow.log_artifact(str(output_dir / "id2label.json"), "label_mapping")
+                logger.info("Preprocessing artifacts logged successfully")
+            except Exception as e:
+                logger.error(f"Failed to log preprocessing artifacts: {e}")
+                logger.warning("Continuing without preprocessing artifact logging...")
 
             # Get training metrics
             training_metrics = TrainingMetrics(
@@ -209,6 +291,10 @@ class SentimentTrainer:
             save_strategy=self.config.save_strategy.value,
             # Remove unused columns
             remove_unused_columns=False,
+            fp16=True,
+            tf32=True,
+            group_by_length=True,
+            gradient_checkpointing=True,
         )
 
     def _create_trainer(
@@ -229,6 +315,7 @@ class SentimentTrainer:
         Returns:
             Configured Trainer instance
         """
+
         # Create trainer
         trainer = Trainer(
             model=model,
@@ -276,6 +363,7 @@ class SentimentTrainer:
             tokenized_dataset = dataset.map(
                 tokenize_function,
                 batched=True,
+                # num_proc=os.cpu_count(),
                 remove_columns=[
                     col for col in dataset.column_names if col not in ["label"]
                 ],

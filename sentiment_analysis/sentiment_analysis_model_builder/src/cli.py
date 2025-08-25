@@ -121,6 +121,7 @@ def train(
             datasets=datasets,
             output_dir=config.output_dir,
             experiment_name=experiment_name,
+            registry_config=config.registry,
         )
 
         # Save training summary
