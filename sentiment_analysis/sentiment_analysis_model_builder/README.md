@@ -5,7 +5,7 @@
 [![MLflow](https://img.shields.io/badge/MLflow-2.0+-orange.svg)](https://mlflow.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Production-Ready Model Training Pipeline for Financial Sentiment Analysis**  
+> **Production-Ready Model Training Pipeline for Financial Sentiment Analysis**
 > Enterprise-grade model builder for fine-tuning transformer models on cryptocurrency news data
 
 ## 🚀 Overview
