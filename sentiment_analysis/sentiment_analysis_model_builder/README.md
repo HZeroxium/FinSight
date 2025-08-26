@@ -1,48 +1,148 @@
-# Crypto News Sentiment Analysis Model Builder
+# FinSight Sentiment Analysis Model Builder
 
-A production-ready Python project for training and packaging sentiment analysis models for cryptocurrency news using Hugging Face Transformers and MLflow.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org/)
+[![MLflow](https://img.shields.io/badge/MLflow-2.0+-orange.svg)](https://mlflow.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## 🚀 Features
+> **Production-Ready Model Training Pipeline for Financial Sentiment Analysis**  
+> Enterprise-grade model builder for fine-tuning transformer models on cryptocurrency news data
 
-- **Fine-tune FinBERT** and other transformer models for crypto news sentiment analysis
-- **Multi-format data support**: JSON, JSONL, CSV, Parquet
-- **Reproducible training** with deterministic seeds and comprehensive logging
-- **Model export** to ONNX and TorchScript formats with validation
-- **MLflow integration** for experiment tracking and model versioning
-- **S3/MinIO support** for artifact storage
-- **Clean CLI interface** using Typer
-- **Production-ready** with Docker support and comprehensive testing
+## 🚀 Overview
 
-## 📋 Requirements
+The FinSight Sentiment Analysis Model Builder is a comprehensive, production-ready solution for training and packaging sentiment analysis models for cryptocurrency news. Built with modern Python technologies and following enterprise-grade practices, this service provides a complete ML pipeline from data preparation to model deployment.
 
-- Python 3.11+
-- PyTorch 2.0+
-- CUDA support (optional, for GPU acceleration)
-- 8GB+ RAM (16GB+ recommended for large datasets)
-
-## 🏗️ Architecture
-
-The project follows a modular, layered architecture:
+### 🏗️ Service Architecture
 
 ```mermaid
-src/
-├── core/           # Configuration management
-├── data/           # Data loading and preprocessing
-├── models/         # Training and export logic
-├── registry/       # MLflow model registry integration
-└── cli.py         # Command-line interface
+graph TB
+    subgraph "FinSight Sentiment Analysis Model Builder"
+        subgraph "Data Layer"
+            DL[Data Loader]
+            DP[Dataset Preparator]
+            DV[Data Validator]
+        end
+
+        subgraph "Training Layer"
+            TR[Training Orchestrator]
+            TM[Model Trainer]
+            EV[Evaluator]
+            ES[Early Stopping]
+        end
+
+        subgraph "Export Layer"
+            ME[Model Exporter]
+            MV[Model Validator]
+            MF[Format Converter]
+        end
+
+        subgraph "Registry Layer"
+            ML[MLflow Registry]
+            MA[Model Artifacts]
+            MV2[Version Manager]
+        end
+
+        subgraph "API Layer"
+            CLI[CLI Interface]
+            REST[REST API]
+            WS[WebSocket]
+        end
+    end
+
+    subgraph "External Systems"
+        DS[Data Sources]
+        S3[S3/Cloud Storage]
+        GPU[NVIDIA GPU]
+    end
+
+    DS --> DL
+    DL --> DP
+    DP --> DV
+    DV --> TR
+    TR --> TM
+    TM --> EV
+    EV --> ES
+    ES --> ME
+    ME --> MV
+    MV --> MF
+    MF --> ML
+    ML --> MA
+    MA --> MV2
+
+    CLI --> TR
+    REST --> TR
+    WS --> TR
+
+    S3 --> ML
+    GPU --> TM
+
+    style DL fill:#e3f2fd
+    style TR fill:#f3e5f5
+    style ME fill:#e8f5e8
+    style ML fill:#fff3e0
+    style CLI fill:#fce4ec
 ```
 
-### Key Design Principles
+## 🎯 Key Features
 
-- **Hexagonal Architecture**: Clear separation between core business logic and external dependencies
-- **Dependency Injection**: Configuration-driven service instantiation
-- **Interface Segregation**: Focused, cohesive interfaces for each component
+### **Advanced Model Training** 🧠
+
+- **Fine-tune FinBERT** and other transformer models for crypto news sentiment analysis
+- **Multi-format data support**: JSON, JSONL, CSV, Parquet with automatic format detection
+- **Reproducible training** with deterministic seeds and comprehensive logging
+- **Advanced preprocessing** with configurable text cleaning and normalization
+- **Multi-GPU support** with distributed training capabilities
+
+### **Model Export & Deployment** 📦
+
+- **Multi-format export**: ONNX, TorchScript, and Triton-ready formats
+- **Model validation** with comprehensive testing and performance verification
+- **Optimization pipeline** with quantization and pruning support
+- **Deployment artifacts** including preprocessing configs and label mappings
+
+### **Experiment Management** 📊
+
+- **MLflow integration** for experiment tracking and model versioning
+- **S3/MinIO support** for artifact storage and model registry
+- **Comprehensive metrics** with detailed evaluation reports
+- **Model comparison** with A/B testing capabilities
+
+### **Production Ready** 🏭
+
+- **Clean CLI interface** using Typer with rich output
+- **Docker support** with optimized containerization
+- **Comprehensive testing** with unit and integration tests
+- **Configuration management** with environment-based settings
+
+## 🏛️ Architecture Overview
+
+The service follows **Hexagonal Architecture** (Ports & Adapters) principles, providing:
+
+- **Clean Architecture**: Clear separation of concerns with dependency inversion
+- **Hexagonal Design**: Adapter pattern for external integrations
 - **SOLID Principles**: Single responsibility, open/closed, Liskov substitution, interface segregation, dependency inversion
+- **ML-First**: Optimized for machine learning workflows and model serving
+
+### **Technology Stack**
+
+- **Core Framework**: PyTorch, Transformers, PyTorch Lightning
+- **ML Pipeline**: MLflow, Hugging Face, ONNX
+- **Data Processing**: Pandas, NumPy, Scikit-learn
+- **Storage**: S3/MinIO, SQLite, Local file system
+- **Monitoring**: MLflow tracking, custom logging
+- **Containerization**: Docker, Docker Compose
 
 ## 🚀 Quick Start
 
-### 1. Installation
+### **Prerequisites**
+
+- **Python**: 3.11+ (3.12 recommended)
+- **PyTorch**: 2.0+ with CUDA support (optional but recommended)
+- **Memory**: 8GB+ RAM (16GB+ recommended for large datasets)
+- **Storage**: 50GB+ available space
+- **GPU**: NVIDIA GPU with CUDA support (optional but recommended)
+
+### **1. Installation**
 
 ```bash
 # Clone the repository
@@ -51,7 +151,8 @@ cd sentiment_analysis_model_builder
 
 # Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate  # Linux/Mac
+# .venv\Scripts\activate  # Windows
 
 # Install dependencies
 pip install -r requirements.txt
@@ -60,7 +161,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-### 2. Configuration
+### **2. Configuration**
 
 ```bash
 # Copy example configuration
@@ -70,7 +171,7 @@ cp env.example .env
 nano .env
 ```
 
-### 3. Train a Model
+### **3. Train a Model**
 
 ```bash
 # Train using the sample dataset
@@ -80,7 +181,7 @@ sentiment-train \
     --experiment crypto-sentiment-v1
 ```
 
-### 4. Export Model
+### **4. Export Model**
 
 ```bash
 # Export to ONNX format
@@ -90,7 +191,7 @@ sentiment-export \
     --format onnx
 ```
 
-### 5. Register Model
+### **5. Register Model**
 
 ```bash
 # Register in MLflow (use run_id from training output)
@@ -100,442 +201,168 @@ sentiment-register \
     --stage Staging
 ```
 
-## ⚙️ Configuration
+## 🐳 Docker Deployment
 
-The project uses Pydantic v2 with environment variable support. All configuration can be set via:
-
-- Environment variables
-- `.env` file
-- CLI arguments (override defaults)
-
-### Key Configuration Sections
-
-#### Data Configuration
+### **Quick Start with Docker**
 
 ```bash
-DATA_INPUT_PATH=data/news_dataset_sample.json
-DATA_INPUT_FORMAT=json
-DATA_TEXT_COLUMN=text
-DATA_LABEL_COLUMN=label
+# Build and run with Docker Compose
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
 ```
 
-#### Training Configuration
+### **Individual Service Deployment**
 
 ```bash
-TRAINING_BACKBONE=ProsusAI/finbert
-TRAINING_BATCH_SIZE=16
-TRAINING_LEARNING_RATE=2e-5
-TRAINING_NUM_EPOCHS=3
-TRAINING_RANDOM_SEED=42
-```
+# Build image
+docker build -t finsight/sentiment-model-builder .
 
-#### Export Configuration
-
-```bash
-EXPORT_FORMAT=onnx
-EXPORT_ONNX_OPSET_VERSION=17
-EXPORT_VALIDATE_EXPORT=true
-```
-
-#### Registry Configuration
-
-```bash
-REGISTRY_TRACKING_URI=sqlite:///mlruns.db
-REGISTRY_MODEL_NAME=crypto-news-sentiment
-REGISTRY_MODEL_STAGE=Staging
-```
-
-## 📊 Data Format
-
-The system supports multiple input formats with flexible field mapping:
-
-### Required Fields
-
-- `text`: Main text content for sentiment analysis
-- `label`: Sentiment label (NEGATIVE, NEUTRAL, POSITIVE)
-
-### Optional Fields
-
-- `id`: Article identifier
-- `title`: Article title
-- `published_at`: Publication date
-- `tickers`: Related cryptocurrency symbols
-- `split`: Data split assignment (train/val/test)
-
-### Example JSON Format
-
-```json
-{
-  "text": "Bitcoin price surges to new all-time high...",
-  "label": "POSITIVE",
-  "title": "Bitcoin Reaches New High",
-  "published_at": "2025-01-15T10:00:00Z",
-  "tickers": ["BTC", "ETH"]
-}
-```
-
-## 🔧 CLI Commands
-
-### Training
-
-```bash
-sentiment-train [OPTIONS]
-  --data PATH              Input data file path
-  --output PATH            Output directory
-  --experiment TEXT        MLflow experiment name
-  --config PATH            Configuration file
-  --log-level TEXT         Logging level
-```
-
-### Export
-
-```bash
-sentiment-export MODEL_PATH [OPTIONS]
-  --output PATH            Output directory
-  --format TEXT            Export format (onnx/torchscript/both)
-  --validate/--no-validate Validate exported models
-```
-
-### Registration
-
-```bash
-sentiment-register MODEL_PATH [OPTIONS]
-  --run-id TEXT            MLflow run ID
-  --description TEXT       Model description
-  --stage TEXT             Initial stage (Staging/Production/Archived)
-```
-
-### Utilities
-
-```bash
-sentiment-list-models      # List models in registry
-sentiment-info             # Show configuration info
-```
-
-## 🐳 Docker Support
-
-### Build Images
-
-```bash
-# Development image
-make docker-build-dev
-
-# Production image
-make docker-build-prod
-
-# Latest image
-make docker-build
-```
-
-### Run Containers
-
-```bash
-# Development container
-make docker-run-dev
-
-# Production container
-make docker-run
-```
-
-### Docker Compose
-
-```bash
-# Start development environment
-make docker-compose-dev
-
-# Start production environment
-make docker-compose-prod
+# Run container
+docker run -p 8000:8000 \
+    -v $(pwd)/data:/app/data \
+    -v $(pwd)/outputs:/app/outputs \
+    finsight/sentiment-model-builder
 ```
 
 ## 🧪 Testing
 
-### Run Tests
+### **Unit Tests**
 
 ```bash
-# All tests
-make test
+# Run all tests
+pytest tests/ -v
 
-# With coverage
-pytest --cov=sentiment_analysis_model_builder --cov-report=html
+# Run with coverage
+pytest tests/ --cov=src --cov-report=html
 
-# Specific test file
-pytest tests/test_data_loader.py -v
+# Run specific test categories
+pytest tests/unit/ -v
+pytest tests/integration/ -v
 ```
 
-### Code Quality
+### **Integration Tests**
 
 ```bash
-# Linting
-make lint
+# Test complete pipeline
+python -m pytest tests/integration/test_pipeline.py -v
 
-# Formatting
-make format
-
-# All quality checks
-make quality
+# Test with sample data
+python scripts/test_pipeline.py
 ```
 
-### Pre-commit Hooks
+### **Performance Testing**
 
 ```bash
-# Install hooks
-make install-dev
+# Benchmark training
+python scripts/benchmark_training.py --epochs 1
 
-# Run manually
-make pre-commit
+# Benchmark export
+python scripts/benchmark_export.py --format onnx
 ```
 
-## 📈 MLflow Integration
+## 📊 Monitoring & Health Checks
 
-### Local Development
+### **Health Endpoints**
 
-```bash
-# Start MLflow UI
-mlflow ui --backend-store-uri sqlite:///mlruns.db
+- **Service Health**: `http://localhost:8000/health`
+- **Model Status**: `http://localhost:8000/model/status`
+- **Training Progress**: `http://localhost:8000/training/progress`
 
-# View experiments
-open http://localhost:5000
-```
+### **Metrics & Observability**
 
-### Remote Tracking
+- **MLflow Tracking**: Experiment tracking and model versioning
+- **Training Metrics**: Loss curves, accuracy, F1 scores
+- **Performance Monitoring**: Training time, memory usage, GPU utilization
+- **Model Performance**: Evaluation metrics and comparison reports
 
-```bash
-# Set remote tracking URI
-export MLFLOW_TRACKING_URI=http://your-mlflow-server:5000
+## 🔧 Configuration
 
-# Set artifact storage
-export MLFLOW_ARTIFACT_STORE=s3://your-bucket/path
-```
+### **Environment Variables**
 
-### Model Registry
+The service uses environment-based configuration with comprehensive validation:
 
-```bash
-# List models
-sentiment-list-models
+- **Data Configuration**: Input formats, preprocessing settings, validation rules
+- **Training Configuration**: Model backbones, hyperparameters, optimization settings
+- **Export Configuration**: Output formats, validation settings, optimization options
+- **Registry Configuration**: MLflow settings, S3/MinIO integration
 
-# Get model info
-mlflow models describe --name crypto-news-sentiment
+### **Key Configuration Areas**
 
-# Transition stages
-mlflow models transition-stage --name crypto-news-sentiment --version 1 --stage Production
-```
+- **Model Training**: Backbone models, hyperparameters, data preprocessing
+- **Data Management**: Input formats, validation rules, preprocessing pipelines
+- **Export Settings**: Format options, validation, optimization
+- **Registry Integration**: MLflow tracking, artifact storage
+
+## 📚 Documentation
+
+### **Service Documentation**
+
+- **[API Documentation](docs/api.md)**: Complete API reference with examples
+- **[Configuration Guide](docs/configuration.md)**: Environment variables and settings
+- **[Architecture Documentation](docs/architecture.md)**: System design and workflows
+- **[Deployment Guide](docs/deployment.md)**: Production deployment and CI/CD
+
+### **Platform Documentation**
+
+- **[Platform README](../README.md)**: Overview of the entire FinSight platform
+- **[Platform API Docs](../docs/api.md)**: Complete platform API reference
+- **[Platform Architecture](../docs/architecture.md)**: System architecture and design
 
 ## 🚀 Production Deployment
 
-### Environment Variables
+### **Kubernetes Deployment**
 
 ```bash
-# Production configuration
-export LOG_LEVEL=WARNING
-export REGISTRY_TRACKING_URI=http://mlflow-prod:5000
-export REGISTRY_ARTIFACT_LOCATION=s3://prod-models
-export REGISTRY_AWS_ACCESS_KEY_ID=your-key
-export REGISTRY_AWS_SECRET_ACCESS_KEY=your-secret
+# Apply manifests
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+
+# Check status
+kubectl get pods -n sentiment-analysis
 ```
 
-### Kubernetes Deployment
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: sentiment-analysis-builder
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: sentiment-analysis-builder
-  template:
-    metadata:
-      labels:
-        app: sentiment-analysis-builder
-    spec:
-      containers:
-        - name: sentiment-analysis-builder
-          image: sentiment-analysis-builder:prod
-          env:
-            - name: REGISTRY_TRACKING_URI
-              value: "http://mlflow-service:5000"
-          volumeMounts:
-            - name: data-volume
-              mountPath: /app/data
-            - name: outputs-volume
-              mountPath: /app/outputs
-      volumes:
-        - name: data-volume
-          persistentVolumeClaim:
-            claimName: data-pvc
-        - name: outputs-volume
-          persistentVolumeClaim:
-            claimName: outputs-pvc
-```
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-#### 1. CUDA Out of Memory
+### **Helm Charts**
 
 ```bash
-# Reduce batch size
-export TRAINING_BATCH_SIZE=8
-export TRAINING_EVAL_BATCH_SIZE=16
+# Install charts
+helm install sentiment-model-builder ./helm-charts/sentiment-model-builder \
+    --namespace sentiment-analysis \
+    --create-namespace
 
-# Use gradient accumulation
-export TRAINING_GRADIENT_ACCUMULATION_STEPS=2
-```
-
-#### 2. MLflow Connection Issues
-
-```bash
-# Check tracking URI
-sentiment-info
-
-# Test connection
-python -c "import mlflow; mlflow.set_tracking_uri('sqlite:///mlruns.db'); print('OK')"
-```
-
-#### 3. Data Loading Errors
-
-```bash
-# Validate data format
-python -c "from sentiment_analysis_model_builder.data.data_loader import DataLoader; print('OK')"
-
-# Check file permissions
-ls -la data/news_dataset_sample.json
-```
-
-#### 4. Model Export Failures
-
-```bash
-# Check ONNX opset compatibility
-export EXPORT_ONNX_OPSET_VERSION=16
-
-# Disable validation for debugging
-export EXPORT_VALIDATE_EXPORT=false
-```
-
-### Debug Mode
-
-```bash
-# Enable debug logging
-export LOG_LEVEL=DEBUG
-
-# Run with verbose output
-sentiment-train --log-level DEBUG
-```
-
-### Performance Optimization
-
-```bash
-# Use mixed precision training
-export TRAINING_FP16=true
-
-# Enable gradient checkpointing
-export TRAINING_GRADIENT_CHECKPOINTING=true
-
-# Optimize data loading
-export TRAINING_DATALOADER_NUM_WORKERS=4
-```
-
-## 📚 API Reference
-
-### Core Classes
-
-#### Config
-
-Main configuration class combining all sub-configurations.
-
-```python
-from sentiment_analysis_model_builder.core.config import Config
-
-config = Config()
-print(config.training.backbone)
-print(config.preprocessing.label_mapping)
-```
-
-#### DataLoader
-
-Handles data loading and preprocessing.
-
-```python
-from sentiment_analysis_model_builder.data.data_loader import DataLoader
-
-loader = DataLoader(config.data, config.preprocessing)
-articles = loader.load_data()
-```
-
-#### SentimentTrainer
-
-Manages model training and evaluation.
-
-```python
-from sentiment_analysis_model_builder.models.trainer import SentimentTrainer
-
-trainer = SentimentTrainer(config.training, dataset_preparator)
-model, tokenizer, metrics = trainer.train(datasets, output_dir)
-```
-
-#### ModelExporter
-
-Handles model export to various formats.
-
-```python
-from sentiment_analysis_model_builder.models.exporter import ModelExporter
-
-exporter = ModelExporter(config.export)
-export_paths = exporter.export_model(model_path, output_dir)
-```
-
-#### MLflowRegistry
-
-Manages model registration and versioning.
-
-```python
-from sentiment_analysis_model_builder.registry.mlflow_registry import MLflowRegistry
-
-registry = MLflowRegistry(config.registry)
-model_uri = registry.register_model(model_path, run_id)
+# Upgrade deployment
+helm upgrade sentiment-model-builder ./helm-charts/sentiment-model-builder \
+    --namespace sentiment-analysis
 ```
 
 ## 🤝 Contributing
 
-### Development Setup
+### **Development Setup**
 
-```bash
-# Clone and setup
-git clone <repository-url>
-cd sentiment_analysis_model_builder
-make dev-setup
+1. **Fork the repository**
+2. **Create feature branch**: `git checkout -b feature/amazing-feature`
+3. **Make changes** following the coding standards
+4. **Run tests**: `pytest tests/ -v`
+5. **Submit pull request**
 
-# Run quality checks
-make quality
+### **Code Standards**
 
-# Run tests
-make test
-```
-
-### Code Style
-
-- Follow PEP 8 with 88-character line length
-- Use type hints for all functions
-- Include comprehensive docstrings
-- Run pre-commit hooks before committing
-
-### Testing Guidelines
-
-- Maintain 80%+ code coverage
-- Include unit and integration tests
-- Test error conditions and edge cases
-- Use descriptive test names
+- **Python**: PEP 8, Black, isort, flake8
+- **Type Hints**: Full type annotations for all functions
+- **Documentation**: Google-style docstrings
+- **Testing**: Minimum 80% code coverage
+- **Logging**: Structured logging with correlation IDs
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+---
 
-- [Hugging Face Transformers](https://github.com/huggingface/transformers) for the transformer models
-- [MLflow](https://mlflow.org/) for experiment tracking and model management
-- [ProsusAI FinBERT](https://huggingface.co/ProsusAI/finbert) for the base model
-- [PyTorch](https://pytorch.org/) for the deep learning framework
+**For detailed information, see the [service-specific documentation](docs/) and [platform documentation](../docs/).**
