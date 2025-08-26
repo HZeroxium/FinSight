@@ -1056,7 +1056,7 @@ spec:
   - [ ] Eureka server running
   - [ ] External APIs configured
 
-### Deployment
+### Deployment Checklist
 
 - [ ] **Application Deployment**
 

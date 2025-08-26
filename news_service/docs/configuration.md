@@ -378,7 +378,7 @@ export REDIS_HOST=new-redis-host.example.com
 export LOG_LEVEL=DEBUG
 ```
 
-### Configuration Validation
+### Configuration Validation Details
 
 The service validates configuration at startup:
 
