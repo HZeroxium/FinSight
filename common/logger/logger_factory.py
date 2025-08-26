@@ -1,9 +1,9 @@
-from typing import Optional, Dict, Any
 from enum import Enum
+from typing import Any, Dict, Optional
 
 from .logger_interface import LoggerInterface, LogLevel
-from .standard_logger import StandardLogger
 from .print_logger import PrintLogger
+from .standard_logger import StandardLogger
 
 
 class LoggerType(Enum):

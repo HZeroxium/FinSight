@@ -1,6 +1,6 @@
 import sys
-from typing import Any, Dict, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
 
 from .logger_interface import LoggerInterface, LogLevel
 

@@ -1,8 +1,8 @@
+import json
 import logging
 import sys
-from typing import Any, Optional, Dict
 from datetime import datetime
-import json
+from typing import Any, Dict, Optional
 
 from .logger_interface import LoggerInterface, LogLevel
 

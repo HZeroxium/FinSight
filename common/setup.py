@@ -6,8 +6,9 @@ This module provides shared utilities and components for the FinSight platform,
 including logging, caching, LLM integrations, and other common functionality.
 """
 
-from setuptools import setup, find_packages
 import os
+
+from setuptools import find_packages, setup
 
 
 # Read the README file

@@ -16,9 +16,9 @@ __email__ = "team@finsight.com"
 
 # Import key components for easy access
 try:
-    from .logger import LoggerFactory, LoggerType, LogLevel
     from .cache import CacheFactory, CacheType
     from .llm import LLMFacade
+    from .logger import LoggerFactory, LoggerType, LogLevel
 except ImportError as e:
     # Handle graceful degradation if some dependencies are missing
     import warnings
