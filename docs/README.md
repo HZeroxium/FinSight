@@ -310,9 +310,8 @@ If you find issues with the documentation:
 
 For technical issues:
 
-1. Check the [Troubleshooting Guide](deployment.md#troubleshooting)
-2. Review the [Common Issues](#common-issues) section
-3. Create a GitHub issue with logs and error details
+1. Check the [Troubleshooting Guide](../deployment.md#troubleshooting)
+2. Create a GitHub issue with logs and error details
 
 ### Feature Requests
 
