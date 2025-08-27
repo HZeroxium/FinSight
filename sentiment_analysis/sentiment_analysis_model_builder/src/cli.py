@@ -15,10 +15,10 @@ from rich.table import Table
 from .core.config import Config
 from .data.data_loader import DataLoader
 from .data.dataset import DatasetPreparator
-from .models.trainer import SentimentTrainer
 from .models.exporter import ModelExporter
+from .models.trainer import SentimentTrainer
 from .registry.mlflow_registry import MLflowRegistry
-from .utils.file_utils import save_json, ensure_directory
+from .utils.file_utils import ensure_directory, save_json
 from .utils.model_evaluator import ModelEvaluator
 
 # Create Typer app
@@ -468,10 +468,11 @@ def serve(
     setup_logging(log_level)
 
     try:
-        import uvicorn
         import os
         import sys
         from pathlib import Path
+
+        import uvicorn
 
         # Set environment variables for API configuration
         os.environ["API_HOST"] = host
@@ -542,8 +543,9 @@ def predict(
 
     try:
         import asyncio
+
+        from .core.config import APIConfig, Config
         from .services.inference_service import SentimentInferenceService
-        from .core.config import Config, APIConfig
 
         # Load configuration
         config = Config()

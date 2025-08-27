@@ -3,11 +3,11 @@
 """API schemas for sentiment analysis REST endpoints."""
 
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from ..core.enums import SentimentLabel, ResponseStatus
+from ..core.enums import ResponseStatus, SentimentLabel
 
 
 class SentimentRequest(BaseModel):

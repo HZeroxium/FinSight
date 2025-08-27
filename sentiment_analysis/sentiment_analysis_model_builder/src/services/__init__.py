@@ -2,7 +2,7 @@
 
 """Services module for sentiment analysis."""
 
-from .inference_service import SentimentInferenceService, InferenceError
+from .inference_service import InferenceError, SentimentInferenceService
 
 __all__ = [
     "SentimentInferenceService",

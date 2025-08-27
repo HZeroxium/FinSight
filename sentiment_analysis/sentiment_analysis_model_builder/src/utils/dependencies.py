@@ -2,12 +2,13 @@
 
 """Dependency injection utilities for the API."""
 
-import psutil
 import time
-from typing import Dict, Any, Optional
 from functools import lru_cache
+from typing import Any, Dict, Optional
 
-from ..core.config import Config, APIConfig
+import psutil
+
+from ..core.config import Config
 from ..services.inference_service import SentimentInferenceService
 
 

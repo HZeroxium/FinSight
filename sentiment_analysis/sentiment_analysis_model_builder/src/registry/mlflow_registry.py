@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import boto3
-import mlflow
 from loguru import logger
 from mlflow.tracking import MlflowClient
 
-from ..core.config import RegistryConfig, ModelStage
+import mlflow
+
+from ..core.config import ModelStage, RegistryConfig
 
 
 class MLflowRegistry:

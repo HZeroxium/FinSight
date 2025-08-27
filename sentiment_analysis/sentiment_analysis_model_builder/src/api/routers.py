@@ -2,29 +2,26 @@
 
 """FastAPI routers for sentiment analysis API."""
 
-import uuid
 import time
-from typing import List, Optional
+import uuid
 
-from fastapi import APIRouter, HTTPException, Depends, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
 
-from ..services.inference_service import SentimentInferenceService, InferenceError
+from ..core.enums import APIEndpoint
 from ..schemas.api_schemas import (
-    SentimentRequest,
-    SentimentResponse,
     BatchSentimentRequest,
     BatchSentimentResponse,
-    ModelInfo,
-    HealthStatus,
     ErrorResponse,
+    HealthStatus,
     MetricsResponse,
+    ModelInfo,
     ResponseStatus,
+    SentimentRequest,
+    SentimentResponse,
 )
-from ..core.enums import APIEndpoint
+from ..services.inference_service import InferenceError, SentimentInferenceService
 from ..utils.dependencies import get_inference_service, get_metrics_tracker
-
 
 # Create router
 router = APIRouter(

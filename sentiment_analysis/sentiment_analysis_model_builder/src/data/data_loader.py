@@ -3,7 +3,6 @@
 """Data loading and preprocessing for sentiment analysis training."""
 
 import json
-import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -15,9 +14,9 @@ from ..core.enums import DataFormat, SentimentLabel
 from ..schemas.data_schemas import NewsArticle
 from ..utils.text_utils import (
     clean_text,
+    extract_tickers,
     normalize_text,
     validate_text_length,
-    extract_tickers,
 )
 
 

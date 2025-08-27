@@ -2,27 +2,24 @@
 
 """Inference service for sentiment analysis using trained FinBERT model."""
 
-import json
-import time
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
 import asyncio
+import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, List, Optional
 
 import torch
+from loguru import logger
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
     pipeline,
 )
-import numpy as np
-from loguru import logger
 
 from ..core.config import APIConfig
 from ..core.enums import SentimentLabel
 from ..schemas.api_schemas import SentimentResult, SentimentScore
-from ..utils.text_utils import clean_text, normalize_text, validate_text_length
 from ..utils.file_utils import load_json
+from ..utils.text_utils import clean_text, normalize_text, validate_text_length
 
 
 class InferenceError(Exception):

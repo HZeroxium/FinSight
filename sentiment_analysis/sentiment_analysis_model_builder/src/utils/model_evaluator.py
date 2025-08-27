@@ -5,11 +5,11 @@
 import os
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
-from datasets import Dataset, DatasetDict
+from datasets import Dataset
 from loguru import logger
 from sklearn.metrics import (
     accuracy_score,
@@ -27,11 +27,8 @@ from transformers import (
 )
 
 from ..core.config import PreprocessingConfig, TrainingConfig
-from ..core.enums import ModelBackbone, SentimentLabel
-from ..data.data_loader import DataLoader, NewsArticle
-from ..data.dataset import DatasetPreparator
+from ..data.data_loader import NewsArticle
 from ..schemas.data_schemas import TrainingExample
-from ..schemas.training_schemas import ClassificationReport, EvaluationResult
 from ..utils.file_utils import ensure_directory, load_json, save_json
 
 # Disable wandb logging

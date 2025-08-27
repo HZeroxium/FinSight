@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
-import mlflow
 import numpy as np
 import onnx
 import onnxruntime as ort
@@ -15,6 +14,8 @@ import torch
 from loguru import logger
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from transformers.onnx import export
+
+import mlflow
 
 from ..core.config import ExportConfig, ExportFormat
 

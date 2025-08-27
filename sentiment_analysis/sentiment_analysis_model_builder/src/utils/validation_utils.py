@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 from loguru import logger
 
-from ..core.enums import DataFormat, ModelBackbone, ExportFormat
+from ..core.enums import DataFormat, ExportFormat, ModelBackbone
 from ..schemas.data_schemas import NewsArticle
 
 

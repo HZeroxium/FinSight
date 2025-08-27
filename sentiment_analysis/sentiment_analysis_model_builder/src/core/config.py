@@ -9,15 +9,15 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .enums import (
-    ModelBackbone,
-    ExportFormat,
-    ModelStage,
     DataFormat,
-    SentimentLabel,
-    LogLevel,
     EvaluationStrategy,
-    SaveStrategy,
+    ExportFormat,
+    LogLevel,
     MetricType,
+    ModelBackbone,
+    ModelStage,
+    SaveStrategy,
+    SentimentLabel,
 )
 
 

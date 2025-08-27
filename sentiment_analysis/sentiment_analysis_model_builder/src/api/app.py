@@ -2,21 +2,20 @@
 
 """FastAPI application for sentiment analysis API."""
 
-import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, Request, HTTPException
+import uvicorn
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
-import uvicorn
 from loguru import logger
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..core.config import Config
 from ..schemas.api_schemas import ErrorResponse, ResponseStatus
-from ..utils.dependencies import get_config, cleanup_dependencies
+from ..utils.dependencies import cleanup_dependencies, get_config
 from .routers import router
 
 

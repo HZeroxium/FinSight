@@ -2,11 +2,10 @@
 
 """Model training and evaluation for sentiment analysis."""
 
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
-import os
 
-import mlflow
 import numpy as np
 import torch
 from datasets import DatasetDict
@@ -21,12 +20,14 @@ from transformers import (
 )
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 
+import mlflow
+
 from ..core.config import TrainingConfig
 from ..data.dataset import DatasetPreparator
 from ..schemas.training_schemas import (
-    TrainingMetrics,
-    EvaluationResult,
     ClassificationReport,
+    EvaluationResult,
+    TrainingMetrics,
 )
 from ..utils.file_utils import ensure_directory
 

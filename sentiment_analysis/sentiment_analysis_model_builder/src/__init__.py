@@ -11,8 +11,8 @@ __email__ = "team@finsight.ai"
 from .core.config import Config
 from .data.data_loader import DataLoader, NewsArticle
 from .data.dataset import DatasetPreparator
-from .models.trainer import SentimentTrainer
 from .models.exporter import ModelExporter
+from .models.trainer import SentimentTrainer
 from .registry.mlflow_registry import MLflowRegistry
 
 __all__ = [

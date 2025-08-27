@@ -11,10 +11,10 @@ from loguru import logger
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 
-from .data_loader import NewsArticle
 from ..core.config import PreprocessingConfig, TrainingConfig
-from ..schemas.data_schemas import TrainingExample, TokenizerConfig
+from ..schemas.data_schemas import TokenizerConfig, TrainingExample
 from ..utils.file_utils import save_json
+from .data_loader import NewsArticle
 
 
 class DatasetPreparator:
