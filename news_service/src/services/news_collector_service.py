@@ -1,13 +1,14 @@
 # services/news_collector_service.py
 
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from common.logger import LoggerFactory, LoggerType, LogLevel
 from pydantic import BaseModel, Field
 
 from ..core.news_collector_facade import NewsCollectorFacade
 from ..core.news_collector_factory import CollectorType
-from ..schemas.news_schemas import NewsSource, NewsItem
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..schemas.news_schemas import NewsItem, NewsSource
 from .news_service import NewsService
 
 

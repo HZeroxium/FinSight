@@ -4,13 +4,14 @@ Shows how to use the migration service with different configurations
 """
 
 import asyncio
-import sys
 import os
+import sys
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from misc.database_migration import DatabaseMigrationService, DatabaseMigrationError
+from misc.database_migration import (DatabaseMigrationError,
+                                     DatabaseMigrationService)
 
 
 async def demo_database_stats():

@@ -5,13 +5,14 @@ Cache utilities for news service.
 Provides cache management, key generation, and invalidation mechanisms.
 """
 
-from typing import Optional, Dict, Any, Callable
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any, Callable, Dict, Optional
 
 from common.cache import CacheFactory, CacheType
 from common.cache.cache_interface import CacheInterface
 from common.logger import LoggerFactory, LoggerType, LogLevel
+
 from ..core.config import settings
 
 

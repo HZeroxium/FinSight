@@ -1,10 +1,11 @@
 # misc/crawl4ai_example.py
 
-from crawl4ai_collector import Crawl4AICryptoNewsCollector
-from common.logger import LoggerFactory, LoggerType, LogLevel
 import asyncio
-import time
 import json
+import time
+
+from common.logger import LoggerFactory, LoggerType, LogLevel
+from crawl4ai_collector import Crawl4AICryptoNewsCollector
 
 main_logger = LoggerFactory.get_logger(
     name="crawl4ai_demo",

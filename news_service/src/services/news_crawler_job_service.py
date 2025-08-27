@@ -11,30 +11,28 @@ A production-ready background job service for automated news collection with:
 - Health monitoring and status reporting
 """
 
-import os
-import sys
-import json
-import signal
 import asyncio
+import json
+import os
+import signal
+import sys
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, asdict
+from typing import Any, Dict, List, Optional
 
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
-from ..services.news_collector_service import (
-    NewsCollectorService,
-    BatchCollectionRequest,
-)
-from ..services.news_service import NewsService
+from ..core.config import settings
+from ..core.news_collector_factory import CollectorType
 from ..repositories.mongo_news_repository import MongoNewsRepository
 from ..schemas.news_schemas import NewsSource
-from ..core.news_collector_factory import CollectorType
-from ..core.config import settings
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..services.news_collector_service import (BatchCollectionRequest,
+                                               NewsCollectorService)
+from ..services.news_service import NewsService
 from ..utils.cache_utils import invalidate_all_news_cache
 
 
@@ -148,9 +146,8 @@ class NewsCrawlerJobService:
             # Initialize message producer with broker if needed
             if not self.news_service:
                 from ..adapters.rabbitmq_broker import RabbitMQBroker
-                from ..services.news_message_producer_service import (
-                    NewsMessageProducerService,
-                )
+                from ..services.news_message_producer_service import \
+                    NewsMessageProducerService
 
                 try:
                     message_broker = RabbitMQBroker(

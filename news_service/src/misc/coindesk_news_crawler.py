@@ -10,15 +10,16 @@ from CoinDesk's REST API with timestamp-based pagination and comprehensive error
 import asyncio
 import json
 import random
-from typing import Dict, Any, Optional
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any, Dict, Optional
+
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 from ..adapters.api_coindesk_news_collector import APICoinDeskNewsCollector
+from ..repositories.mongo_news_repository import MongoNewsRepository
 from ..schemas.news_schemas import NewsCollectorConfig, NewsSource
 from ..services.news_service import NewsService
-from ..repositories.mongo_news_repository import MongoNewsRepository
-from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class CoinDeskCrawler:

@@ -7,25 +7,21 @@ This module implements the gRPC service interface defined in the protocol buffer
 definitions, providing high-performance RPC access to news data.
 """
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import grpc
-
-from ..services.news_service import NewsService, NewsSearchRequest
-from ..utils.grpc_converters import (
-    convert_pydantic_news_response_to_grpc,
-    convert_pydantic_news_item_to_grpc,
-    convert_pydantic_stats_to_grpc,
-    convert_grpc_search_request_to_pydantic,
-    grpc_source_to_pydantic,
-    timestamp_to_datetime,
-)
-from ..utils.response_converters import (
-    build_news_response,
-    build_filters_summary,
-    convert_news_item_to_response,
-)
 from common.logger import LoggerFactory, LoggerType, LogLevel
+
+from ..services.news_service import NewsSearchRequest, NewsService
+from ..utils.grpc_converters import (convert_grpc_search_request_to_pydantic,
+                                     convert_pydantic_news_item_to_grpc,
+                                     convert_pydantic_news_response_to_grpc,
+                                     convert_pydantic_stats_to_grpc,
+                                     grpc_source_to_pydantic,
+                                     timestamp_to_datetime)
+from ..utils.response_converters import (build_filters_summary,
+                                         build_news_response,
+                                         convert_news_item_to_response)
 
 # Initialize logger
 logger = LoggerFactory.get_logger(

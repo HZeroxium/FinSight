@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from ..schemas.news_schemas import NewsItem, NewsCollectionResult, NewsCollectorConfig
+
+from ..schemas.news_schemas import (NewsCollectionResult, NewsCollectorConfig,
+                                    NewsItem)
 
 
 class NewsCollectorInterface(ABC):

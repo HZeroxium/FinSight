@@ -1,10 +1,12 @@
 # schemas/news_schemas.py
 
-from typing import Optional, Dict, Any, List, Annotated
-from datetime import datetime
-from pydantic import BaseModel, HttpUrl, Field, field_validator, model_validator
-from enum import Enum
 import re
+from datetime import datetime
+from enum import Enum
+from typing import Annotated, Any, Dict, List, Optional
+
+from pydantic import (BaseModel, Field, HttpUrl, field_validator,
+                      model_validator)
 
 
 class NewsSource(str, Enum):

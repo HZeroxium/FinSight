@@ -1,17 +1,15 @@
 # adapters/rss_news_collector.py
 
 import asyncio
-import aiohttp
-import feedparser
 from typing import Optional
 
-from ..interfaces.news_collector_interface import NewsCollectorInterface
-from ..schemas.news_schemas import (
-    NewsCollectionResult,
-    NewsCollectorConfig,
-)
-from ..core.rss_parsing_strategies import get_parsing_strategy
+import aiohttp
+import feedparser
 from common.logger import LoggerFactory, LoggerType, LogLevel
+
+from ..core.rss_parsing_strategies import get_parsing_strategy
+from ..interfaces.news_collector_interface import NewsCollectorInterface
+from ..schemas.news_schemas import NewsCollectionResult, NewsCollectorConfig
 
 
 class RSSNewsCollector(NewsCollectorInterface):

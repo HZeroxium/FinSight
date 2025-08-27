@@ -1,18 +1,15 @@
 # services/news_service.py
 
-from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 from ..interfaces.news_repository_interface import NewsRepositoryInterface
-from ..schemas.news_schemas import (
-    NewsItem,
-    NewsSource,
-    NewsStorageResult,
-    NewsSearchRequest,
-)
-from ..utils.cache_utils import CacheEndpoint, get_cache_manager, CacheManager
+from ..schemas.news_schemas import (NewsItem, NewsSearchRequest, NewsSource,
+                                    NewsStorageResult)
+from ..utils.cache_utils import CacheEndpoint, CacheManager, get_cache_manager
 from .news_message_producer_service import NewsMessageProducerService
-from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class NewsService:

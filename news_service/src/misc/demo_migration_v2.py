@@ -4,18 +4,16 @@ Shows how to use the migration service with date range support and new features
 """
 
 import asyncio
-import sys
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from misc.database_migration import (
-    DatabaseMigrationService,
-    DatabaseMigrationError,
-    MigrationDateRange,
-)
+from misc.database_migration import (DatabaseMigrationError,
+                                     DatabaseMigrationService,
+                                     MigrationDateRange)
 
 
 async def demo_database_stats():

@@ -5,7 +5,8 @@ Configuration management for the news crawler service.
 """
 
 import os
-from typing import Optional, List
+from typing import List, Optional
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

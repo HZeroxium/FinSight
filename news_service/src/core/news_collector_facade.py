@@ -1,16 +1,13 @@
 # core/news_collector_facade.py
 
-from typing import List, Optional, Dict, Any
 import asyncio
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from .news_collector_factory import NewsCollectorFactory, CollectorType
-from ..schemas.news_schemas import (
-    NewsItem,
-    NewsCollectionResult,
-    NewsSource,
-)
 from common.logger import LoggerFactory, LoggerType, LogLevel
+
+from ..schemas.news_schemas import NewsCollectionResult, NewsItem, NewsSource
+from .news_collector_factory import CollectorType, NewsCollectorFactory
 
 
 class NewsCollectorFacade:

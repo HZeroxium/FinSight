@@ -4,24 +4,24 @@
 Dependency injection utilities for news crawler service.
 """
 
-from typing import Dict, Any, Optional
-from fastapi import HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Any, Dict, Optional
+
+from common.logger import LoggerFactory, LoggerType, LogLevel
 from dependency_injector import containers, providers
 from dependency_injector.wiring import Provide, inject
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from ..repositories.mongo_news_repository import MongoNewsRepository
-from ..services.news_service import NewsService
-
-# from ..services.search_service import SearchService
-from ..services.news_collector_service import NewsCollectorService
-from ..services.eureka_client_service import EurekaClientService
-from ..services.news_message_producer_service import NewsMessageProducerService
 from ..adapters.rabbitmq_broker import RabbitMQBroker
 from ..adapters.tavily_search_engine import TavilySearchEngine
-from ..utils.cache_utils import get_cache_manager, CacheManager
-from common.logger import LoggerFactory, LoggerType, LogLevel
 from ..core.config import settings
+from ..repositories.mongo_news_repository import MongoNewsRepository
+from ..services.eureka_client_service import EurekaClientService
+# from ..services.search_service import SearchService
+from ..services.news_collector_service import NewsCollectorService
+from ..services.news_message_producer_service import NewsMessageProducerService
+from ..services.news_service import NewsService
+from ..utils.cache_utils import CacheManager, get_cache_manager
 
 
 class Container(containers.DeclarativeContainer):

@@ -5,29 +5,26 @@ FastAPI application for the news crawler service.
 Entry point for the News Crawler Service REST API.
 """
 
-import sys
 import asyncio
+import sys
 import time
-import uvicorn
 from contextlib import asynccontextmanager
+
+import uvicorn
+from common.logger import LoggerFactory, LoggerType, LogLevel
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .core.config import settings
-from .routers import news_router, job_router, eureka_router
-from .services.sentiment_message_consumer_service import SentimentMessageConsumerService
-from .grpc_services import create_grpc_server, GrpcServer
-from .utils.dependencies import (
-    # get_search_service,
-    get_message_broker,
-    get_news_service,
-    get_eureka_client_service,
-    initialize_services,
-    cleanup_services,
-)
+from .grpc_services import GrpcServer, create_grpc_server
+from .routers import eureka_router, job_router, news_router
+from .services.sentiment_message_consumer_service import \
+    SentimentMessageConsumerService
 from .utils.cache_utils import check_cache_health, get_cache_statistics
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from .utils.dependencies import (cleanup_services,  # get_search_service,
+                                 get_eureka_client_service, get_message_broker,
+                                 get_news_service, initialize_services)
 
 # Setup application logger
 logger = LoggerFactory.get_logger(

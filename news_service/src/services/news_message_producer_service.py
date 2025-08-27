@@ -4,15 +4,16 @@
 News message producer service for publishing news to sentiment analysis queue.
 """
 
-from typing import Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, Optional
 
+from common.logger import LoggerFactory
+
+from ..core.config import settings
 from ..interfaces.message_broker import MessageBroker, MessageBrokerError
+from ..models.news_model import NewsModel
 from ..schemas.message_schemas import NewsMessageSchema
 from ..schemas.news_schemas import NewsItem
-from ..models.news_model import NewsModel
-from ..core.config import settings
-from common.logger import LoggerFactory
 
 logger = LoggerFactory.get_logger(
     name="news-message-producer", log_file="logs/news_message_producer.log"

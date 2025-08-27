@@ -7,15 +7,15 @@ This module provides the gRPC server setup and configuration,
 running alongside the FastAPI server to provide dual protocol support.
 """
 
-from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
+from common.logger import LoggerFactory, LoggerType, LogLevel
 from grpc import aio
 
-from ..services.news_service import NewsService
-from ..grpc_services.news_grpc_service import create_news_servicer
 from ..core.config import settings
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..grpc_services.news_grpc_service import create_news_servicer
+from ..services.news_service import NewsService
 
 # Initialize logger
 logger = LoggerFactory.get_logger(
@@ -69,9 +69,8 @@ class GrpcServer:
 
             # Import generated gRPC code
             try:
-                from ..grpc_generated.news_service_pb2_grpc import (
-                    add_NewsServiceServicer_to_server,
-                )
+                from ..grpc_generated.news_service_pb2_grpc import \
+                    add_NewsServiceServicer_to_server
             except ImportError:
                 logger.error(
                     "Failed to import generated gRPC code. Please run generate_grpc_code.py first."

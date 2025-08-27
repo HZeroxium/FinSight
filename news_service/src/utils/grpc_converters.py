@@ -8,17 +8,17 @@ and gRPC protocol buffer messages, ensuring clean separation between
 transport layer and business logic.
 """
 
-from typing import Optional
 from datetime import datetime, timezone
+from typing import Optional
+
+from common.logger import LoggerFactory, LoggerType, LogLevel
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from ..schemas.news_schemas import (
-    NewsItemResponse as PydanticNewsItemResponse,
-    NewsSource as PydanticNewsSource,
-    NewsResponse as PydanticNewsResponse,
-    NewsStatsResponse as PydanticNewsStatsResponse,
-)
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..schemas.news_schemas import NewsItemResponse as PydanticNewsItemResponse
+from ..schemas.news_schemas import NewsResponse as PydanticNewsResponse
+from ..schemas.news_schemas import NewsSource as PydanticNewsSource
+from ..schemas.news_schemas import \
+    NewsStatsResponse as PydanticNewsStatsResponse
 
 # Initialize logger
 logger = LoggerFactory.get_logger(

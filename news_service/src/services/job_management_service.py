@@ -6,29 +6,21 @@ Wraps the NewsCrawlerJobService and provides clean API for job operations.
 """
 
 import asyncio
-from typing import Optional
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
-from ..services.news_crawler_job_service import (
-    NewsCrawlerJobService,
-    JobConfig as DataclassJobConfig,
-)
-from ..schemas.job_schemas import (
-    JobConfigModel,
-    JobStatus,
-    JobStatsModel,
-    JobStatusResponse,
-    JobStartRequest,
-    JobStopRequest,
-    ManualJobRequest,
-    ManualJobResponse,
-    JobConfigUpdateRequest,
-    JobOperationResponse,
-)
-from ..utils.cache_utils import invalidate_all_news_cache
-from ..core.config import settings
 from common.logger import LoggerFactory, LoggerType, LogLevel
+
+from ..core.config import settings
+from ..schemas.job_schemas import (JobConfigModel, JobConfigUpdateRequest,
+                                   JobOperationResponse, JobStartRequest,
+                                   JobStatsModel, JobStatus, JobStatusResponse,
+                                   JobStopRequest, ManualJobRequest,
+                                   ManualJobResponse)
+from ..services.news_crawler_job_service import JobConfig as DataclassJobConfig
+from ..services.news_crawler_job_service import NewsCrawlerJobService
+from ..utils.cache_utils import invalidate_all_news_cache
 
 
 class JobManagementService:
@@ -85,7 +77,8 @@ class JobManagementService:
                 self._job_service = self.job_service_factory()
             else:
                 # Fallback to direct instantiation (avoid circular import)
-                from ..services.news_crawler_job_service import NewsCrawlerJobService
+                from ..services.news_crawler_job_service import \
+                    NewsCrawlerJobService
 
                 self._job_service = NewsCrawlerJobService(
                     mongo_url=self.mongo_url,

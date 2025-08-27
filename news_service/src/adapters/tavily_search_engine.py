@@ -5,15 +5,15 @@ Tavily search engine implementation.
 """
 
 import time
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
-from tavily import TavilyClient
+from common.logger import LoggerFactory, LoggerType, LogLevel
 from pydantic import HttpUrl
+from tavily import TavilyClient
 
 from ..interfaces.search_engine import SearchEngine, SearchEngineError
-from common.logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
     name="tavily-search-engine", logger_type=LoggerType.STANDARD, level=LogLevel.INFO

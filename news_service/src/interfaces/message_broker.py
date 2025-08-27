@@ -5,7 +5,8 @@ Message broker interface for async communication.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable, Dict, Optional
+
 from pydantic import BaseModel
 
 

@@ -6,16 +6,17 @@ Handles registration and deregistration with Eureka server.
 """
 
 import asyncio
+import random
 import socket
-import uuid
 import threading
 import time
-import random
-from typing import Optional, Callable
+import uuid
 from contextlib import asynccontextmanager
+from typing import Callable, Optional
 
 import requests
 from common.logger import LoggerFactory, LoggerType, LogLevel
+
 from ..core.config import settings
 
 

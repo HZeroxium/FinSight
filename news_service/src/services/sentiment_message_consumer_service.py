@@ -5,12 +5,13 @@ Sentiment consumer service for processing sentiment analysis results from Rabbit
 """
 
 import asyncio
-from typing import Dict, Any
+from typing import Any, Dict
 
-from ..schemas.message_schemas import SentimentResultMessageSchema
-from ..interfaces.message_broker import MessageBroker
-from ..core.config import settings
 from common.logger import LoggerFactory, LoggerType, LogLevel
+
+from ..core.config import settings
+from ..interfaces.message_broker import MessageBroker
+from ..schemas.message_schemas import SentimentResultMessageSchema
 
 logger = LoggerFactory.get_logger(
     name="sentiment-consumer", logger_type=LoggerType.STANDARD, level=LogLevel.INFO

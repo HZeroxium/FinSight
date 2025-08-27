@@ -9,12 +9,13 @@ from CoinDesk's REST API with chunked date ranges and concurrent processing.
 
 import asyncio
 import json
-from typing import Dict, Any, Optional, List, Tuple
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 from .coindesk_news_crawler import CoinDeskCrawler
-from common.logger import LoggerFactory, LoggerType, LogLevel
 
 
 class CoinDeskParallelCrawler:

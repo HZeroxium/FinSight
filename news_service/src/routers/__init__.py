@@ -5,6 +5,6 @@ Routers package for the news crawler service.
 Contains all FastAPI route definitions.
 """
 
-from . import news_router, search, job_router
+from . import job_router, news_router, search
 
 __all__ = ["search", "news_router", "job_router"]

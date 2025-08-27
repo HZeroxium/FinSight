@@ -30,14 +30,11 @@ from datetime import datetime
 from typing import Any, Dict, List
 from urllib.parse import urljoin
 
-from crawl4ai import AsyncWebCrawler, CacheMode
-from crawl4ai.extraction_strategy import (
-    JsonCssExtractionStrategy,
-)
-from crawl4ai.chunking_strategy import RegexChunking, NlpSentenceChunking
-from crawl4ai.content_filter_strategy import PruningContentFilter
-
 from common.logger import LoggerFactory, LoggerType, LogLevel
+from crawl4ai import AsyncWebCrawler, CacheMode
+from crawl4ai.chunking_strategy import NlpSentenceChunking, RegexChunking
+from crawl4ai.content_filter_strategy import PruningContentFilter
+from crawl4ai.extraction_strategy import JsonCssExtractionStrategy
 
 
 class Crawl4AICryptoNewsCollector:

@@ -1,22 +1,19 @@
 # routers/news.py
 
-from typing import Optional, Dict, Any, List
-from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+
+from common.logger import LoggerFactory, LoggerType, LogLevel
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import JSONResponse
 
-from ..services.news_service import NewsService, NewsSearchRequest
-from ..schemas.news_schemas import (
-    NewsItem,
-    NewsItemResponse,
-    NewsSource,
-    NewsResponse,
-    NewsStatsResponse,
-    TimeRangeSearchParams,
-)
+from ..schemas.news_schemas import (NewsItem, NewsItemResponse, NewsResponse,
+                                    NewsSource, NewsStatsResponse,
+                                    TimeRangeSearchParams)
+from ..services.news_service import NewsSearchRequest, NewsService
 from ..utils.dependencies import get_news_service
-from ..utils.response_converters import build_news_response, build_filters_summary
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..utils.response_converters import (build_filters_summary,
+                                         build_news_response)
 
 # Initialize router
 router = APIRouter(prefix="/news", tags=["news"])

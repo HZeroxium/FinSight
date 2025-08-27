@@ -4,8 +4,8 @@
 External service adapters and implementations.
 """
 
-from .tavily_search_engine import TavilySearchEngine
 from .rabbitmq_broker import RabbitMQBroker
+from .tavily_search_engine import TavilySearchEngine
 
 __all__ = [
     "TavilySearchEngine",

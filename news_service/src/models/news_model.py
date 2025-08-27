@@ -1,11 +1,12 @@
 # models/news_model.py
 
-from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field, field_serializer, field_validator
-from bson import ObjectId
+from typing import Any, Dict, List, Optional
 
-from ..schemas.news_schemas import NewsSource, NewsItem
+from bson import ObjectId
+from pydantic import BaseModel, Field, field_serializer, field_validator
+
+from ..schemas.news_schemas import NewsItem, NewsSource
 
 
 class NewsModel(BaseModel):

@@ -8,19 +8,17 @@ and storing crypto news from various sources.
 """
 
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
-from ..services.news_collector_service import (
-    NewsCollectorService,
-    CollectionRequest,
-    BatchCollectionRequest,
-)
-from ..services.news_service import NewsService
-from ..repositories.mongo_news_repository import MongoNewsRepository
-from ..schemas.news_schemas import NewsSource
-from ..core.news_collector_factory import CollectorType
 from common.logger import LoggerFactory, LoggerType, LogLevel
 
+from ..core.news_collector_factory import CollectorType
+from ..repositories.mongo_news_repository import MongoNewsRepository
+from ..schemas.news_schemas import NewsSource
+from ..services.news_collector_service import (BatchCollectionRequest,
+                                               CollectionRequest,
+                                               NewsCollectorService)
+from ..services.news_service import NewsService
 
 # Initialize logging
 logger = LoggerFactory.get_logger(

@@ -1,14 +1,16 @@
 # core/news_collector_factory.py
 
-from typing import Dict, Optional, Any, List
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
-from ..interfaces.news_collector_interface import NewsCollectorInterface
-from ..adapters.rss_news_collector import RSSNewsCollector
-from ..adapters.api_coindesk_news_collector import APICoinDeskNewsCollector
-from ..adapters.api_cointelegraph_news_collector import APICoinTelegraphNewsCollector
-from ..schemas.news_schemas import NewsCollectorConfig, NewsSource
 from common.logger import LoggerFactory, LoggerType, LogLevel
+
+from ..adapters.api_coindesk_news_collector import APICoinDeskNewsCollector
+from ..adapters.api_cointelegraph_news_collector import \
+    APICoinTelegraphNewsCollector
+from ..adapters.rss_news_collector import RSSNewsCollector
+from ..interfaces.news_collector_interface import NewsCollectorInterface
+from ..schemas.news_schemas import NewsCollectorConfig, NewsSource
 
 
 class CollectorType(Enum):

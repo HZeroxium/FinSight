@@ -1,21 +1,18 @@
 # repositories/mongo_news_repository.py
 
-from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta, timezone
 import hashlib
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
-from motor.motor_asyncio import (
-    AsyncIOMotorClient,
-    AsyncIOMotorDatabase,
-    AsyncIOMotorCollection,
-)
+from common.logger import LoggerFactory, LoggerType, LogLevel
+from motor.motor_asyncio import (AsyncIOMotorClient, AsyncIOMotorCollection,
+                                 AsyncIOMotorDatabase)
 from pymongo import ASCENDING, DESCENDING, TEXT
 from pymongo.errors import DuplicateKeyError
 
 from ..interfaces.news_repository_interface import NewsRepositoryInterface
-from ..schemas.news_schemas import NewsItem, NewsSource
 from ..models.news_model import NewsModel
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..schemas.news_schemas import NewsItem, NewsSource
 
 
 class MongoNewsRepository(NewsRepositoryInterface):

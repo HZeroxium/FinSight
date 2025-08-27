@@ -1,24 +1,23 @@
 # routers/news.py
 
-from typing import Optional, Dict, Any
-from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional
+
+from common.logger import LoggerFactory, LoggerType, LogLevel
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import JSONResponse
 
-from ..services.news_service import NewsService, NewsSearchRequest
-from ..schemas.news_schemas import (
-    NewsSource,
-    NewsResponse,
-    TimeRangeSearchParams,
-)
+from ..schemas.news_schemas import (NewsResponse, NewsSource,
+                                    TimeRangeSearchParams)
+from ..services.news_service import NewsSearchRequest, NewsService
+from ..utils.cache_utils import check_cache_health as check_cache_health_util
+from ..utils.cache_utils import \
+    get_cache_statistics as get_cache_statistics_util
+from ..utils.cache_utils import \
+    invalidate_all_news_cache as invalidate_all_news_cache_util
 from ..utils.dependencies import get_news_service, require_admin_access
-from ..utils.response_converters import build_news_response, build_filters_summary
-from ..utils.cache_utils import (
-    get_cache_statistics as get_cache_statistics_util,
-    check_cache_health as check_cache_health_util,
-    invalidate_all_news_cache as invalidate_all_news_cache_util,
-)
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from ..utils.response_converters import (build_filters_summary,
+                                         build_news_response)
 
 # Initialize router
 router = APIRouter(prefix="/news", tags=["news"])

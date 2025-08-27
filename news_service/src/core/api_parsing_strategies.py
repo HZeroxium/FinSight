@@ -1,12 +1,13 @@
 # core/api_parsing_strategies.py
 
-from typing import Dict, Any, List
-from datetime import datetime, timezone
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
+from typing import Any, Dict, List
+
 import dateutil.parser
+from common.logger import LoggerFactory, LoggerType, LogLevel
 
 from ..schemas.news_schemas import NewsItem, NewsSource
-from common.logger import LoggerFactory, LoggerType, LogLevel
 
 logger = LoggerFactory.get_logger(
     name="api-parsing-strategies",

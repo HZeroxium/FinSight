@@ -4,8 +4,8 @@
 Interface definitions for the news crawler service.
 """
 
-from .search_engine import SearchEngine, SearchEngineError
 from .message_broker import MessageBroker, MessageBrokerError
+from .search_engine import SearchEngine, SearchEngineError
 
 __all__ = [
     "SearchEngine",

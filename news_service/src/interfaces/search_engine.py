@@ -5,7 +5,7 @@ Search engine interface for news and content discovery.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 class SearchEngine(ABC):

@@ -4,22 +4,16 @@
 RabbitMQ message broker implementation.
 """
 
-import json
 import asyncio
-from typing import Dict, Any, Optional, Callable
+import json
+from typing import Any, Callable, Dict, Optional
 
 import aio_pika
-from aio_pika import (
-    connect_robust,
-    RobustConnection,
-    RobustChannel,
-    Message,
-    ExchangeType,
-    DeliveryMode,
-)
+from aio_pika import (DeliveryMode, ExchangeType, Message, RobustChannel,
+                      RobustConnection, connect_robust)
+from common.logger import LoggerFactory
 
 from ..interfaces.message_broker import MessageBroker, MessageBrokerError
-from common.logger import LoggerFactory
 
 logger = LoggerFactory.get_logger(
     name="rabbitmq-broker",
