@@ -28,7 +28,7 @@ from ..schemas.enums import RepositoryType
 from ..services.admin_service import AdminService
 from ..services.eureka_client_service import EurekaClientService
 from ..services.market_data_collector_service import MarketDataCollectorService
-from ..services.market_data_job_service import MarketDataJobManagementService
+from ..services.market_data_job_management_service import MarketDataJobManagementService
 from ..services.market_data_service import MarketDataService
 from ..services.market_data_storage_service import MarketDataStorageService
 from ..utils.storage_client import StorageClient

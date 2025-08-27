@@ -20,7 +20,7 @@ from ..schemas.job_schemas import (DataCollectionJobRequest,
                                    JobStatsModel, JobStatusResponse,
                                    JobStopRequest, ManualJobRequest,
                                    ManualJobResponse, MarketDataJobConfigModel)
-from ..services.market_data_job_service import MarketDataJobManagementService
+from ..services.market_data_job_management_service import MarketDataJobManagementService
 from ..utils.dependencies import (get_market_data_job_service,
                                   require_admin_access)
 

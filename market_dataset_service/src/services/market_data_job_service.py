@@ -1,37 +1,84 @@
-# services/market_data_job_service.py
+# market_data_job.py
 
 """
-Market Data Job Management Service
+Market Data Background Job Service
 
-Service layer for managing market data collection jobs.
-Acts as a facade over MarketDataJobService to provide REST API management interface.
+Production-ready background job service for automated market data collection with:
+- Modern cron job scheduling using APScheduler
+- Process management with PID files
+- Graceful shutdown handling
+- Comprehensive configuration management
+- Health monitoring and status reporting
 """
 
+import argparse
 import asyncio
-import os
-import uuid
-from datetime import datetime
-from typing import Any, Dict, Optional
+import signal
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from common.logger import LoggerFactory, LoggerType, LogLevel
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from common.logger import LoggerFactory
 
+from ..adapters.binance_market_data_collector import BinanceMarketDataCollector
 from ..core.config import settings
-from ..market_data_job import JobConfig, MarketDataJobService
-from ..schemas.job_schemas import (DataCollectionJobRequest,
-                                   DataCollectionJobResponse,
-                                   HealthCheckResponse, JobConfigUpdateRequest,
-                                   JobOperationResponse, JobStartRequest,
-                                   JobStatsModel, JobStatus, JobStatusResponse,
-                                   JobStopRequest, ManualJobRequest,
-                                   ManualJobResponse, MarketDataJobConfigModel)
+from ..factories.market_data_repository_factory import create_repository
+from ..schemas.enums import Exchange
+from .market_data_collector_service import MarketDataCollectorService
+from .market_data_service import MarketDataService
 
 
-class MarketDataJobManagementService:
+@dataclass
+class JobConfig:
+    """Configuration for market data cron job"""
+
+    # Job scheduling
+    cron_schedule: str = "*/15 * * * *"  # Every 15 seconds
+    timezone: str = "UTC"
+
+    # Collection parameters
+    exchange: str = Exchange.BINANCE.value
+    max_lookback_days: int = 30
+    update_existing: bool = True
+    max_concurrent_symbols: int = 5
+
+    # Repository configuration
+    repository_type: str = "csv"  # Will be overridden by settings
+    repository_config: Optional[Dict[str, Any]] = None
+
+    # Limits and filtering
+    max_symbols_per_run: int = 50
+    max_timeframes_per_run: int = 10
+    priority_symbols: List[str] = None
+    priority_timeframes: List[str] = None
+
+    # Error handling
+    max_retries: int = 3
+    retry_delay_minutes: int = 5
+    skip_failed_symbols: bool = True
+
+    # Notifications
+    enable_notifications: bool = False
+    notification_webhook: Optional[str] = None
+    notify_on_success: bool = False
+    notify_on_error: bool = True
+
+    def __post_init__(self):
+        if self.priority_symbols is None:
+            self.priority_symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+        if self.priority_timeframes is None:
+            self.priority_timeframes = ["1h", "4h", "1d"]
+        if self.repository_config is None:
+            self.repository_config = {}
+
+
+class MarketDataJobService:
     """
-    Management service for market data collection jobs.
-
-    Provides a REST API interface over the existing MarketDataJobService,
-    similar to how news_crawler JobManagementService works.
+    Modern market data job service with APScheduler-based cron functionality
     """
 
     def __init__(
@@ -41,693 +88,502 @@ class MarketDataJobManagementService:
         log_file: str = "logs/market_data_job.log",
     ):
         """
-        Initialize market data job management service.
+        Initialize the market data job service
 
         Args:
             config_file: Path to job configuration file
-            pid_file: Path to PID file
+            pid_file: Path to PID file for process management
             log_file: Path to log file
         """
-        self.config_file = config_file
-        self.pid_file = pid_file
-        self.log_file = log_file
+        self.config_file = Path(config_file)
+        self.pid_file = Path(pid_file)
+        self.log_file = Path(log_file)
 
         # Initialize logger
         self.logger = LoggerFactory.get_logger(
-            name="md-job-management",
-            logger_type=LoggerType.STANDARD,
-            level=LogLevel.INFO,
-            file_level=LogLevel.DEBUG,
-            log_file="logs/market_data_job_management.log",
+            name="market_data_job",
+            log_file=str(self.log_file),
+            use_colors=True,
         )
 
-        # Lazy-initialized job service
-        self._job_service: Optional[MarketDataJobService] = None
+        # Load settings
+        self.settings = settings
 
-        self.logger.info("Market Data Job Management Service initialized")
+        # Initialize scheduler
+        self.scheduler = AsyncIOScheduler(
+            timezone=self.config.timezone if hasattr(self, "config") else "UTC"
+        )
+        self.scheduler.add_listener(
+            self._job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR
+        )
 
-    def _get_job_service(self) -> MarketDataJobService:
-        """Get or create the underlying MarketDataJobService."""
-        if self._job_service is None:
-            self._job_service = MarketDataJobService(
-                config_file=self.config_file,
-                pid_file=self.pid_file,
-                log_file=self.log_file,
+        # Job state
+        self.is_running = False
+        self.current_job_id = None
+        self.job_stats = {
+            "total_runs": 0,
+            "successful_runs": 0,
+            "failed_runs": 0,
+            "last_run_time": None,
+            "last_success_time": None,
+            "last_error_time": None,
+            "last_error_message": None,
+        }
+
+        # Load configuration
+        self.config = self.load_config()
+
+        # Initialize services
+        self._initialize_services()
+
+        self.logger.info("Market Data Job Service initialized")
+
+    def _initialize_services(self) -> None:
+        """Initialize market data collection services"""
+        try:
+            # Setup repository
+            if not self.config.repository_config:
+                self.config.repository_config = self._get_default_repository_config()
+
+            self.repository = create_repository(
+                self.config.repository_type, self.config.repository_config
             )
-        return self._job_service
 
-    def _convert_to_dataclass_config(
-        self, config: MarketDataJobConfigModel
-    ) -> JobConfig:
-        """Convert Pydantic config to dataclass JobConfig."""
-        return JobConfig(
-            cron_schedule=config.cron_schedule,
-            timezone=config.timezone,
-            exchange=config.exchange,
-            max_lookback_days=config.max_lookback_days,
-            update_existing=config.update_existing,
-            max_concurrent_symbols=config.max_concurrent_symbols,
-            repository_type=config.repository_type,
-            repository_config=config.repository_config,
-            max_symbols_per_run=config.max_symbols_per_run,
-            max_timeframes_per_run=config.max_timeframes_per_run,
-            priority_symbols=config.priority_symbols,
-            priority_timeframes=config.priority_timeframes,
-            max_retries=config.max_retries,
-            retry_delay_minutes=config.retry_delay_minutes,
-            skip_failed_symbols=config.skip_failed_symbols,
-            enable_notifications=config.enable_notifications,
-            notification_webhook=config.notification_webhook,
-            notify_on_success=config.notify_on_success,
-            notify_on_error=config.notify_on_error,
-        )
+            # Initialize services
+            self.market_data_collector = BinanceMarketDataCollector()
+            self.market_data_service = MarketDataService(self.repository)
+            self.collector_service = MarketDataCollectorService(
+                self.market_data_collector, self.market_data_service
+            )
 
-    def _convert_from_dataclass_config(
-        self, config: JobConfig
-    ) -> MarketDataJobConfigModel:
-        """Convert dataclass JobConfig to Pydantic config."""
-        return MarketDataJobConfigModel(
-            cron_schedule=config.cron_schedule,
-            timezone=config.timezone,
-            exchange=config.exchange,
-            max_lookback_days=config.max_lookback_days,
-            update_existing=config.update_existing,
-            max_concurrent_symbols=config.max_concurrent_symbols,
-            repository_type=config.repository_type,
-            repository_config=config.repository_config,
-            max_symbols_per_run=config.max_symbols_per_run,
-            max_timeframes_per_run=config.max_timeframes_per_run,
-            priority_symbols=config.priority_symbols,
-            priority_timeframes=config.priority_timeframes,
-            max_retries=config.max_retries,
-            retry_delay_minutes=config.retry_delay_minutes,
-            skip_failed_symbols=config.skip_failed_symbols,
-            enable_notifications=config.enable_notifications,
-            notification_webhook=config.notification_webhook,
-            notify_on_success=config.notify_on_success,
-            notify_on_error=config.notify_on_error,
-        )
+            self.logger.info(
+                f"Services initialized with {self.config.repository_type} repository"
+            )
 
-    def _determine_job_status(
-        self, is_running: bool, scheduler_running: bool
-    ) -> JobStatus:
-        """Determine job status from internal state."""
-        if is_running and scheduler_running:
-            return JobStatus.RUNNING
-        elif is_running and not scheduler_running:
-            return JobStatus.DEGRADED
-        elif not is_running:
-            return JobStatus.STOPPED
+        except Exception as e:
+            self.logger.error(f"Failed to initialize services: {e}")
+            raise
+
+    def _get_default_repository_config(self) -> Dict[str, Any]:
+        """Get default repository configuration"""
+        # Use settings repository type if not explicitly set in config
+        repo_type = self.config.repository_type
+        if repo_type == "csv" and self.settings.repository_type != "csv":
+            repo_type = self.settings.repository_type
+
+        if repo_type == "csv":
+            return {"base_directory": self.settings.storage_base_directory}
+        elif repo_type == "mongodb":
+            return {
+                "connection_string": self.settings.mongodb_url,
+                "database_name": self.settings.mongodb_database,
+            }
+        elif repo_type == "influxdb":
+            return {
+                "url": "http://localhost:8086",
+                "token": "your-token",
+                "org": "finsight",
+                "bucket": "market_data",
+            }
         else:
-            return JobStatus.ERROR
+            return {}
 
-    async def get_status(self) -> JobStatusResponse:
-        """
-        Get current job service status.
+    def load_config(self) -> JobConfig:
+        """Load job configuration from file or create default"""
+        if self.config_file.exists():
+            try:
+                import json
 
-        Returns:
-            JobStatusResponse: Current status information
-        """
+                with open(self.config_file, "r") as f:
+                    config_data = json.load(f)
+                config = JobConfig(**config_data)
+                self.logger.info(f"Loaded configuration from {self.config_file}")
+                return config
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to load config file {self.config_file}: {e}"
+                )
+                self.logger.info("Using default configuration")
+
+        # Create default configuration
+        config = JobConfig()
+        self.save_config(config)
+        return config
+
+    def save_config(self, config: JobConfig) -> None:
+        """Save job configuration to file"""
         try:
-            job_service = self._get_job_service()
-            status_dict = job_service.get_status()
+            import json
 
-            # Extract status information
-            is_running = status_dict.get("is_running", False)
-            scheduler_running = status_dict.get("scheduler_running", False)
-            pid = status_dict.get("pid")
-            next_run_str = status_dict.get("next_run")
+            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.config_file, "w") as f:
+                json.dump(asdict(config), f, indent=2, default=str)
+            self.logger.info(f"Configuration saved to {self.config_file}")
+        except Exception as e:
+            self.logger.error(f"Failed to save configuration: {e}")
 
-            # Parse next run time
-            next_run = None
-            if next_run_str:
-                try:
-                    if isinstance(next_run_str, str):
-                        next_run = datetime.fromisoformat(
-                            next_run_str.replace("Z", "+00:00")
-                        )
-                    elif isinstance(next_run_str, datetime):
-                        next_run = next_run_str
-                except (ValueError, AttributeError):
-                    pass
+    async def schedule_job(self, config: Optional[JobConfig] = None) -> None:
+        """Schedule the market data collection job"""
+        if config:
+            self.config = config
+            self.save_config(config)
 
-            # Calculate uptime
-            uptime_seconds = None
-            start_time = status_dict.get("start_time")
-            if start_time and is_running:
-                try:
-                    if isinstance(start_time, str):
-                        start_dt = datetime.fromisoformat(
-                            start_time.replace("Z", "+00:00")
-                        )
-                    elif isinstance(start_time, datetime):
-                        start_dt = start_time
-                    else:
-                        start_dt = None
+        # Parse cron schedule
+        cron_parts = self.config.cron_schedule.split()
+        if len(cron_parts) != 5:
+            raise ValueError(f"Invalid cron schedule: {self.config.cron_schedule}")
 
-                    if start_dt:
-                        uptime_seconds = int(
-                            (
-                                datetime.now() - start_dt.replace(tzinfo=None)
-                            ).total_seconds()
-                        )
-                except (ValueError, AttributeError):
-                    pass
+        minute, hour, day, month, day_of_week = cron_parts
 
-            # Create job stats
-            stats = JobStatsModel(
-                total_jobs=status_dict.get("total_jobs", 0),
-                successful_jobs=status_dict.get("successful_jobs", 0),
-                failed_jobs=status_dict.get("failed_jobs", 0),
-                last_run=status_dict.get("last_run"),
-                last_success=status_dict.get("last_success"),
-                last_error=status_dict.get("last_error"),
-                symbols_processed_last_run=status_dict.get(
-                    "symbols_processed_last_run", 0
-                ),
-                records_collected_last_run=status_dict.get(
-                    "records_collected_last_run", 0
-                ),
+        # Create cron trigger
+        trigger = CronTrigger(
+            minute=minute,
+            hour=hour,
+            day=day,
+            month=month,
+            day_of_week=day_of_week,
+            timezone=self.config.timezone,
+        )
+
+        # Schedule job
+        self.scheduler.add_job(
+            self._execute_collection_job,
+            trigger=trigger,
+            id="market_data_collection",
+            name="Market Data Collection Job",
+            misfire_grace_time=300,  # 5 minutes
+            coalesce=True,
+            max_instances=1,
+            args=[self.config],
+        )
+
+        self.logger.info(f"Job scheduled with cron: {self.config.cron_schedule}")
+
+    async def _execute_collection_job(self, config: JobConfig) -> None:
+        """Execute the market data collection job"""
+        job_id = f"job_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+        self.current_job_id = job_id
+
+        self.logger.info(f"🚀 Starting market data collection job {job_id}")
+
+        start_time = datetime.now(timezone.utc)
+        job_result = {
+            "job_id": job_id,
+            "start_time": start_time.isoformat(),
+            "end_time": None,
+            "success": False,
+            "error": None,
+            "collection_result": None,
+        }
+
+        try:
+            # Execute scan and update
+            collection_result = (
+                await self.collector_service.scan_and_update_all_symbols(
+                    exchange=config.exchange,
+                    symbols=(
+                        config.priority_symbols if config.priority_symbols else None
+                    ),
+                    timeframes=(
+                        config.priority_timeframes
+                        if config.priority_timeframes
+                        else None
+                    ),
+                    max_lookback_days=config.max_lookback_days,
+                    update_existing=config.update_existing,
+                )
             )
 
-            # Determine overall status
-            job_status = self._determine_job_status(is_running, scheduler_running)
+            job_result["collection_result"] = collection_result
+            job_result["success"] = True
 
-            # Create health status
-            health_status = {
-                "service_running": is_running,
-                "scheduler_active": scheduler_running,
-                "config_file_exists": os.path.exists(self.config_file),
-                "pid_file_exists": os.path.exists(self.pid_file),
-                "log_file_exists": os.path.exists(self.log_file),
-                "next_run_scheduled": next_run is not None,
-            }
+            # Update job stats
+            self.job_stats["successful_runs"] += 1
+            self.job_stats["last_success_time"] = start_time.isoformat()
 
-            return JobStatusResponse(
-                status=job_status,
-                is_running=is_running,
-                pid=pid,
-                pid_file=self.pid_file,
-                config_file=self.config_file,
-                log_file=self.log_file,
-                scheduler_running=scheduler_running,
-                next_run=next_run,
-                uptime_seconds=uptime_seconds,
-                stats=stats,
-                health_status=health_status,
+            # Log results
+            self.logger.info(
+                f"✅ Job {job_id} completed successfully: "
+                f"{collection_result.get('successful_updates', 0)}/{collection_result.get('total_combinations', 0)} successful, "
+                f"{collection_result.get('total_records_collected', 0)} records collected"
             )
+
+            # Send success notification if enabled
+            if config.enable_notifications and config.notify_on_success:
+                await self._send_notification(job_id, job_result, "success")
 
         except Exception as e:
-            self.logger.error(f"Error getting job status: {e}")
-            return JobStatusResponse(
-                status=JobStatus.ERROR,
-                is_running=False,
-                scheduler_running=False,
-                stats=JobStatsModel(),
-                health_status={"error": str(e)},
-            )
+            error_msg = f"Job {job_id} failed: {str(e)}"
+            job_result["error"] = error_msg
 
-    async def start_job(self, request: JobStartRequest) -> JobOperationResponse:
-        """
-        Start the market data job service.
+            # Update job stats
+            self.job_stats["failed_runs"] += 1
+            self.job_stats["last_error_time"] = start_time.isoformat()
+            self.job_stats["last_error_message"] = error_msg
 
-        Args:
-            request: Job start request
+            self.logger.error(error_msg)
 
-        Returns:
-            JobOperationResponse: Operation result
-        """
-        try:
-            self.logger.info(
-                f"Starting market data job service (force_restart={request.force_restart})"
-            )
+            # Send error notification if enabled
+            if config.enable_notifications and config.notify_on_error:
+                await self._send_notification(job_id, job_result, "error")
 
-            job_service = self._get_job_service()
+        finally:
+            end_time = datetime.now(timezone.utc)
+            job_result["end_time"] = end_time.isoformat()
 
-            # Check if already running
-            status_dict = job_service.get_status()
-            is_running = status_dict.get("is_running", False)
+            # Update job stats
+            self.job_stats["total_runs"] += 1
+            self.job_stats["last_run_time"] = start_time.isoformat()
 
-            if is_running and not request.force_restart:
-                return JobOperationResponse(
-                    success=False,
-                    message="Job service is already running. Use force_restart=true to restart.",
-                    status=JobStatus.RUNNING,
-                )
-
-            # Stop if running and force restart is requested
-            if is_running and request.force_restart:
-                self.logger.info("Force restart requested - stopping current service")
-                await job_service.stop()
-                # Give some time for graceful shutdown
-                await asyncio.sleep(2)
-
-            # Update configuration if provided
-            if request.config:
-                dataclass_config = self._convert_to_dataclass_config(request.config)
-                job_service.save_config(dataclass_config)
-                self.logger.info("Updated job configuration")
-
-            # Start the service
-            await job_service.start()
-
-            # Verify it started successfully
-            await asyncio.sleep(1)  # Give time to start
-            status_dict = job_service.get_status()
-            is_running = status_dict.get("is_running", False)
-
-            if is_running:
-                current_status = self._determine_job_status(
-                    is_running, status_dict.get("scheduler_running", False)
-                )
-                return JobOperationResponse(
-                    success=True,
-                    message="Market data job service started successfully",
-                    status=current_status,
-                    details={"pid": status_dict.get("pid")},
-                )
-            else:
-                return JobOperationResponse(
-                    success=False,
-                    message="Failed to start job service - service not running after start attempt",
-                    status=JobStatus.ERROR,
-                )
-
-        except Exception as e:
-            self.logger.error(f"Error starting job service: {e}")
-            return JobOperationResponse(
-                success=False,
-                message=f"Failed to start job service: {str(e)}",
-                status=JobStatus.ERROR,
-            )
-
-    async def stop_job(self, request: JobStopRequest) -> JobOperationResponse:
-        """
-        Stop the market data job service.
-
-        Args:
-            request: Job stop request
-
-        Returns:
-            JobOperationResponse: Operation result
-        """
-        try:
-            self.logger.info(
-                f"Stopping market data job service (graceful={request.graceful})"
-            )
-
-            job_service = self._get_job_service()
-
-            # Check if running
-            status_dict = job_service.get_status()
-            is_running = status_dict.get("is_running", False)
-
-            if not is_running:
-                return JobOperationResponse(
-                    success=True,
-                    message="Job service is already stopped",
-                    status=JobStatus.STOPPED,
-                )
-
-            # Stop the service
-            if request.graceful:
-                await job_service.stop()
-            else:
-                # Force stop implementation would go here
-                # For now, use the same stop method
-                await job_service.stop()
-
-            # Verify it stopped
-            await asyncio.sleep(1)  # Give time to stop
-            status_dict = job_service.get_status()
-            is_running = status_dict.get("is_running", False)
-
-            if not is_running:
-                return JobOperationResponse(
-                    success=True,
-                    message="Market data job service stopped successfully",
-                    status=JobStatus.STOPPED,
-                )
-            else:
-                return JobOperationResponse(
-                    success=False,
-                    message="Failed to stop job service - service still running",
-                    status=JobStatus.ERROR,
-                )
-
-        except Exception as e:
-            self.logger.error(f"Error stopping job service: {e}")
-            return JobOperationResponse(
-                success=False,
-                message=f"Failed to stop job service: {str(e)}",
-                status=JobStatus.ERROR,
-            )
-
-    async def run_manual_job(self, request: ManualJobRequest) -> ManualJobResponse:
-        """
-        Run a manual data collection job.
-
-        Args:
-            request: Manual job request
-
-        Returns:
-            ManualJobResponse: Job execution result
-        """
-        try:
-            job_id = str(uuid.uuid4())
-            start_time = datetime.now()
-
-            self.logger.info(
-                f"Starting manual job {job_id} with {request.symbols or 'default'} symbols"
-            )
-
-            job_service = self._get_job_service()
-
-            # Load current config to get defaults
-            current_config = job_service.load_config()
-
-            # Use provided values or defaults from config
-            symbols = request.symbols or current_config.priority_symbols
-            timeframes = request.timeframes or current_config.priority_timeframes
-            max_lookback_days = (
-                request.max_lookback_days or current_config.max_lookback_days
-            )
-            exchange = request.exchange or current_config.exchange
-
-            # Execute manual job
-            result = await job_service.run_manual_job(
-                symbols=symbols,
-                timeframes=timeframes,
-                max_lookback_days=max_lookback_days,
-            )
-
-            end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
+            self.logger.info(f"Job {job_id} completed in {duration:.2f} seconds")
 
-            # Parse results
-            status = result.get("status", "completed")
-            symbols_processed = len(result.get("processed_symbols", []))
-            records_collected = result.get("total_records_collected", 0)
-            errors = result.get("errors", [])
+            self.current_job_id = None
 
-            return ManualJobResponse(
-                status=status,
-                job_id=job_id,
+    async def _send_notification(
+        self, job_id: str, data: Dict[str, Any], status: str
+    ) -> None:
+        """Send notification about job status"""
+        if not self.config.notification_webhook:
+            return
+
+        try:
+            import aiohttp
+
+            notification_data = {
+                "job_id": job_id,
+                "status": status,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "data": data,
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.config.notification_webhook,
+                    json=notification_data,
+                    timeout=10,
+                ) as response:
+                    if response.status == 200:
+                        self.logger.info(
+                            f"Notification sent successfully for job {job_id}"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Failed to send notification: HTTP {response.status}"
+                        )
+
+        except Exception as e:
+            self.logger.error(f"Error sending notification: {e}")
+
+    def _job_listener(self, event):
+        """Listen to job events"""
+        if event.exception:
+            self.logger.error(f"Job {event.job_id} crashed: {event.exception}")
+        else:
+            self.logger.info(f"Job {event.job_id} executed successfully")
+
+    async def start(self) -> None:
+        """Start the job scheduler"""
+        if self.is_running:
+            self.logger.warning("Job service is already running")
+            return
+
+        try:
+            # Create PID file
+            self.pid_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.pid_file, "w") as f:
+                import os
+
+                f.write(str(os.getpid()))
+
+            # Schedule job
+            await self.schedule_job()
+
+            # Start scheduler
+            self.scheduler.start()
+            self.is_running = True
+
+            self.logger.info(
+                f"Market Data Job Service started with schedule: {self.config.cron_schedule}"
+            )
+
+            # Keep running
+            try:
+                while self.is_running:
+                    await asyncio.sleep(1)
+            except KeyboardInterrupt:
+                self.logger.info("Received interrupt signal")
+                await self.stop()
+
+        except Exception as e:
+            self.logger.error(f"Failed to start job service: {e}")
+            raise
+
+    async def stop(self) -> None:
+        """Stop the job scheduler"""
+        if not self.is_running:
+            return
+
+        self.logger.info("Stopping Market Data Job Service...")
+
+        try:
+            # Shutdown scheduler
+            self.scheduler.shutdown(wait=False)
+            self.is_running = False
+
+            # Remove PID file
+            if self.pid_file.exists():
+                self.pid_file.unlink()
+
+            self.logger.info("Market Data Job Service stopped")
+
+        except Exception as e:
+            self.logger.error(f"Error during shutdown: {e}")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get current status of the job service"""
+        return {
+            "is_running": self.is_running,
+            "current_job_id": self.current_job_id,
+            "scheduler_state": (
+                str(self.scheduler.state)
+                if hasattr(self.scheduler, "state")
+                else "unknown"
+            ),
+            "config": asdict(self.config),
+            "stats": self.job_stats,
+            "next_run_time": (
+                self.scheduler.get_job(
+                    "market_data_collection"
+                ).next_run_time.isoformat()
+                if self.scheduler.get_job("market_data_collection")
+                else None
+            ),
+        }
+
+    async def run_manual_job(
+        self,
+        symbols: Optional[List[str]] = None,
+        timeframes: Optional[List[str]] = None,
+        max_lookback_days: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Run a manual collection job"""
+        self.logger.info("🔧 Running manual market data collection job")
+
+        # Use provided parameters or defaults from config
+        symbols = symbols or self.config.priority_symbols
+        timeframes = timeframes or self.config.priority_timeframes
+        max_lookback_days = max_lookback_days or self.config.max_lookback_days
+
+        try:
+            result = await self.collector_service.scan_and_update_all_symbols(
+                exchange=self.config.exchange,
                 symbols=symbols,
                 timeframes=timeframes,
-                exchange=exchange,
                 max_lookback_days=max_lookback_days,
-                start_time=start_time,
-                end_time=end_time,
-                duration_seconds=duration,
-                records_collected=records_collected,
-                symbols_processed=symbols_processed,
-                errors=errors,
-                results=result,
-                async_execution=request.async_execution,
+                update_existing=self.config.update_existing,
             )
+
+            self.logger.info(f"Manual job completed: {result}")
+            return result
 
         except Exception as e:
-            self.logger.error(f"Error running manual job: {e}")
-            return ManualJobResponse(
-                status="failed",
-                job_id=job_id if "job_id" in locals() else str(uuid.uuid4()),
-                symbols=request.symbols or [],
-                timeframes=request.timeframes or [],
-                exchange=request.exchange or "binance",
-                max_lookback_days=request.max_lookback_days or 30,
-                start_time=start_time if "start_time" in locals() else datetime.now(),
-                errors=[{"error": str(e), "timestamp": datetime.now().isoformat()}],
-                async_execution=request.async_execution,
-            )
+            error_msg = f"Manual job failed: {str(e)}"
+            self.logger.error(error_msg)
+            return {"success": False, "error": error_msg}
 
-    async def get_config(self) -> MarketDataJobConfigModel:
-        """
-        Get current job configuration.
 
-        Returns:
-            MarketDataJobConfigModel: Current configuration
-        """
-        try:
-            job_service = self._get_job_service()
-            dataclass_config = job_service.load_config()
-            return self._convert_from_dataclass_config(dataclass_config)
+def setup_signal_handlers(job_service: MarketDataJobService):
+    """Setup signal handlers for graceful shutdown"""
 
-        except Exception as e:
-            self.logger.error(f"Error getting job config: {e}")
-            # Return default config
-            return MarketDataJobConfigModel()
+    def signal_handler(signum, frame):
+        job_service.logger.info(f"Received signal {signum}, shutting down...")
+        asyncio.create_task(job_service.stop())
 
-    async def update_config(
-        self, request: JobConfigUpdateRequest
-    ) -> JobOperationResponse:
-        """
-        Update job configuration.
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
-        Args:
-            request: Configuration update request
 
-        Returns:
-            JobOperationResponse: Operation result
-        """
-        try:
-            self.logger.info("Updating job configuration")
+async def main():
+    """Main function for CLI execution"""
 
-            job_service = self._get_job_service()
+    parser = argparse.ArgumentParser(description="Market Data Job Service")
+    parser.add_argument(
+        "command",
+        choices=["start", "stop", "status", "run", "config"],
+        help="Command to execute",
+    )
+    parser.add_argument(
+        "--config-file",
+        default="market_data_job_config.json",
+        help="Path to configuration file",
+    )
+    parser.add_argument(
+        "--pid-file",
+        default="market_data_job.pid",
+        help="Path to PID file",
+    )
+    parser.add_argument(
+        "--log-file",
+        default="logs/market_data_job.log",
+        help="Path to log file",
+    )
+    parser.add_argument(
+        "--symbols",
+        nargs="+",
+        help="Symbols for manual run (e.g., BTCUSDT ETHUSDT)",
+    )
+    parser.add_argument(
+        "--timeframes",
+        nargs="+",
+        help="Timeframes for manual run (e.g., 1h 4h 1d)",
+    )
+    parser.add_argument(
+        "--cron",
+        help="Cron schedule for config command (e.g., '0 */1 * * *')",
+    )
 
-            # Load current config
-            current_config = job_service.load_config()
+    args = parser.parse_args()
 
-            # Update only provided fields
-            if request.cron_schedule is not None:
-                current_config.cron_schedule = request.cron_schedule
-            if request.timezone is not None:
-                current_config.timezone = request.timezone
-            if request.exchange is not None:
-                current_config.exchange = request.exchange
-            if request.max_lookback_days is not None:
-                current_config.max_lookback_days = request.max_lookback_days
-            if request.update_existing is not None:
-                current_config.update_existing = request.update_existing
-            if request.max_concurrent_symbols is not None:
-                current_config.max_concurrent_symbols = request.max_concurrent_symbols
-            if request.repository_type is not None:
-                current_config.repository_type = request.repository_type
-            if request.repository_config is not None:
-                current_config.repository_config = request.repository_config
-            if request.max_symbols_per_run is not None:
-                current_config.max_symbols_per_run = request.max_symbols_per_run
-            if request.max_timeframes_per_run is not None:
-                current_config.max_timeframes_per_run = request.max_timeframes_per_run
-            if request.priority_symbols is not None:
-                current_config.priority_symbols = request.priority_symbols
-            if request.priority_timeframes is not None:
-                current_config.priority_timeframes = request.priority_timeframes
-            if request.max_retries is not None:
-                current_config.max_retries = request.max_retries
-            if request.retry_delay_minutes is not None:
-                current_config.retry_delay_minutes = request.retry_delay_minutes
-            if request.enable_notifications is not None:
-                current_config.enable_notifications = request.enable_notifications
-            if request.notification_webhook is not None:
-                current_config.notification_webhook = request.notification_webhook
+    # Initialize job service
+    job_service = MarketDataJobService(
+        config_file=args.config_file,
+        pid_file=args.pid_file,
+        log_file=args.log_file,
+    )
 
-            # Save updated config
-            job_service.save_config(current_config)
+    if args.command == "start":
+        # Setup signal handlers
+        setup_signal_handlers(job_service)
 
-            return JobOperationResponse(
-                success=True,
-                message="Job configuration updated successfully",
-                details={"config_file": self.config_file},
-            )
+        # Start the service
+        await job_service.start()
 
-        except Exception as e:
-            self.logger.error(f"Error updating job config: {e}")
-            return JobOperationResponse(
-                success=False,
-                message=f"Failed to update job configuration: {str(e)}",
-            )
+    elif args.command == "stop":
+        # Stop the service
+        await job_service.stop()
 
-    async def get_stats(self) -> JobStatsModel:
-        """
-        Get job execution statistics.
+    elif args.command == "status":
+        # Get status
+        status = job_service.get_status()
+        print(f"Job Service Status: {status}")
 
-        Returns:
-            JobStatsModel: Job statistics
-        """
-        try:
-            job_service = self._get_job_service()
-            status_dict = job_service.get_status()
+    elif args.command == "run":
+        # Run manual job
+        result = await job_service.run_manual_job(
+            symbols=args.symbols,
+            timeframes=args.timeframes,
+        )
+        print(f"Manual job result: {result}")
 
-            return JobStatsModel(
-                total_jobs=status_dict.get("total_jobs", 0),
-                successful_jobs=status_dict.get("successful_jobs", 0),
-                failed_jobs=status_dict.get("failed_jobs", 0),
-                last_run=status_dict.get("last_run"),
-                last_success=status_dict.get("last_success"),
-                last_error=status_dict.get("last_error"),
-                symbols_processed_last_run=status_dict.get(
-                    "symbols_processed_last_run", 0
-                ),
-                records_collected_last_run=status_dict.get(
-                    "records_collected_last_run", 0
-                ),
-            )
+    elif args.command == "config":
+        # Update configuration
+        config = job_service.config
+        if args.cron:
+            config.cron_schedule = args.cron
+        job_service.save_config(config)
+        print(f"Configuration updated: {config}")
 
-        except Exception as e:
-            self.logger.error(f"Error getting job stats: {e}")
-            return JobStatsModel()
 
-    async def health_check(self) -> HealthCheckResponse:
-        """
-        Perform comprehensive health check.
-
-        Returns:
-            HealthCheckResponse: Health check result
-        """
-        try:
-            job_service = self._get_job_service()
-            status_dict = job_service.get_status()
-
-            is_running = status_dict.get("is_running", False)
-            scheduler_running = status_dict.get("scheduler_running", False)
-
-            # Check component health
-            components = {
-                "job_service": "healthy" if is_running else "stopped",
-                "scheduler": "healthy" if scheduler_running else "stopped",
-                "config_file": (
-                    "healthy" if os.path.exists(self.config_file) else "missing"
-                ),
-                "log_file": "healthy" if os.path.exists(self.log_file) else "missing",
-            }
-
-            # Overall health status
-            if is_running and scheduler_running:
-                overall_status = "healthy"
-            elif is_running:
-                overall_status = "degraded"
-            else:
-                overall_status = "unhealthy"
-
-            # Calculate uptime
-            uptime_seconds = None
-            start_time = status_dict.get("start_time")
-            if start_time and is_running:
-                try:
-                    if isinstance(start_time, str):
-                        start_dt = datetime.fromisoformat(
-                            start_time.replace("Z", "+00:00")
-                        )
-                    elif isinstance(start_time, datetime):
-                        start_dt = start_time
-                    else:
-                        start_dt = None
-
-                    if start_dt:
-                        uptime_seconds = int(
-                            (
-                                datetime.now() - start_dt.replace(tzinfo=None)
-                            ).total_seconds()
-                        )
-                except (ValueError, AttributeError):
-                    pass
-
-            # Collect metrics
-            metrics = {
-                "total_jobs": status_dict.get("total_jobs", 0),
-                "successful_jobs": status_dict.get("successful_jobs", 0),
-                "failed_jobs": status_dict.get("failed_jobs", 0),
-                "last_run": status_dict.get("last_run"),
-                "next_run": status_dict.get("next_run"),
-            }
-
-            return HealthCheckResponse(
-                status=overall_status,
-                components=components,
-                dependencies={
-                    "config_file": self.config_file,
-                    "pid_file": self.pid_file,
-                    "log_file": self.log_file,
-                },
-                metrics=metrics,
-                uptime_seconds=uptime_seconds,
-            )
-
-        except Exception as e:
-            self.logger.error(f"Error in health check: {e}")
-            return HealthCheckResponse(
-                status="unhealthy",
-                components={"error": str(e)},
-                dependencies={},
-                metrics={},
-            )
-
-    async def run_data_collection_job(
-        self, request: DataCollectionJobRequest
-    ) -> DataCollectionJobResponse:
-        """
-        Run a specific data collection job.
-
-        Args:
-            request: Data collection job request
-
-        Returns:
-            DataCollectionJobResponse: Job execution result
-        """
-        try:
-            job_id = str(uuid.uuid4())
-            start_time = datetime.now()
-
-            self.logger.info(f"Starting data collection job {job_id}")
-
-            job_service = self._get_job_service()
-
-            # Execute the collection job
-            result = await job_service.run_manual_job(
-                symbols=request.symbols,
-                timeframes=request.timeframes,
-                max_lookback_days=request.start_date
-                and request.end_date
-                and 365
-                or 30,  # Simplified
-            )
-
-            end_time = datetime.now()
-            execution_time = (end_time - start_time).total_seconds()
-
-            # Parse results
-            processed_symbols = result.get("processed_symbols", [])
-            failed_symbols = []
-            for symbol in request.symbols:
-                if symbol not in processed_symbols:
-                    failed_symbols.append(symbol)
-
-            return DataCollectionJobResponse(
-                job_id=job_id,
-                status=result.get("status", "completed"),
-                symbols_requested=request.symbols,
-                symbols_processed=processed_symbols,
-                symbols_failed=failed_symbols,
-                timeframes_processed=request.timeframes,
-                total_records_collected=result.get("total_records_collected", 0),
-                execution_time_seconds=execution_time,
-                errors=result.get("errors", []),
-                repository_info={
-                    "repository_type": request.repository_type,
-                    "exchange": request.exchange,
-                },
-            )
-
-        except Exception as e:
-            self.logger.error(f"Error running data collection job: {e}")
-            return DataCollectionJobResponse(
-                job_id=job_id if "job_id" in locals() else str(uuid.uuid4()),
-                status="failed",
-                symbols_requested=request.symbols,
-                symbols_processed=[],
-                symbols_failed=request.symbols,
-                timeframes_processed=[],
-                total_records_collected=0,
-                errors=[{"error": str(e), "timestamp": datetime.now().isoformat()}],
-            )
+if __name__ == "__main__":
+    asyncio.run(main())

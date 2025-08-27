@@ -29,7 +29,7 @@ from ..utils.datetime_utils import DateTimeUtils
 if TYPE_CHECKING:  # avoid runtime imports to prevent circular dependencies
     from ..misc.timeframe_load_convert_save import \
         CrossRepositoryTimeFramePipeline
-    from ..services.market_data_job_service import \
+    from .market_data_job_management_service import \
         MarketDataJobManagementService
     from ..services.market_data_storage_service import MarketDataStorageService
 
