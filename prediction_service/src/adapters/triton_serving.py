@@ -10,15 +10,16 @@ dynamic batching, model versioning, and GPU acceleration.
 
 import asyncio
 import time
-from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
 import pandas as pd
 
 try:
-    import tritonclient.http as httpclient
     import tritonclient.grpc as grpcclient
+    import tritonclient.http as httpclient
     from tritonclient.utils import InferenceServerException
 
     TRITON_AVAILABLE = True
@@ -26,15 +27,12 @@ except ImportError:
     TRITON_AVAILABLE = False
     httpclient = grpcclient = InferenceServerException = None
 
-from ..interfaces.serving_interface import (
-    IModelServingAdapter,
-    ModelInfo,
-    PredictionResult,
-    ServingStats,
-)
-from ..schemas.enums import ModelType, TimeFrame
-from ..core.config import get_settings
 from common.logger.logger_factory import LoggerFactory
+
+from ..core.config import get_settings
+from ..interfaces.serving_interface import (IModelServingAdapter, ModelInfo,
+                                            PredictionResult, ServingStats)
+from ..schemas.enums import ModelType, TimeFrame
 
 
 class TritonServingAdapter(IModelServingAdapter):

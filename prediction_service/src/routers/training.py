@@ -4,28 +4,26 @@
 Consolidated training router with both legacy and async endpoints
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import Dict, Any, Optional, List
 import time
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from ..services.training_service import TrainingService
-from ..schemas.model_schemas import TrainingRequest, TrainingResponse
-from ..schemas.training_schemas import (
-    AsyncTrainingRequest,
-    AsyncTrainingResponse,
-    TrainingJobStatusResponse,
-    TrainingJobListResponse,
-    TrainingJobCancelRequest,
-    TrainingJobCancelResponse,
-    TrainingQueueResponse,
-    TrainingJobFilter,
-    BackgroundTaskHealthResponse,
-    TrainingJobStatus,
-    TrainingJobPriority,
-)
-from ..schemas.enums import ModelType, TimeFrame
 from common.logger.logger_factory import LoggerFactory
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from ..schemas.enums import ModelType, TimeFrame
+from ..schemas.model_schemas import TrainingRequest, TrainingResponse
+from ..schemas.training_schemas import (AsyncTrainingRequest,
+                                        AsyncTrainingResponse,
+                                        BackgroundTaskHealthResponse,
+                                        TrainingJobCancelRequest,
+                                        TrainingJobCancelResponse,
+                                        TrainingJobFilter,
+                                        TrainingJobListResponse,
+                                        TrainingJobPriority, TrainingJobStatus,
+                                        TrainingJobStatusResponse,
+                                        TrainingQueueResponse)
+from ..services.training_service import TrainingService
 
 router = APIRouter(prefix="/training", tags=["training"])
 logger = LoggerFactory.get_logger("TrainingRouter")

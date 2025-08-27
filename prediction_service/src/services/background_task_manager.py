@@ -5,27 +5,24 @@ Background task manager for handling asynchronous training jobs
 """
 
 import asyncio
-import uuid
 import time
-import psutil
-from typing import Dict, Any, List, Optional, Callable
-from datetime import datetime, timedelta, timezone
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Callable, Dict, List, Optional
 
-from ..schemas.training_schemas import (
-    AsyncTrainingRequest,
-    TrainingJobInfo,
-    TrainingProgressUpdate,
-    TrainingJobPriority,
-    BackgroundTaskHealth,
-)
-from ..core.constants import TrainingJobStatus, TrainingConstants, BackgroundTaskConfig
-from ..repositories.training_job_facade import (
-    TrainingJobFacade,
-)
+import psutil
 from common.logger.logger_factory import LoggerFactory
+
 from ..core.config import get_settings
+from ..core.constants import (BackgroundTaskConfig, TrainingConstants,
+                              TrainingJobStatus)
+from ..repositories.training_job_facade import TrainingJobFacade
+from ..schemas.training_schemas import (AsyncTrainingRequest,
+                                        BackgroundTaskHealth, TrainingJobInfo,
+                                        TrainingJobPriority,
+                                        TrainingProgressUpdate)
 
 
 @dataclass

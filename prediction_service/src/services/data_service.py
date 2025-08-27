@@ -4,15 +4,16 @@
 Data service for encapsulating data loading and feature engineering operations.
 """
 
-from typing import Dict, Any, Tuple
-import pandas as pd
+from typing import Any, Dict, Tuple
 
+import pandas as pd
+from common.logger.logger_factory import LoggerFactory
+
+from ..core.config import get_settings
 from ..data.feature_engineering import BasicFeatureEngineering
 from ..schemas.enums import TimeFrame
 from ..schemas.model_schemas import ModelConfig
-from ..core.config import get_settings
 from ..utils.dependencies import get_data_loader
-from common.logger.logger_factory import LoggerFactory
 
 
 class DataService:

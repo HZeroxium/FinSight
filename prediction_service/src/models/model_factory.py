@@ -1,16 +1,17 @@
 # models/model_factory.py
 
 from typing import Dict, Type
+
+from common.logger.logger_factory import LoggerFactory
+
 from ..interfaces.model_interface import ITimeSeriesModel
 from ..schemas.enums import ModelType
-from .adapters.patchtst_adapter import PatchTSTAdapter
-from .adapters.patchtsmixer_adapter import PatchTSMixerAdapter
-from .adapters.transformer_adapter import TransformerAdapter
-from .adapters.enhanced_transformer_adapter import (
-    EnhancedTransformerAdapter,
-)  # New import
 from ..utils.device_manager import create_device_manager_from_settings
-from common.logger.logger_factory import LoggerFactory
+from .adapters.enhanced_transformer_adapter import \
+    EnhancedTransformerAdapter  # New import
+from .adapters.patchtsmixer_adapter import PatchTSMixerAdapter
+from .adapters.patchtst_adapter import PatchTSTAdapter
+from .adapters.transformer_adapter import TransformerAdapter
 
 
 class ModelFactory:

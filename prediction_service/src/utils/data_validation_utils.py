@@ -5,13 +5,14 @@ This module provides utilities for validating and processing prediction data,
 ensuring data quality and compatibility with model requirements.
 """
 
-from typing import List, Optional, Tuple, Union
-import pandas as pd
 from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
-from ..schemas.enums import TimeFrame, ModelType
-from ..core.config import get_settings
+import pandas as pd
 from common.logger.logger_factory import LoggerFactory
+
+from ..core.config import get_settings
+from ..schemas.enums import ModelType, TimeFrame
 
 
 class DataValidationUtils:
@@ -85,8 +86,9 @@ class DataValidationUtils:
         self, data: List[float], timeframe: TimeFrame
     ) -> pd.DataFrame:
         """Convert list of floats to properly structured DataFrame."""
-        import pandas as pd
         from datetime import datetime, timedelta
+
+        import pandas as pd
 
         # Generate timestamps based on timeframe
         base_time = datetime.now()

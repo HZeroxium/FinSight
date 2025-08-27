@@ -7,10 +7,12 @@ This module provides centralized device management for all PyTorch operations
 in the AI prediction module, respecting the force_cpu configuration setting.
 """
 
-from typing import Optional, Dict, Any, Union
-from common.logger.logger_factory import LoggerFactory
 import os
+from typing import Any, Dict, Optional, Union
+
 import torch
+from common.logger.logger_factory import LoggerFactory
+
 from ..schemas.enums import DeviceType
 
 

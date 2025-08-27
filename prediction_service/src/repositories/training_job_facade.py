@@ -7,21 +7,17 @@ Provides dependency injection and abstraction for training job repositories.
 Supports switching between different repository implementations (file-based, Redis, etc.)
 """
 
-from typing import Dict, Any, List, Optional
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
-from ..schemas.training_schemas import (
-    TrainingJobInfo,
-    TrainingJobFilter,
-    TrainingProgressUpdate,
-)
-from ..core.constants import TrainingJobStatus
 from common.logger.logger_factory import LoggerFactory
+
 from ..core.config import get_settings
+from ..core.constants import TrainingJobStatus
 from ..interfaces.training_job_repository_interface import (
-    TrainingJobRepositoryInterface,
-    TrainingJobRepositoryError,
-)
+    TrainingJobRepositoryError, TrainingJobRepositoryInterface)
+from ..schemas.training_schemas import (TrainingJobFilter, TrainingJobInfo,
+                                        TrainingProgressUpdate)
 from .file_training_job_repository import FileTrainingJobRepository
 from .redis_training_job_repository import RedisTrainingJobRepository
 

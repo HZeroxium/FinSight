@@ -1,9 +1,11 @@
 # interfaces/data_loader_interface.py
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Optional
-import pandas as pd
 from pathlib import Path
+from typing import Optional, Tuple
+
+import pandas as pd
+
 from ..schemas.enums import TimeFrame
 
 

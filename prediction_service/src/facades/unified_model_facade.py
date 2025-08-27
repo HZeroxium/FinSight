@@ -8,18 +8,19 @@ functionality, maintaining backward compatibility while providing access to
 specialized operations through dedicated sub-facades.
 """
 
-from typing import Dict, Any, Optional, List, Union
-import pandas as pd
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
 
-from .model_training_facade import ModelTrainingFacade
-from .model_serving_facade import ModelServingFacade
+import pandas as pd
+from common.logger.logger_factory import LoggerFactory, LogLevel
+
+from ..core.config import get_settings
+from ..core.constants import FacadeConstants
 from ..interfaces.serving_interface import IModelServingAdapter
 from ..schemas.enums import ModelType, TimeFrame
 from ..schemas.model_schemas import ModelConfig, ModelInfo
-from ..core.constants import FacadeConstants
-from ..core.config import get_settings
-from common.logger.logger_factory import LoggerFactory, LogLevel
+from .model_serving_facade import ModelServingFacade
+from .model_training_facade import ModelTrainingFacade
 
 
 class UnifiedModelFacade:
@@ -303,8 +304,8 @@ class UnifiedModelFacade:
             bool: True if model exists locally or in cloud
         """
         try:
-            from ..utils.model_utils import ModelUtils
             from ..core.config import get_settings
+            from ..utils.model_utils import ModelUtils
 
             settings = get_settings()
             model_utils = ModelUtils()

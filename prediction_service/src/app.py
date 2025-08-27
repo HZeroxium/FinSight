@@ -1,30 +1,29 @@
 # app.py
 
-from fastapi import FastAPI, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
-import uvicorn
-from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
-from .core.api_errors import (
-    validation_exception_handler,
-    http_exception_handler,
-    unhandled_exception_handler,
-)
 
+import uvicorn
+from common.logger import LoggerFactory, LogLevel
+from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from .core.api_errors import (http_exception_handler,
+                              unhandled_exception_handler,
+                              validation_exception_handler)
 from .core.config import get_settings
 from .routers import prediction_router, training_router
+from .routers.cleanup import router as cleanup_router
+from .routers.cloud_storage import router as cloud_storage_router
+from .routers.dataset_management import router as dataset_management_router
+from .routers.eureka_router import router as eureka_router
 from .routers.models import router as models_router
 from .routers.serving import router as serving_router
-from .routers.dataset_management import router as dataset_management_router
-from .routers.cloud_storage import router as cloud_storage_router
-from .routers.eureka_router import router as eureka_router
-from .routers.cleanup import router as cleanup_router
 from .schemas.base_schemas import HealthResponse
 from .services.eureka_client_service import eureka_client_service
-from common.logger import LoggerFactory, LogLevel
 
 logger = LoggerFactory.get_logger("FinSightApp", console_level=LogLevel.DEBUG)
 
@@ -82,7 +81,8 @@ async def lifespan(app: FastAPI):
 
         # Initialize background cleaner service
         logger.info("Initializing background cleaner service...")
-        from .services.background_cleaner_service import start_background_cleaner
+        from .services.background_cleaner_service import \
+            start_background_cleaner
 
         cleanup_success = await start_background_cleaner()
         if cleanup_success:
@@ -148,7 +148,8 @@ async def lifespan(app: FastAPI):
 
         # Stop background cleaner service
         logger.info("Stopping background cleaner service...")
-        from .services.background_cleaner_service import stop_background_cleaner
+        from .services.background_cleaner_service import \
+            stop_background_cleaner
 
         cleanup_stop_success = await stop_background_cleaner()
         if cleanup_stop_success:

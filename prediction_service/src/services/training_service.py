@@ -4,39 +4,36 @@
 Consolidated training service for handling both synchronous and asynchronous model training
 """
 
+import asyncio
 import time
 import uuid
-import asyncio
-from typing import Dict, Any, Optional, Callable
 from datetime import datetime
+from typing import Any, Callable, Dict, Optional
 
-from ..facades import get_training_facade, get_unified_facade
-from ..services.data_service import DataService
-from ..services.background_task_manager import BackgroundTaskManager
-from ..repositories.training_job_facade import (
-    TrainingJobFacade,
-    get_training_job_facade,
-)
-from ..schemas.model_schemas import TrainingRequest, TrainingResponse
-from ..schemas.training_schemas import (
-    AsyncTrainingRequest,
-    AsyncTrainingResponse,
-    TrainingJobInfo,
-    TrainingJobStatusResponse,
-    TrainingJobListResponse,
-    TrainingJobCancelRequest,
-    TrainingJobCancelResponse,
-    TrainingQueueResponse,
-    TrainingProgressUpdate,
-    TrainingJobFilter,
-    BackgroundTaskHealthResponse,
-    TrainingJobPriority,
-)
-from ..core.constants import TrainingJobStatus, TrainingConstants, ResponseMessages
 from common.logger.logger_factory import LoggerFactory
+
 from ..core.config import get_settings
-from ..utils.dependencies import get_experiment_tracker
+from ..core.constants import (ResponseMessages, TrainingConstants,
+                              TrainingJobStatus)
+from ..facades import get_training_facade, get_unified_facade
 from ..interfaces.experiment_tracker_interface import RunStatus
+from ..repositories.training_job_facade import (TrainingJobFacade,
+                                                get_training_job_facade)
+from ..schemas.model_schemas import TrainingRequest, TrainingResponse
+from ..schemas.training_schemas import (AsyncTrainingRequest,
+                                        AsyncTrainingResponse,
+                                        BackgroundTaskHealthResponse,
+                                        TrainingJobCancelRequest,
+                                        TrainingJobCancelResponse,
+                                        TrainingJobFilter, TrainingJobInfo,
+                                        TrainingJobListResponse,
+                                        TrainingJobPriority,
+                                        TrainingJobStatusResponse,
+                                        TrainingProgressUpdate,
+                                        TrainingQueueResponse)
+from ..services.background_task_manager import BackgroundTaskManager
+from ..services.data_service import DataService
+from ..utils.dependencies import get_experiment_tracker
 
 
 class TrainingService:

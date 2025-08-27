@@ -1,10 +1,11 @@
 # interfaces/model_interface.py
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
-import pandas as pd
-import numpy as np
 from pathlib import Path
+from typing import Any, Dict, Optional
+
+import numpy as np
+import pandas as pd
 
 
 class ITimeSeriesModel(ABC):

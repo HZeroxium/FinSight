@@ -5,12 +5,13 @@ Eureka Client Router for managing service discovery registration.
 Provides endpoints for Eureka client status and management.
 """
 
-from fastapi import APIRouter, HTTPException
-from typing import Dict, Any
+from typing import Any, Dict
 
-from ..utils.dependencies import get_eureka_client_service
-from ..core.config import settings
 from common.logger import LoggerFactory, LoggerType, LogLevel
+from fastapi import APIRouter, HTTPException
+
+from ..core.config import settings
+from ..utils.dependencies import get_eureka_client_service
 
 # Setup router logger
 logger = LoggerFactory.get_logger(

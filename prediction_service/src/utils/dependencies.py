@@ -7,20 +7,20 @@ This module sets up dependency injection using the dependency_injector library
 to provide clean separation of concerns and enable easy testing and configuration.
 """
 
+from common.logger.logger_factory import LoggerFactory
 from dependency_injector import containers, providers
 
-from ..interfaces.experiment_tracker_interface import IExperimentTracker
-from ..interfaces.data_loader_interface import IDataLoader
 from ..adapters.simple_experiment_tracker import SimpleExperimentTracker
+from ..core.config import Settings, get_settings
 from ..data.cloud_data_loader import CloudDataLoader
 from ..data.file_data_loader import FileDataLoader
-from ..utils.storage_client import StorageClient
-from ..utils.model_utils import ModelUtils
-from ..services.eureka_client_service import EurekaClientService
-from ..core.config import get_settings, Settings
+from ..interfaces.data_loader_interface import IDataLoader
+from ..interfaces.experiment_tracker_interface import IExperimentTracker
 from ..schemas.enums import DataLoaderType, ExperimentTrackerType
-from .device_manager import create_device_manager_from_settings, DeviceManager
-from common.logger.logger_factory import LoggerFactory
+from ..services.eureka_client_service import EurekaClientService
+from ..utils.model_utils import ModelUtils
+from ..utils.storage_client import StorageClient
+from .device_manager import DeviceManager, create_device_manager_from_settings
 
 # Initialize logger
 logger = LoggerFactory.get_logger("Dependencies")
@@ -68,7 +68,8 @@ def _create_experiment_tracker(
         tracker_type_enum = ExperimentTrackerType(tracker_type.lower())
 
         if tracker_type_enum == ExperimentTrackerType.MLFLOW:
-            from ..adapters.mlflow_experiment_tracker import MLflowExperimentTracker
+            from ..adapters.mlflow_experiment_tracker import \
+                MLflowExperimentTracker
 
             tracker = MLflowExperimentTracker(
                 tracking_uri=settings.mlflow_tracking_uri,
@@ -209,7 +210,8 @@ class DependencyManager:
 
     def get_dataset_management_service(self):
         """Get dataset management service - lazy import to avoid circular dependency"""
-        from ..services.dataset_management_service import DatasetManagementService
+        from ..services.dataset_management_service import \
+            DatasetManagementService
 
         return DatasetManagementService(storage_client=self.get_storage_client())
 

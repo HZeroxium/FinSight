@@ -10,20 +10,16 @@ This module provides utilities for:
 - Providing transparent feedback about which model was actually used
 """
 
-from typing import Dict, Any, Optional, List, Tuple, NamedTuple
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-from ..schemas.enums import (
-    ModelType,
-    TimeFrame,
-    CryptoSymbol,
-    FallbackStrategy,
-    ModelSelectionPriority,
-)
-from ..core.constants import FallbackConstants
-from .model_utils import ModelUtils
 from common.logger.logger_factory import LoggerFactory, LogLevel
+
+from ..core.constants import FallbackConstants
+from ..schemas.enums import (CryptoSymbol, FallbackStrategy,
+                             ModelSelectionPriority, ModelType, TimeFrame)
+from .model_utils import ModelUtils
 
 
 class ModelSelectionResult(NamedTuple):

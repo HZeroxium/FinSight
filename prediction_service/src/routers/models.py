@@ -1,13 +1,14 @@
 # routers/models.py
 
-from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from ..services.model_service import ModelService
-from ..schemas.base_schemas import ModelInfoResponse, BaseResponse
-from ..schemas.enums import ModelType, TimeFrame
-from ..utils.dependencies import get_device_manager_dependency
 from common.logger.logger_factory import LoggerFactory
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from ..schemas.base_schemas import BaseResponse, ModelInfoResponse
+from ..schemas.enums import ModelType, TimeFrame
+from ..services.model_service import ModelService
+from ..utils.dependencies import get_device_manager_dependency
 
 router = APIRouter(prefix="/models", tags=["models"])
 model_service = ModelService()

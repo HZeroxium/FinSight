@@ -4,16 +4,17 @@
 Enhanced training schemas with async support
 """
 
-from typing import Optional, Dict, Any, List
-from pathlib import Path
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator, ConfigDict
 from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from .model_schemas import ModelConfig
-from .enums import ModelType, TimeFrame
-from .base_schemas import BaseResponse
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from ..core.constants import TrainingJobStatus
+from .base_schemas import BaseResponse
+from .enums import ModelType, TimeFrame
+from .model_schemas import ModelConfig
 
 
 class TrainingJobPriority(str, Enum):

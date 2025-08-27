@@ -8,14 +8,11 @@ Supports CRUD operations for training jobs with async operations.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from ..schemas.training_schemas import (
-    TrainingJobInfo,
-    TrainingJobFilter,
-    TrainingProgressUpdate,
-)
 from ..core.constants import TrainingJobStatus
+from ..schemas.training_schemas import (TrainingJobFilter, TrainingJobInfo,
+                                        TrainingProgressUpdate)
 
 
 class TrainingJobRepositoryError(Exception):

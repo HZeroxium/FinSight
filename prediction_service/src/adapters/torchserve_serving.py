@@ -9,24 +9,21 @@ multi-model management, and monitoring.
 """
 
 import asyncio
-import time
 import json
-import aiohttp
-from typing import Dict, Any, List, Optional, Union
+import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
+import aiohttp
 import numpy as np
 import pandas as pd
-
-from ..interfaces.serving_interface import (
-    IModelServingAdapter,
-    ModelInfo,
-    PredictionResult,
-    ServingStats,
-)
-from ..schemas.enums import ModelType, TimeFrame
-from ..core.config import get_settings
 from common.logger.logger_factory import LoggerFactory
+
+from ..core.config import get_settings
+from ..interfaces.serving_interface import (IModelServingAdapter, ModelInfo,
+                                            PredictionResult, ServingStats)
+from ..schemas.enums import ModelType, TimeFrame
 
 
 class TorchServeAdapter(IModelServingAdapter):
@@ -469,9 +466,9 @@ class TorchServeAdapter(IModelServingAdapter):
 
         This method packages the model and creates a .mar file for TorchServe
         """
-        import tempfile
-        import subprocess
         import shutil
+        import subprocess
+        import tempfile
 
         try:
             # Create temporary directory for building

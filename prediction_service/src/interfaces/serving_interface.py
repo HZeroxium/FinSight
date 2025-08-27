@@ -8,14 +8,15 @@ including Triton Inference Server, TorchServe, and simple in-memory serving.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
-from pydantic import BaseModel
+from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
 import pandas as pd
+from common.logger.logger_factory import LoggerFactory
+from pydantic import BaseModel
 
 from ..schemas.enums import ModelType, TimeFrame
-from common.logger.logger_factory import LoggerFactory
 
 
 class ModelInfo(BaseModel):

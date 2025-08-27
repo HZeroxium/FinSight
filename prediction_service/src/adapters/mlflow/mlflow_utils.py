@@ -2,10 +2,10 @@
 MLflow-specific utilities and helpers for experiment tracking
 """
 
-from typing import Dict, Any, Set, Optional
-from datetime import datetime
 import asyncio
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, Optional, Set
 
 from common.logger.logger_factory import LoggerFactory
 
@@ -145,7 +145,8 @@ class MLflowParameterDeduplicator:
 
         # Add device information
         try:
-            from ...utils.device_manager import create_device_manager_from_settings
+            from ...utils.device_manager import \
+                create_device_manager_from_settings
 
             device_manager = create_device_manager_from_settings()
             base_params.update(

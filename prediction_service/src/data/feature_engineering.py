@@ -1,8 +1,9 @@
 # data/feature_engineering.py
 
-from typing import List, Dict, Tuple, Optional
-import pandas as pd
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
+import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 # Import technical analysis library
@@ -13,8 +14,9 @@ try:
 except ImportError:
     TA_AVAILABLE = False
 
-from ..interfaces.feature_engineering_interface import IFeatureEngineering
 from common.logger.logger_factory import LoggerFactory
+
+from ..interfaces.feature_engineering_interface import IFeatureEngineering
 
 
 class BasicFeatureEngineering(IFeatureEngineering):

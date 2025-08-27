@@ -13,9 +13,11 @@ optimized inference with features like:
 """
 
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Union, TYPE_CHECKING
+
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+
 import numpy as np
 import pandas as pd
 
@@ -32,16 +34,13 @@ except ImportError:
     TORCH_AVAILABLE = False
     torch = None
 
-from ..interfaces.serving_interface import (
-    IModelServingAdapter,
-    ModelInfo,
-    PredictionResult,
-    ServingStats,
-)
-from ..schemas.enums import ModelType, TimeFrame
-from ..core.config import get_settings
-from ..utils.device_manager import create_device_manager_from_settings
 from common.logger.logger_factory import LoggerFactory
+
+from ..core.config import get_settings
+from ..interfaces.serving_interface import (IModelServingAdapter, ModelInfo,
+                                            PredictionResult, ServingStats)
+from ..schemas.enums import ModelType, TimeFrame
+from ..utils.device_manager import create_device_manager_from_settings
 
 
 class TorchScriptServingAdapter(IModelServingAdapter):
@@ -555,8 +554,9 @@ class TorchScriptServingAdapter(IModelServingAdapter):
         """Load the original PyTorch model for conversion."""
         try:
             # Use ModelFactory approach similar to SimpleServingAdapter
-            from ..models.model_factory import ModelFactory
             import json
+
+            from ..models.model_factory import ModelFactory
 
             self.logger.info(
                 f"Loading original model from: {model_path} with type: {model_type}"
@@ -928,7 +928,8 @@ class TorchScriptServingAdapter(IModelServingAdapter):
                             fe_config = json.load(f)
 
                         # Recreate feature engineering from config
-                        from ..data.feature_engineering import BasicFeatureEngineering
+                        from ..data.feature_engineering import \
+                            BasicFeatureEngineering
 
                         feature_engineering = BasicFeatureEngineering(
                             feature_columns=fe_config.get("feature_columns", []),

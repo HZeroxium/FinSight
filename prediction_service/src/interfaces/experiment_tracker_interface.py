@@ -1,13 +1,14 @@
 # interfaces/experiment_tracker_interface.py
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Union
-from pathlib import Path
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
 from pydantic import BaseModel, Field
 
-from ..schemas.enums import TimeFrame, ModelType
+from ..schemas.enums import ModelType, TimeFrame
 
 
 class ModelStage(Enum):

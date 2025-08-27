@@ -1,11 +1,12 @@
 # routers/prediction.py
 
-from fastapi import APIRouter, HTTPException
-from typing import Dict, Any
+from typing import Any, Dict
 
-from ..services.prediction_service import PredictionService
-from ..schemas.model_schemas import PredictionRequest, PredictionResponse
 from common.logger.logger_factory import LoggerFactory
+from fastapi import APIRouter, HTTPException
+
+from ..schemas.model_schemas import PredictionRequest, PredictionResponse
+from ..services.prediction_service import PredictionService
 
 router = APIRouter(prefix="/prediction", tags=["prediction"])
 prediction_service = PredictionService()

@@ -1,9 +1,10 @@
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from .enums import ModelType, TimeFrame, CryptoSymbol, ModelSelectionPriority
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from .base_schemas import BaseResponse
+from .enums import CryptoSymbol, ModelSelectionPriority, ModelType, TimeFrame
 
 
 class ModelConfig(BaseModel):

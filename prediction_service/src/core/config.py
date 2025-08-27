@@ -1,17 +1,14 @@
 # core/config.py
 
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Any, Dict, List, Optional
+
 from pydantic import Field, field_validator
-from ..schemas.enums import (
-    DataLoaderType,
-    ExperimentTrackerType,
-    StorageProviderType,
-    TimeFrame,
-    CryptoSymbol,
-    ServingAdapterType,
-)
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from ..schemas.enums import (CryptoSymbol, DataLoaderType,
+                             ExperimentTrackerType, ServingAdapterType,
+                             StorageProviderType, TimeFrame)
 
 
 class Settings(BaseSettings):

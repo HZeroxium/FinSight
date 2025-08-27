@@ -10,11 +10,13 @@ This router provides simple endpoints for:
 - Getting cleanup service status
 """
 
-from fastapi import APIRouter, HTTPException
-from typing import Dict, Any
+from typing import Any, Dict
 
-from ..services.background_cleaner_service import get_background_cleaner_service
 from common.logger.logger_factory import LoggerFactory
+from fastapi import APIRouter, HTTPException
+
+from ..services.background_cleaner_service import \
+    get_background_cleaner_service
 
 router = APIRouter(prefix="/cleanup", tags=["cleanup"])
 logger = LoggerFactory.get_logger("CleanupRouter")

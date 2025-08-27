@@ -5,21 +5,22 @@ Base adapter for time series models with common functionality
 Implements the Template Method pattern for shared operations
 """
 
+import json
+import pickle
 from abc import abstractmethod
-from typing import Dict, Any, List, Optional, Tuple
-import torch
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
-import pickle
-import json
+import torch
+from common.logger.logger_factory import LoggerFactory
 from sklearn.preprocessing import StandardScaler
 
 from ...interfaces.model_interface import ITimeSeriesModel
-from ...utils.device_manager import create_device_manager_from_settings
-from common.logger.logger_factory import LoggerFactory
-from ...utils.metrics_utils import MetricUtils
 from ...schemas.enums import DeviceType
+from ...utils.device_manager import create_device_manager_from_settings
+from ...utils.metrics_utils import MetricUtils
 
 
 class BaseTimeSeriesAdapter(ITimeSeriesModel):
@@ -905,9 +906,8 @@ class BaseTimeSeriesAdapter(ITimeSeriesModel):
                             with open(fe_config_path, "r") as f:
                                 fe_config = json.load(f)
                             # Recreate feature engineering from config
-                            from ...data.feature_engineering import (
-                                BasicFeatureEngineering,
-                            )
+                            from ...data.feature_engineering import \
+                                BasicFeatureEngineering
 
                             self.feature_engineering = BasicFeatureEngineering(
                                 feature_columns=fe_config.get("feature_columns"),

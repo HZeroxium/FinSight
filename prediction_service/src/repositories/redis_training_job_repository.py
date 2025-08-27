@@ -4,27 +4,23 @@
 Redis-based repository implementation for managing training job persistence and retrieval
 """
 
-import json
 import asyncio
-from typing import Dict, Any, List, Optional
+import json
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 import redis.asyncio as redis
+from common.logger.logger_factory import LoggerFactory
 from redis.asyncio import Redis
 
-from ..schemas.training_schemas import (
-    TrainingJobInfo,
-    TrainingJobFilter,
-    TrainingProgressUpdate,
-    TrainingJobPriority,
-)
-from ..core.constants import TrainingJobStatus, StorageConstants, TrainingConstants
-from common.logger.logger_factory import LoggerFactory
 from ..core.config import get_settings
+from ..core.constants import (StorageConstants, TrainingConstants,
+                              TrainingJobStatus)
 from ..interfaces.training_job_repository_interface import (
-    TrainingJobRepositoryInterface,
-    TrainingJobRepositoryError,
-)
+    TrainingJobRepositoryError, TrainingJobRepositoryInterface)
+from ..schemas.training_schemas import (TrainingJobFilter, TrainingJobInfo,
+                                        TrainingJobPriority,
+                                        TrainingProgressUpdate)
 
 
 class RedisTrainingJobRepository(TrainingJobRepositoryInterface):

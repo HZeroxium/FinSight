@@ -9,10 +9,10 @@ This package provides different adapters for model serving:
 - TorchServeAdapter: PyTorch TorchServe integration
 """
 
-from .simple_serving import SimpleServingAdapter
-from .triton_serving import TritonServingAdapter
-from .torchserve_serving import TorchServeAdapter
 from .adapter_factory import ServingAdapterFactory
+from .simple_serving import SimpleServingAdapter
+from .torchserve_serving import TorchServeAdapter
+from .triton_serving import TritonServingAdapter
 
 __all__ = [
     "SimpleServingAdapter",

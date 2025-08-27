@@ -7,15 +7,16 @@ This router provides endpoints for managing the model serving
 adapter and monitoring serving performance.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
-from typing import Dict, Any, List, Optional
 import asyncio
+from typing import Any, Dict, List, Optional
 
-from ..facades import EnhancedModelFacade
-from ..adapters import ServingAdapterFactory
-from ..schemas.enums import ModelType, TimeFrame
-from ..core.config import get_settings
 from common.logger.logger_factory import LoggerFactory
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+
+from ..adapters import ServingAdapterFactory
+from ..core.config import get_settings
+from ..facades import EnhancedModelFacade
+from ..schemas.enums import ModelType, TimeFrame
 
 # Create router
 router = APIRouter(prefix="/serving", tags=["Model Serving"])

@@ -1,7 +1,7 @@
 # models/adapters/__init__.py
 
-from .patchtst_adapter import PatchTSTAdapter
 from .patchtsmixer_adapter import PatchTSMixerAdapter
+from .patchtst_adapter import PatchTSTAdapter
 from .transformer_adapter import TransformerAdapter
 
 __all__ = [

@@ -1,13 +1,14 @@
 # services/model_service.py
 
 import json
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from ..facades import get_unified_facade
-from ..schemas.enums import ModelType, TimeFrame
-from ..schemas.base_schemas import ModelInfoResponse
 from common.logger.logger_factory import LoggerFactory
+
 from ..core.config import get_settings
+from ..facades import get_unified_facade
+from ..schemas.base_schemas import ModelInfoResponse
+from ..schemas.enums import ModelType, TimeFrame
 
 
 class ModelService:
@@ -84,8 +85,8 @@ class ModelService:
                         continue
 
                     # Use consistent key generation
+                    from ..schemas.enums import ModelType, TimeFrame
                     from ..utils.model_utils import ModelUtils
-                    from ..schemas.enums import TimeFrame, ModelType
 
                     try:
                         symbol = metadata["symbol"]

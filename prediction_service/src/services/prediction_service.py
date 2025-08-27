@@ -1,22 +1,20 @@
 # services/prediction_service.py
 
 import time
-from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
-from ..facades import get_serving_facade, get_unified_facade
-from ..services.data_service import DataService
-from ..schemas.model_schemas import (
-    PredictionRequest,
-    PredictionResponse,
-    ModelSelectionInfo,
-    FallbackInfo,
-)
-from ..schemas.enums import ModelType, TimeFrame, FallbackStrategy
-from ..utils.model_fallback_utils import ModelFallbackUtils, ModelSelectionResult
-from ..utils.data_fallback_utils import DataFallbackUtils, DataSelectionResult
 from common.logger.logger_factory import LoggerFactory
+
 from ..core.config import get_settings
+from ..facades import get_serving_facade, get_unified_facade
+from ..schemas.enums import FallbackStrategy, ModelType, TimeFrame
+from ..schemas.model_schemas import (FallbackInfo, ModelSelectionInfo,
+                                     PredictionRequest, PredictionResponse)
+from ..services.data_service import DataService
+from ..utils.data_fallback_utils import DataFallbackUtils, DataSelectionResult
+from ..utils.model_fallback_utils import (ModelFallbackUtils,
+                                          ModelSelectionResult)
 from ..utils.model_utils import ModelUtils
 
 

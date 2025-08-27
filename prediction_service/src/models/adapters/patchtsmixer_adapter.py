@@ -5,17 +5,13 @@ PatchTSMixer adapter implementing the base adapter pattern
 Clean implementation focused on forecasting vs backtesting separation
 """
 
-from typing import Dict, Any, Tuple
-import torch
-
-from pathlib import Path
-from transformers import (
-    PatchTSMixerConfig,
-    PatchTSMixerForPrediction,
-    TrainingArguments,
-    Trainer,
-)
 import os
+from pathlib import Path
+from typing import Any, Dict, Tuple
+
+import torch
+from transformers import (PatchTSMixerConfig, PatchTSMixerForPrediction,
+                          Trainer, TrainingArguments)
 
 from .base_adapter import BaseTimeSeriesAdapter
 

@@ -8,25 +8,22 @@ logic while implementing the serving interface. It loads models directly
 into memory and performs inference synchronously.
 """
 
-import time
-import psutil
 import pickle
-from typing import Dict, Any, List, Optional, Union
+import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
 import pandas as pd
-
-from ..interfaces.serving_interface import (
-    IModelServingAdapter,
-    ModelInfo,
-    PredictionResult,
-    ServingStats,
-)
-from ..schemas.enums import ModelType, TimeFrame
-from ..core.config import get_settings
-from ..utils.device_manager import create_device_manager_from_settings
+import psutil
 from common.logger.logger_factory import LoggerFactory
+
+from ..core.config import get_settings
+from ..interfaces.serving_interface import (IModelServingAdapter, ModelInfo,
+                                            PredictionResult, ServingStats)
+from ..schemas.enums import ModelType, TimeFrame
+from ..utils.device_manager import create_device_manager_from_settings
 
 
 class SimpleServingAdapter(IModelServingAdapter):
@@ -354,8 +351,9 @@ class SimpleServingAdapter(IModelServingAdapter):
 
         try:
             # Use ModelFactory for all our custom models
-            from ..models.model_factory import ModelFactory
             import json
+
+            from ..models.model_factory import ModelFactory
 
             self.logger.info(
                 f"Loading model from: {model_path_obj} with type: {model_type}"

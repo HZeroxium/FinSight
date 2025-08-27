@@ -1,16 +1,18 @@
 # data/data_loader.py
 
+import tarfile
 import tempfile
 import zipfile
-import tarfile
 from datetime import datetime, timedelta
-from typing import Tuple, Optional, List, Dict, Any
-import pandas as pd
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
+from common.logger.logger_factory import LoggerFactory, LoggerType
+
+from ..core.config import get_settings
 from ..interfaces.data_loader_interface import IDataLoader
 from ..schemas.enums import TimeFrame
-from common.logger.logger_factory import LoggerFactory, LoggerType
-from ..core.config import get_settings
 from ..utils.storage_client import StorageClient
 from .file_data_loader import FileDataLoader
 

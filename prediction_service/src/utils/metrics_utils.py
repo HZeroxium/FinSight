@@ -4,12 +4,12 @@
 Comprehensive metrics utilities for time series model evaluation
 """
 
-from typing import Union, Tuple, Dict, List, List
+from typing import Dict, List, Tuple, Union
+
 import numpy as np
 import torch
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-
 from common.logger.logger_factory import LoggerFactory
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
 class MetricUtils:

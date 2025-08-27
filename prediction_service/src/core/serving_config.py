@@ -7,9 +7,10 @@ This module provides configuration management for different
 serving backends including Triton, TorchServe, and simple serving.
 """
 
-from typing import Dict, Any
-from pydantic import BaseModel, Field
 import os
+from typing import Any, Dict
+
+from pydantic import BaseModel, Field
 
 from .config import get_settings
 
