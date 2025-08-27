@@ -12,7 +12,8 @@ from dependency_injector.wiring import Provide, inject
 
 from ..repositories.mongo_news_repository import MongoNewsRepository
 from ..services.news_service import NewsService
-from ..services.search_service import SearchService
+
+# from ..services.search_service import SearchService
 from ..services.news_collector_service import NewsCollectorService
 from ..services.eureka_client_service import EurekaClientService
 from ..services.news_message_producer_service import NewsMessageProducerService
@@ -88,11 +89,11 @@ class Container(containers.DeclarativeContainer):
     )
 
     # Search Service
-    search_service = providers.Singleton(
-        SearchService,
-        search_engine=search_engine,
-        message_broker=message_broker,
-    )
+    # search_service = providers.Singleton(
+    #     SearchService,
+    #     search_engine=search_engine,
+    #     message_broker=message_broker,
+    # )
 
 
 # Global container instance
@@ -199,8 +200,8 @@ class ServiceContext:
     def get_repository(self) -> MongoNewsRepository:
         return container.mongo_repository()
 
-    def get_search_service(self) -> SearchService:
-        return container.search_service()
+    # def get_search_service(self) -> SearchService:
+    #     return container.search_service()
 
     def get_message_broker(self) -> RabbitMQBroker:
         return container.message_broker()
@@ -222,10 +223,10 @@ def get_news_collector_service() -> NewsCollectorService:
         raise
 
 
-def get_news_service() -> NewsService:
+async def get_news_service() -> NewsService:
     """Get news service instance"""
     try:
-        return container.news_service()
+        return await container.news_service()
     except Exception as e:
         logger = container.logger()
         logger.error(f"Failed to get news service: {e}")
@@ -242,14 +243,14 @@ def get_repository() -> MongoNewsRepository:
         raise
 
 
-def get_search_service() -> SearchService:
-    """Get search service instance"""
-    try:
-        return container.search_service()
-    except Exception as e:
-        logger = container.logger()
-        logger.error(f"Failed to get search service: {e}")
-        raise
+# def get_search_service() -> SearchService:
+#     """Get search service instance"""
+#     try:
+#         return container.search_service()
+#     except Exception as e:
+#         logger = container.logger()
+#         logger.error(f"Failed to get search service: {e}")
+#         raise
 
 
 def get_message_broker() -> RabbitMQBroker:
@@ -487,12 +488,12 @@ async def get_repository_async(
     return repository
 
 
-@inject
-async def get_search_service_async(
-    service: SearchService = Provide[Container.search_service],
-) -> SearchService:
-    """Get search service as async dependency"""
-    return service
+# @inject
+# async def get_search_service_async(
+#     service: SearchService = Provide[Container.search_service],
+# ) -> SearchService:
+#     """Get search service as async dependency"""
+#     return service
 
 
 @inject

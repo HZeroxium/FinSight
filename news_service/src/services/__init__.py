@@ -4,8 +4,8 @@
 Business logic services.
 """
 
-from .search_service import SearchService
+from .news_service import NewsService
 
 __all__ = [
-    "SearchService",
+    "NewsService",
 ]

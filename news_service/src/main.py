@@ -19,7 +19,7 @@ from .routers import news_router, job_router, eureka_router
 from .services.sentiment_message_consumer_service import SentimentMessageConsumerService
 from .grpc_services import create_grpc_server, GrpcServer
 from .utils.dependencies import (
-    get_search_service,
+    # get_search_service,
     get_message_broker,
     get_news_service,
     get_eureka_client_service,
@@ -151,27 +151,29 @@ async def lifespan(app: FastAPI):
             sentiment_consumer = None
 
         # Step 6: Health check for search service (with timeout and error handling)
-        logger.info("📋 Step 6: Performing health checks...")
-        try:
-            search_service = get_search_service()
+        # logger.info("📋 Step 6: Performing health checks...")
+        # try:
+        #     # search_service = get_search_service()
 
-            # Add timeout to health check to prevent hanging
-            is_healthy = await asyncio.wait_for(
-                search_service.health_check(), timeout=10.0
-            )
+        #     # Add timeout to health check to prevent hanging
+        #     is_healthy = await asyncio.wait_for(
+        #         # search_service.health_check(), timeout=10.0
+        #         asyncio.sleep(10.0),
+        #         timeout=10.0,
+        #     )
 
-            if is_healthy:
-                logger.info("✅ Search service health check passed")
-            else:
-                logger.warning("⚠️ Search service health check failed")
-                startup_errors.append("Search service health issues")
+        #     if is_healthy:
+        #         logger.info("✅ Search service health check passed")
+        #     else:
+        #         logger.warning("⚠️ Search service health check failed")
+        #         startup_errors.append("Search service health issues")
 
-        except asyncio.TimeoutError:
-            logger.warning("⚠️ Search service health check timed out")
-            startup_errors.append("Search service health check timeout")
-        except Exception as health_error:
-            logger.warning(f"⚠️ Search service health check error: {health_error}")
-            startup_errors.append(f"Search service health error: {str(health_error)}")
+        # except asyncio.TimeoutError:
+        #     logger.warning("⚠️ Search service health check timed out")
+        #     startup_errors.append("Search service health check timeout")
+        # except Exception as health_error:
+        #     logger.warning(f"⚠️ Search service health check error: {health_error}")
+        #     startup_errors.append(f"Search service health error: {str(health_error)}")
 
         # Step 7: Cache health check
         if settings.enable_caching:
@@ -389,11 +391,11 @@ async def health_check():
 
     try:
         # Check search service
-        search_service = get_search_service()
-        search_healthy = await search_service.health_check()
-        health_status["components"]["search_service"] = (
-            "healthy" if search_healthy else "unhealthy"
-        )
+        # search_service = get_search_service()
+        # search_healthy = await search_service.health_check()
+        # health_status["components"]["search_service"] = (
+        #     "healthy" if search_healthy else "unhealthy"
+        # )
 
         # Check sentiment consumer
         consumer_running = sentiment_consumer._running if sentiment_consumer else False
