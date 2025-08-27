@@ -5,7 +5,9 @@ alwaysApply: true
 # DevOps, MLOps & Deployment Guidelines for FinSight
 
 ## Containerization Standards
+
 - **Docker Best Practices**: Implement efficient containerization
+
   - Use multi-stage builds for optimized image sizes
   - Pin base image versions for reproducible builds
   - Create `.dockerignore` files to exclude unnecessary files
@@ -20,7 +22,9 @@ alwaysApply: true
   - Support both development and production configurations
 
 ## CI/CD Pipeline Standards
+
 - **GitHub Actions**: Implement comprehensive CI/CD workflows
+
   - Run automated tests on all pull requests
   - Include code quality checks (black, isort, mypy, flake8)
   - Implement security scanning and dependency checks
@@ -35,7 +39,9 @@ alwaysApply: true
   - Implement build caching for faster iterations
 
 ## Infrastructure as Code
+
 - **Configuration Management**: Manage infrastructure declaratively
+
   - Use Docker Compose for local development
   - Support Kubernetes manifests for production deployment
   - Implement environment-specific configuration
@@ -49,7 +55,9 @@ alwaysApply: true
   - Include environment-specific configuration validation
 
 ## MLOps and Model Management
+
 - **Model Training Pipelines**: Automate ML workflows
+
   - Implement scheduled training jobs with configurable parameters
   - Use version control for training data and model artifacts
   - Include model validation and performance monitoring
@@ -64,7 +72,9 @@ alwaysApply: true
   - Support model rollback and versioning
 
 ## Data Pipeline Management
+
 - **Data Collection**: Automate financial data ingestion
+
   - Implement scheduled data collection jobs (APScheduler)
   - Use robust error handling and retry mechanisms
   - Include data validation and quality checks
@@ -79,7 +89,9 @@ alwaysApply: true
   - Implement data backup and recovery procedures
 
 ## Monitoring and Observability
+
 - **Service Monitoring**: Comprehensive system monitoring
+
   - Implement health check endpoints for all services
   - Monitor service dependencies (databases, message queues)
   - Include application metrics (response times, error rates)
@@ -94,7 +106,9 @@ alwaysApply: true
   - Implement security event monitoring and alerting
 
 ## Deployment Strategies
+
 - **Rolling Deployments**: Minimize downtime during updates
+
   - Use rolling update strategies for service deployments
   - Implement readiness and liveness probes
   - Support automated rollback on deployment failures
@@ -109,7 +123,9 @@ alwaysApply: true
   - Support emergency feature disabling
 
 ## Security and Compliance
+
 - **Secret Management**: Secure handling of sensitive data
+
   - Use environment variables for all secrets
   - Implement secret rotation without service restart
   - Include secret scanning in CI/CD pipelines
@@ -124,7 +140,9 @@ alwaysApply: true
   - Include compliance reporting and documentation
 
 ## Backup and Disaster Recovery
+
 - **Data Backup**: Comprehensive backup strategies
+
   - Implement automated database backups
   - Include model artifact and configuration backups
   - Test backup restoration procedures regularly
@@ -139,7 +157,9 @@ alwaysApply: true
   - Monitor system resilience and availability# DevOps, MLOps & Deployment Guidelines for FinSight
 
 ## Containerization Standards
+
 - **Docker Best Practices**: Implement efficient containerization
+
   - Use multi-stage builds for optimized image sizes
   - Pin base image versions for reproducible builds
   - Create `.dockerignore` files to exclude unnecessary files
@@ -154,7 +174,9 @@ alwaysApply: true
   - Support both development and production configurations
 
 ## CI/CD Pipeline Standards
+
 - **GitHub Actions**: Implement comprehensive CI/CD workflows
+
   - Run automated tests on all pull requests
   - Include code quality checks (black, isort, mypy, flake8)
   - Implement security scanning and dependency checks
@@ -169,7 +191,9 @@ alwaysApply: true
   - Implement build caching for faster iterations
 
 ## Infrastructure as Code
+
 - **Configuration Management**: Manage infrastructure declaratively
+
   - Use Docker Compose for local development
   - Support Kubernetes manifests for production deployment
   - Implement environment-specific configuration
@@ -183,7 +207,9 @@ alwaysApply: true
   - Include environment-specific configuration validation
 
 ## MLOps and Model Management
+
 - **Model Training Pipelines**: Automate ML workflows
+
   - Implement scheduled training jobs with configurable parameters
   - Use version control for training data and model artifacts
   - Include model validation and performance monitoring
@@ -198,7 +224,9 @@ alwaysApply: true
   - Support model rollback and versioning
 
 ## Data Pipeline Management
+
 - **Data Collection**: Automate financial data ingestion
+
   - Implement scheduled data collection jobs (APScheduler)
   - Use robust error handling and retry mechanisms
   - Include data validation and quality checks
@@ -213,7 +241,9 @@ alwaysApply: true
   - Implement data backup and recovery procedures
 
 ## Monitoring and Observability
+
 - **Service Monitoring**: Comprehensive system monitoring
+
   - Implement health check endpoints for all services
   - Monitor service dependencies (databases, message queues)
   - Include application metrics (response times, error rates)
@@ -228,7 +258,9 @@ alwaysApply: true
   - Implement security event monitoring and alerting
 
 ## Deployment Strategies
+
 - **Rolling Deployments**: Minimize downtime during updates
+
   - Use rolling update strategies for service deployments
   - Implement readiness and liveness probes
   - Support automated rollback on deployment failures
@@ -243,7 +275,9 @@ alwaysApply: true
   - Support emergency feature disabling
 
 ## Security and Compliance
+
 - **Secret Management**: Secure handling of sensitive data
+
   - Use environment variables for all secrets
   - Implement secret rotation without service restart
   - Include secret scanning in CI/CD pipelines
@@ -258,7 +292,9 @@ alwaysApply: true
   - Include compliance reporting and documentation
 
 ## Backup and Disaster Recovery
+
 - **Data Backup**: Comprehensive backup strategies
+
   - Implement automated database backups
   - Include model artifact and configuration backups
   - Test backup restoration procedures regularly

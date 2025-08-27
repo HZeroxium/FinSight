@@ -1,9 +1,11 @@
 ---
 alwaysApply: true
 ---
+
 # Architecture & Design Patterns for FinSight
 
 ## Architectural Principles
+
 - Enforce Hexagonal Architecture (Ports & Adapters) for maximum flexibility
 - Implement clear separation of concerns: core business logic, adapters, infrastructure
 - Design for testability with dependency injection and interface abstractions
@@ -13,6 +15,7 @@ alwaysApply: true
 ## Core Design Patterns
 
 ### Repository Pattern
+
 - Abstract data access behind repository interfaces
 - Implement multiple storage backends (MongoDB, Redis, CSV, InfluxDB)
 - Use repository facades for automatic fallback and switching between implementations
@@ -20,6 +23,7 @@ alwaysApply: true
 - Include health monitoring and connection management
 
 ### Dependency Injection
+
 - Use `dependency-injector` library for container-based DI
 - Create factory functions for service instantiation
 - Implement singleton patterns for shared resources (database connections, caches)
@@ -27,6 +31,7 @@ alwaysApply: true
 - Enable easy testing through mock injection
 
 ### Factory Pattern
+
 - Create factories for complex object instantiation (models, adapters, services)
 - Support multiple implementations through configuration
 - Enable runtime switching of implementations
@@ -34,6 +39,7 @@ alwaysApply: true
 - Provide clear interfaces for factory consumers
 
 ### Facade Pattern
+
 - Implement unified facades for complex subsystems (model training, serving, data collection)
 - Provide simplified interfaces hiding implementation complexity
 - Support initialization, health checking, and graceful shutdown
@@ -41,6 +47,7 @@ alwaysApply: true
 - Include comprehensive error handling and logging
 
 ## Service Layer Architecture
+
 - Separate business logic into dedicated service classes
 - Keep services focused on single responsibilities
 - Implement async service methods for I/O operations
@@ -48,6 +55,7 @@ alwaysApply: true
 - Include comprehensive error handling and transaction management
 
 ## API Design Standards
+
 - Follow RESTful conventions with proper HTTP methods and status codes
 - Implement API versioning strategy (URL path versioning: `/api/v1/`)
 - Use consistent error response formats across all endpoints
@@ -55,6 +63,7 @@ alwaysApply: true
 - Implement proper authentication and authorization patterns
 
 ## Data Flow Patterns
+
 - Use message queues (RabbitMQ) for inter-service communication
 - Implement event-driven architecture for asynchronous processing
 - Create clear data transformation pipelines with validation
@@ -62,6 +71,7 @@ alwaysApply: true
 - Include proper error handling and dead letter queues
 
 ## Configuration Management
+
 - Use Pydantic Settings for environment-based configuration
 - Support multiple environments (development, staging, production)
 - Implement configuration validation at startup
@@ -69,6 +79,7 @@ alwaysApply: true
 - Support dynamic configuration reloading where appropriate
 
 ## Interface Segregation
+
 - Define clear interfaces for each adapter and service
 - Keep interfaces focused and cohesive
 - Use abstract base classes for interface definition
@@ -76,6 +87,7 @@ alwaysApply: true
 - Support multiple implementations per interface# Architecture & Design Patterns for FinSight
 
 ## Architectural Principles
+
 - Enforce Hexagonal Architecture (Ports & Adapters) for maximum flexibility
 - Implement clear separation of concerns: core business logic, adapters, infrastructure
 - Design for testability with dependency injection and interface abstractions
@@ -85,6 +97,7 @@ alwaysApply: true
 ## Core Design Patterns
 
 ### Repository Pattern
+
 - Abstract data access behind repository interfaces
 - Implement multiple storage backends (MongoDB, Redis, CSV, InfluxDB)
 - Use repository facades for automatic fallback and switching between implementations
@@ -92,6 +105,7 @@ alwaysApply: true
 - Include health monitoring and connection management
 
 ### Dependency Injection
+
 - Use `dependency-injector` library for container-based DI
 - Create factory functions for service instantiation
 - Implement singleton patterns for shared resources (database connections, caches)
@@ -99,6 +113,7 @@ alwaysApply: true
 - Enable easy testing through mock injection
 
 ### Factory Pattern
+
 - Create factories for complex object instantiation (models, adapters, services)
 - Support multiple implementations through configuration
 - Enable runtime switching of implementations
@@ -106,6 +121,7 @@ alwaysApply: true
 - Provide clear interfaces for factory consumers
 
 ### Facade Pattern
+
 - Implement unified facades for complex subsystems (model training, serving, data collection)
 - Provide simplified interfaces hiding implementation complexity
 - Support initialization, health checking, and graceful shutdown
@@ -113,6 +129,7 @@ alwaysApply: true
 - Include comprehensive error handling and logging
 
 ## Service Layer Architecture
+
 - Separate business logic into dedicated service classes
 - Keep services focused on single responsibilities
 - Implement async service methods for I/O operations
@@ -120,6 +137,7 @@ alwaysApply: true
 - Include comprehensive error handling and transaction management
 
 ## API Design Standards
+
 - Follow RESTful conventions with proper HTTP methods and status codes
 - Implement API versioning strategy (URL path versioning: `/api/v1/`)
 - Use consistent error response formats across all endpoints
@@ -127,6 +145,7 @@ alwaysApply: true
 - Implement proper authentication and authorization patterns
 
 ## Data Flow Patterns
+
 - Use message queues (RabbitMQ) for inter-service communication
 - Implement event-driven architecture for asynchronous processing
 - Create clear data transformation pipelines with validation
@@ -134,6 +153,7 @@ alwaysApply: true
 - Include proper error handling and dead letter queues
 
 ## Configuration Management
+
 - Use Pydantic Settings for environment-based configuration
 - Support multiple environments (development, staging, production)
 - Implement configuration validation at startup
@@ -141,6 +161,7 @@ alwaysApply: true
 - Support dynamic configuration reloading where appropriate
 
 ## Interface Segregation
+
 - Define clear interfaces for each adapter and service
 - Keep interfaces focused and cohesive
 - Use abstract base classes for interface definition

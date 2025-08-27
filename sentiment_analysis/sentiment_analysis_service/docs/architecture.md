@@ -150,7 +150,7 @@ graph LR
 
 ### Directory Structure
 
-```
+```bash
 src/
 ├── __init__.py
 ├── main.py                 # FastAPI application entry point

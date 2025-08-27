@@ -422,7 +422,7 @@ settings = Settings()  # This will raise ValidationError if invalid
 
 1. **Missing Required Variables**
 
-   ```
+   ```bash
    ValueError: OPENAI_API_KEY environment variable is required
    ```
 
@@ -430,16 +430,18 @@ settings = Settings()  # This will raise ValidationError if invalid
 
 2. **Invalid Configuration Values**
 
-   ```
+   ```bash
    ValueError: max_concurrent_analysis must be between 1 and 50
    ```
 
    **Solution**: Check configuration value ranges and constraints
 
 3. **Connection Failures**
-   ```
+
+   ```bash
    ConnectionError: Failed to connect to MongoDB
    ```
+
    **Solution**: Verify connection strings and network connectivity
 
 ### Debug Configuration
