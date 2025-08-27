@@ -9,21 +9,17 @@ Acts as an abstraction layer over the repository pattern.
 
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
 from math import ceil
+from typing import Any, Dict, Optional
 
-from ..interfaces.backtesting_repository import (
-    BacktestingRepository,
-    BacktestingRepositoryError,
-)
-from ..schemas.backtesting_schemas import (
-    BacktestResult,
-    BacktestHistoryItem,
-    BacktestHistoryResponse,
-    BacktestDeletionResponse,
-    StrategyType,
-)
 from common.logger import LoggerFactory
+
+from ..interfaces.backtesting_repository import (BacktestingRepository,
+                                                 BacktestingRepositoryError)
+from ..schemas.backtesting_schemas import (BacktestDeletionResponse,
+                                           BacktestHistoryItem,
+                                           BacktestHistoryResponse,
+                                           BacktestResult, StrategyType)
 
 
 class BacktestingDataServiceError(Exception):

@@ -11,29 +11,24 @@ Provides RESTful endpoints for:
 Uses centralized configuration, logging, and error handling.
 """
 
+import time
+from contextlib import asynccontextmanager
+from typing import Any, Dict
+
 import uvicorn
+from common.logger import LoggerFactory
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
-from typing import Dict, Any
-import time
 from starlette.responses import Response
 
-from .routers import admin_router
-from .routers import market_data_router, backtesting_router
-from .routers import market_data_storage_router, market_data_job_router
-from .routers.eureka_router import router as eureka_router
 from .core.config import settings
-from common.logger import LoggerFactory
-from .interfaces.errors import (
-    ValidationError,
-    RepositoryError,
-    CollectionError,
-    BacktestingServiceError,
-)
+from .interfaces.errors import (BacktestingServiceError, CollectionError,
+                                RepositoryError, ValidationError)
+from .routers import (admin_router, backtesting_router, market_data_job_router,
+                      market_data_router, market_data_storage_router)
+from .routers.eureka_router import router as eureka_router
 from .utils.dependencies import get_eureka_client_service
-
 
 # Initialize configuration and logging
 logger = LoggerFactory.get_logger(name="fastapi_app")

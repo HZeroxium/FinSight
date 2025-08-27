@@ -6,11 +6,11 @@ Part of Strategy Pattern implementation.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from ..schemas.ohlcv_schemas import OHLCVSchema
 from ..schemas.backtesting_schemas import StrategyConfig, TradeResult
+from ..schemas.ohlcv_schemas import OHLCVSchema
 
 
 class StrategyError(Exception):

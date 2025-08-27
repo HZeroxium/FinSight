@@ -11,19 +11,15 @@ import json
 import os
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from ..interfaces.backtesting_repository import (
-    BacktestingRepository,
-    BacktestingRepositoryError,
-)
-from ..schemas.backtesting_schemas import (
-    BacktestResult,
-    BacktestHistoryItem,
-    StrategyType,
-)
 from common.logger import LoggerFactory
+
+from ..interfaces.backtesting_repository import (BacktestingRepository,
+                                                 BacktestingRepositoryError)
+from ..schemas.backtesting_schemas import (BacktestHistoryItem, BacktestResult,
+                                           StrategyType)
 
 
 class FileBacktestingRepository(BacktestingRepository):

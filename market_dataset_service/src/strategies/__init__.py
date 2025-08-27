@@ -6,11 +6,11 @@ Contains implementations of different trading strategies following Strategy Patt
 """
 
 from .base_strategy import BaseStrategy
+from .bollinger_bands import BollingerBandsStrategy
+from .macd_strategy import MACDStrategy
 from .moving_average_crossover import MovingAverageCrossoverStrategy
 from .rsi_strategy import RSIStrategy
 from .simple_buy_hold import SimpleBuyHoldStrategy
-from .bollinger_bands import BollingerBandsStrategy
-from .macd_strategy import MACDStrategy
 from .strategy_factory import StrategyFactory
 
 __all__ = [

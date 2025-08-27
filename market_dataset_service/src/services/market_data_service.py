@@ -7,20 +7,17 @@ Provides business logic layer for market data operations.
 Acts as an abstraction over MarketDataRepository implementations.
 """
 
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from ..interfaces.market_data_repository import MarketDataRepository
-from ..interfaces.errors import ValidationError
 from common.logger import LoggerFactory
-from ..utils.datetime_utils import DateTimeUtils
-from ..schemas.ohlcv_schemas import (
-    OHLCVSchema,
-    OHLCVBatchSchema,
-    OHLCVQuerySchema,
-    OHLCVResponseSchema,
-    OHLCVStatsSchema,
-)
+
 from ..converters.ohlcv_converter import OHLCVConverter
+from ..interfaces.errors import ValidationError
+from ..interfaces.market_data_repository import MarketDataRepository
+from ..schemas.ohlcv_schemas import (OHLCVBatchSchema, OHLCVQuerySchema,
+                                     OHLCVResponseSchema, OHLCVSchema,
+                                     OHLCVStatsSchema)
+from ..utils.datetime_utils import DateTimeUtils
 
 
 class MarketDataService:

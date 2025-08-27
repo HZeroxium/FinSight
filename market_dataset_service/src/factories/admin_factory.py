@@ -6,16 +6,13 @@ Admin Factory
 Factory functions for creating admin service dependencies.
 """
 
-from ..services.admin_service import AdminService
-from ..utils.dependencies import (
-    get_market_data_service,
-    get_market_data_collector_service,
-    get_storage_service,
-    get_market_data_job_service,
-    get_cross_repository_pipeline,
-)
-from .market_data_repository_factory import create_repository
 from ..core.config import Settings
+from ..services.admin_service import AdminService
+from ..utils.dependencies import (get_cross_repository_pipeline,
+                                  get_market_data_collector_service,
+                                  get_market_data_job_service,
+                                  get_market_data_service, get_storage_service)
+from .market_data_repository_factory import create_repository
 
 
 def get_admin_service() -> AdminService:

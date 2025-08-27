@@ -8,9 +8,11 @@ Handles CRUD operations for different types of market data using proper schemas.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
 from datetime import datetime
-from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVBatchSchema, OHLCVQuerySchema
+from typing import Any, Dict, List, Optional
+
+from ..schemas.ohlcv_schemas import (OHLCVBatchSchema, OHLCVQuerySchema,
+                                     OHLCVSchema)
 
 
 class MarketDataRepository(ABC):

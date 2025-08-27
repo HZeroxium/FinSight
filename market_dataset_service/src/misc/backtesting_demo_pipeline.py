@@ -15,22 +15,20 @@ Demonstrates the Ports & Adapters (Hexagonal Architecture) and Strategy patterns
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Any, Dict
 
-from ..services.backtesting_service import BacktestingService
-from ..services.market_data_service import MarketDataService
-from ..adapters.backtesting.backtrader_adapter import BacktraderAdapter
-from ..schemas.backtesting_schemas import (
-    BacktestRequest,
-    StrategyType,
-    BacktestResult,
-)
-from ..schemas.ohlcv_schemas import OHLCVQuerySchema
-from ..schemas.enums import Exchange, CryptoSymbol, TimeFrame
-from ..factories import create_repository
-from ..adapters.binance_market_data_collector import BinanceMarketDataCollector
-from ..services.market_data_collector_service import MarketDataCollectorService
 from common.logger import LoggerFactory
+
+from ..adapters.backtesting.backtrader_adapter import BacktraderAdapter
+from ..adapters.binance_market_data_collector import BinanceMarketDataCollector
+from ..factories import create_repository
+from ..schemas.backtesting_schemas import (BacktestRequest, BacktestResult,
+                                           StrategyType)
+from ..schemas.enums import CryptoSymbol, Exchange, TimeFrame
+from ..schemas.ohlcv_schemas import OHLCVQuerySchema
+from ..services.backtesting_service import BacktestingService
+from ..services.market_data_collector_service import MarketDataCollectorService
+from ..services.market_data_service import MarketDataService
 
 
 class BacktestingDemoPipeline:

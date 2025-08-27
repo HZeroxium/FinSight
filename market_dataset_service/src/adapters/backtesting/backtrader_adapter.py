@@ -5,24 +5,21 @@ Backtrader adapter implementation.
 Implements Adapter Pattern to integrate Backtrader engine.
 """
 
+from datetime import datetime
+from typing import Any, Dict, List
+
 import backtrader as bt
 import pandas as pd
-from datetime import datetime
-from typing import Dict, Any, List
+from common.logger import LoggerFactory
 
-from ...interfaces.backtesting_engine import BacktestingEngine, BacktestingEngineError
-from ...schemas.backtesting_schemas import (
-    BacktestRequest,
-    BacktestResult,
-    StrategyConfig,
-    TradeResult,
-    PerformanceMetrics,
-    EquityCurvePoint,
-    PositionSide,
-)
+from ...interfaces.backtesting_engine import (BacktestingEngine,
+                                              BacktestingEngineError)
+from ...schemas.backtesting_schemas import (BacktestRequest, BacktestResult,
+                                            EquityCurvePoint,
+                                            PerformanceMetrics, PositionSide,
+                                            StrategyConfig, TradeResult)
 from ...schemas.ohlcv_schemas import OHLCVSchema
 from ...strategies.strategy_factory import StrategyFactory
-from common.logger import LoggerFactory
 
 
 class BacktraderStrategy(bt.Strategy):

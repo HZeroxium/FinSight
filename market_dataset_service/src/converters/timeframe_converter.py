@@ -8,11 +8,12 @@ to lower frequency data (e.g., 4h, 1d) by aggregating OHLCV values appropriately
 """
 
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
 import pandas as pd
+from common.logger import LoggerFactory
 
 from ..schemas.ohlcv_schemas import OHLCVSchema
-from common.logger import LoggerFactory
 from ..utils.timeframe_utils import TimeFrameUtils
 
 

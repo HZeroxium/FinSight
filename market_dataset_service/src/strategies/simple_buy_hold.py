@@ -4,7 +4,8 @@
 Simple Buy and Hold Strategy Implementation.
 """
 
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
 from ..schemas.ohlcv_schemas import OHLCVSchema
 from .base_strategy import BaseStrategy
 

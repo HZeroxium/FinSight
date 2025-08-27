@@ -11,10 +11,11 @@ This module provides utility functions for:
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+from common.logger import LoggerFactory
 
 from ..schemas.enums import TimeFrame, TimeFrameMultiplier
-from common.logger import LoggerFactory
 
 
 class TimeFrameUtils:

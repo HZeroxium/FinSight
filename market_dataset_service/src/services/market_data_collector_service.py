@@ -8,13 +8,14 @@ Ensures data is kept up-to-date and handles collection scheduling.
 """
 
 import asyncio
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Any, Optional
 import time
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+
+from common.logger import LoggerFactory
 
 from ..interfaces.market_data_collector import MarketDataCollector
 from ..services.market_data_service import MarketDataService
-from common.logger import LoggerFactory
 from ..utils.datetime_utils import DateTimeUtils
 
 

@@ -5,14 +5,15 @@ Strategy Factory for creating strategy instances.
 Implements Factory Pattern for strategy instantiation.
 """
 
-from typing import Dict, Any, List
-from ..schemas.backtesting_schemas import StrategyType, StrategyConfig
+from typing import Any, Dict, List
+
 from ..interfaces.strategy import Strategy, StrategyError
+from ..schemas.backtesting_schemas import StrategyConfig, StrategyType
+from .bollinger_bands import BollingerBandsStrategy
+from .macd_strategy import MACDStrategy
 from .moving_average_crossover import MovingAverageCrossoverStrategy
 from .rsi_strategy import RSIStrategy
 from .simple_buy_hold import SimpleBuyHoldStrategy
-from .bollinger_bands import BollingerBandsStrategy
-from .macd_strategy import MACDStrategy
 
 
 class StrategyFactory:

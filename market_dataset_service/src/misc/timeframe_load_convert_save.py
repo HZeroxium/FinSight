@@ -13,19 +13,20 @@ and generating larger timeframes through aggregation across different storage sy
 """
 
 import asyncio
-from typing import List, Dict, Any, Optional
 import traceback
+from typing import Any, Dict, List, Optional
 
+from common.logger import LoggerFactory
 
+from ..converters.timeframe_converter import TimeFrameConverter
+from ..factories.market_data_repository_factory import \
+    MarketDataRepositoryFactory
+from ..interfaces.market_data_repository import MarketDataRepository
+from ..schemas.enums import CryptoSymbol, Exchange, RepositoryType, TimeFrame
+from ..schemas.ohlcv_schemas import OHLCVQuerySchema, OHLCVSchema
+from ..services.market_data_service import MarketDataService
 from ..utils.datetime_utils import DateTimeUtils
 from ..utils.timeframe_utils import TimeFrameUtils
-from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVQuerySchema
-from ..schemas.enums import CryptoSymbol, TimeFrame, Exchange, RepositoryType
-from ..interfaces.market_data_repository import MarketDataRepository
-from ..factories.market_data_repository_factory import MarketDataRepositoryFactory
-from ..services.market_data_service import MarketDataService
-from ..converters.timeframe_converter import TimeFrameConverter
-from common.logger import LoggerFactory
 
 
 class CrossRepositoryTimeFramePipeline:

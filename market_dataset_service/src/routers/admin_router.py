@@ -8,31 +8,26 @@ including data management, system statistics, and maintenance operations.
 Protected by API key authentication.
 """
 
-from typing import Dict, Any
+import json
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pathlib import Path
+from typing import Any, Dict
 
-from ..services.admin_service import AdminService
-from ..schemas.admin_schemas import (
-    DataEnsureRequest,
-    DataEnsureResponse,
-    TimeframeConvertRequest,
-    TimeframeConvertResponse,
-    AdminStatsResponse,
-    SystemHealthResponse,
-    CleanupRequest,
-    CleanupResponse,
-    QuickPipelineResponse,
-)
-from ..core.config import Settings
 from common.logger import LoggerFactory
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from ..core.config import Settings
 from ..factories.admin_factory import get_admin_service
+from ..schemas.admin_schemas import (AdminStatsResponse, CleanupRequest,
+                                     CleanupResponse, DataEnsureRequest,
+                                     DataEnsureResponse, QuickPipelineResponse,
+                                     SystemHealthResponse,
+                                     TimeframeConvertRequest,
+                                     TimeframeConvertResponse)
+from ..services.admin_service import AdminService
 from ..utils.datetime_utils import DateTimeUtils
 from ..utils.dependencies import verify_api_key as require_admin_access
-import json
-from pathlib import Path
-
 
 # Security scheme for API key authentication
 security = HTTPBearer()

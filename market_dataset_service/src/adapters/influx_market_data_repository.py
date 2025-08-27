@@ -9,7 +9,7 @@ Provides efficient storage and querying for large volumes of market data.
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     from influxdb_client import InfluxDBClient, Point, WritePrecision
@@ -20,12 +20,14 @@ try:
 except ImportError:
     INFLUXDB_AVAILABLE = False
 
-from ..interfaces.market_data_repository import MarketDataRepository
-from ..interfaces.errors import RepositoryError, ValidationError
 from common.logger import LoggerFactory
-from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVBatchSchema, OHLCVQuerySchema
-from ..models.ohlcv_models import OHLCVModelInfluxDB
+
 from ..converters.ohlcv_converter import OHLCVConverter
+from ..interfaces.errors import RepositoryError, ValidationError
+from ..interfaces.market_data_repository import MarketDataRepository
+from ..models.ohlcv_models import OHLCVModelInfluxDB
+from ..schemas.ohlcv_schemas import (OHLCVBatchSchema, OHLCVQuerySchema,
+                                     OHLCVSchema)
 from ..utils.datetime_utils import DateTimeUtils
 
 

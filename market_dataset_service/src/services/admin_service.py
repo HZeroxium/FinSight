@@ -7,33 +7,31 @@ Provides administrative operations for the backtesting system,
 including data management, server statistics, and maintenance operations.
 """
 
-from typing import Dict, Any, List, TYPE_CHECKING
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, Dict, List
 
-from ..interfaces.market_data_repository import MarketDataRepository
-from ..services.market_data_service import MarketDataService
-from ..services.market_data_collector_service import MarketDataCollectorService
-from ..converters.timeframe_converter import TimeFrameConverter
 from common.logger import LoggerFactory
-from ..schemas.admin_schemas import (
-    AdminStatsResponse,
-    DataEnsureRequest,
-    DataEnsureResponse,
-    TimeframeConvertRequest,
-    TimeframeConvertResponse,
-    SystemHealthResponse,
-    QuickPipelineResponse,
-    QuickSymbolPipelineResult,
-    QuickUploadResult,
-)
-from ..utils.datetime_utils import DateTimeUtils
-from ..schemas.enums import RepositoryType, TimeFrame, Exchange
+
+from ..converters.timeframe_converter import TimeFrameConverter
+from ..interfaces.market_data_repository import MarketDataRepository
+from ..schemas.admin_schemas import (AdminStatsResponse, DataEnsureRequest,
+                                     DataEnsureResponse, QuickPipelineResponse,
+                                     QuickSymbolPipelineResult,
+                                     QuickUploadResult, SystemHealthResponse,
+                                     TimeframeConvertRequest,
+                                     TimeframeConvertResponse)
+from ..schemas.enums import Exchange, RepositoryType, TimeFrame
 from ..schemas.job_schemas import ManualJobRequest
+from ..services.market_data_collector_service import MarketDataCollectorService
+from ..services.market_data_service import MarketDataService
+from ..utils.datetime_utils import DateTimeUtils
 
 if TYPE_CHECKING:  # avoid runtime imports to prevent circular dependencies
-    from ..services.market_data_job_service import MarketDataJobManagementService
+    from ..misc.timeframe_load_convert_save import \
+        CrossRepositoryTimeFramePipeline
+    from ..services.market_data_job_service import \
+        MarketDataJobManagementService
     from ..services.market_data_storage_service import MarketDataStorageService
-    from ..misc.timeframe_load_convert_save import CrossRepositoryTimeFramePipeline
 
 
 class AdminService:
@@ -409,16 +407,14 @@ class AdminService:
         try:
             if source_format == target_format:
                 if source_format == RepositoryType.CSV.value:
-                    from ..adapters.csv_market_data_repository import (
-                        CSVMarketDataRepository,
-                    )
+                    from ..adapters.csv_market_data_repository import \
+                        CSVMarketDataRepository
 
                     pipeline.source_repository = CSVMarketDataRepository()
                     pipeline.target_repository = CSVMarketDataRepository()
                 elif source_format == RepositoryType.PARQUET.value:
-                    from ..adapters.parquet_market_data_repository import (
-                        ParquetMarketDataRepository,
-                    )
+                    from ..adapters.parquet_market_data_repository import \
+                        ParquetMarketDataRepository
 
                     pipeline.source_repository = ParquetMarketDataRepository()
                     pipeline.target_repository = ParquetMarketDataRepository()
@@ -429,12 +425,10 @@ class AdminService:
                     source_format == RepositoryType.CSV.value
                     and target_format == RepositoryType.PARQUET.value
                 ):
-                    from ..adapters.csv_market_data_repository import (
-                        CSVMarketDataRepository,
-                    )
-                    from ..adapters.parquet_market_data_repository import (
-                        ParquetMarketDataRepository,
-                    )
+                    from ..adapters.csv_market_data_repository import \
+                        CSVMarketDataRepository
+                    from ..adapters.parquet_market_data_repository import \
+                        ParquetMarketDataRepository
 
                     pipeline.source_repository = CSVMarketDataRepository()
                     pipeline.target_repository = ParquetMarketDataRepository()
@@ -442,12 +436,10 @@ class AdminService:
                     source_format == RepositoryType.PARQUET.value
                     and target_format == RepositoryType.CSV.value
                 ):
-                    from ..adapters.parquet_market_data_repository import (
-                        ParquetMarketDataRepository,
-                    )
-                    from ..adapters.csv_market_data_repository import (
-                        CSVMarketDataRepository,
-                    )
+                    from ..adapters.csv_market_data_repository import \
+                        CSVMarketDataRepository
+                    from ..adapters.parquet_market_data_repository import \
+                        ParquetMarketDataRepository
 
                     pipeline.source_repository = ParquetMarketDataRepository()
                     pipeline.target_repository = CSVMarketDataRepository()

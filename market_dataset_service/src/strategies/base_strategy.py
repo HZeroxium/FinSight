@@ -4,7 +4,8 @@
 Base strategy implementation providing common functionality.
 """
 
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
 from ..interfaces.strategy import Strategy, StrategyError
 from ..schemas.backtesting_schemas import StrategyConfig
 

@@ -8,14 +8,11 @@ Supports CRUD operations for backtest results and history.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from ..schemas.backtesting_schemas import (
-    BacktestResult,
-    BacktestHistoryItem,
-    StrategyType,
-)
+from ..schemas.backtesting_schemas import (BacktestHistoryItem, BacktestResult,
+                                           StrategyType)
 
 
 class BacktestingRepositoryError(Exception):

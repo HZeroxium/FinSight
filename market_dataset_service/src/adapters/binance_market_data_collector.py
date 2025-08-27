@@ -7,20 +7,20 @@ Implements the MarketDataCollector interface for collecting data from Binance ex
 Focuses on OHLCV data collection using python-binance library.
 """
 
-from datetime import timedelta
-from typing import Dict, List, Any, Optional
 import time
+from datetime import timedelta
+from typing import Any, Dict, List, Optional
 
 from binance.client import Client
 from binance.exceptions import BinanceAPIException, BinanceRequestException
-
-from ..interfaces.market_data_collector import MarketDataCollector
-from ..interfaces.errors import CollectionError, ValidationError
 from common.logger import LoggerFactory, LoggerType, LogLevel
-from ..utils.datetime_utils import DateTimeUtils
-from ..schemas.ohlcv_schemas import OHLCVSchema
-from ..schemas.enums import TimeFrame, Exchange
+
 from ..converters.ohlcv_converter import OHLCVConverter
+from ..interfaces.errors import CollectionError, ValidationError
+from ..interfaces.market_data_collector import MarketDataCollector
+from ..schemas.enums import Exchange, TimeFrame
+from ..schemas.ohlcv_schemas import OHLCVSchema
+from ..utils.datetime_utils import DateTimeUtils
 
 
 class BinanceMarketDataCollector(MarketDataCollector):

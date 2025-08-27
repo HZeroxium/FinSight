@@ -11,25 +11,25 @@ Production-ready background job service for automated market data collection wit
 - Health monitoring and status reporting
 """
 
-import signal
-import asyncio
 import argparse
+import asyncio
+import signal
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, asdict
+from typing import Any, Dict, List, Optional
 
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+from common.logger import LoggerFactory
 
 from .adapters.binance_market_data_collector import BinanceMarketDataCollector
-from .services.market_data_service import MarketDataService
-from .services.market_data_collector_service import MarketDataCollectorService
+from .core.config import settings
 from .factories import create_repository
 from .schemas.enums import Exchange
-from .core.config import settings
-from common.logger import LoggerFactory
+from .services.market_data_collector_service import MarketDataCollectorService
+from .services.market_data_service import MarketDataService
 
 
 @dataclass

@@ -5,11 +5,12 @@ Factory pattern implementation for creating different types of market data repos
 Enables easy switching between storage backends (CSV, MongoDB, InfluxDB, etc.).
 """
 
-from typing import Dict, Any, Optional, Type
+from typing import Any, Dict, Optional, Type
 
-from ..interfaces.market_data_repository import MarketDataRepository
-from ..interfaces.errors import RepositoryError
 from common.logger import LoggerFactory
+
+from ..interfaces.errors import RepositoryError
+from ..interfaces.market_data_repository import MarketDataRepository
 from ..schemas.enums import RepositoryType
 
 
@@ -179,15 +180,15 @@ class MarketDataRepositoryFactory:
         """Register default repository implementations"""
         try:
             # CSV Repository
-            from ..adapters.csv_market_data_repository import CSVMarketDataRepository
+            from ..adapters.csv_market_data_repository import \
+                CSVMarketDataRepository
 
             self._registry[RepositoryType.CSV] = CSVMarketDataRepository
 
             # MongoDB Repository
             try:
-                from ..adapters.mongodb_market_data_repository import (
-                    MongoDBMarketDataRepository,
-                )
+                from ..adapters.mongodb_market_data_repository import \
+                    MongoDBMarketDataRepository
 
                 self._registry[RepositoryType.MONGODB] = MongoDBMarketDataRepository
             except ImportError:
@@ -198,9 +199,7 @@ class MarketDataRepositoryFactory:
             # InfluxDB Repository
             try:
                 from ..adapters.influx_market_data_repository import (
-                    InfluxMarketDataRepository,
-                    INFLUXDB_AVAILABLE,
-                )
+                    INFLUXDB_AVAILABLE, InfluxMarketDataRepository)
 
                 if INFLUXDB_AVAILABLE:
                     self._registry[RepositoryType.INFLUXDB] = InfluxMarketDataRepository

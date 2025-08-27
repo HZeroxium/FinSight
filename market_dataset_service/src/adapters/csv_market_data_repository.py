@@ -12,14 +12,16 @@ import csv
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from ..interfaces.market_data_repository import MarketDataRepository
-from ..interfaces.errors import RepositoryError
 from common.logger import LoggerFactory
-from ..schemas.ohlcv_schemas import OHLCVSchema, OHLCVBatchSchema, OHLCVQuerySchema
-from ..models.ohlcv_models import OHLCVModelCSV
+
 from ..converters.ohlcv_converter import OHLCVConverter
+from ..interfaces.errors import RepositoryError
+from ..interfaces.market_data_repository import MarketDataRepository
+from ..models.ohlcv_models import OHLCVModelCSV
+from ..schemas.ohlcv_schemas import (OHLCVBatchSchema, OHLCVQuerySchema,
+                                     OHLCVSchema)
 from ..utils.datetime_utils import DateTimeUtils
 
 

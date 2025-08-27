@@ -1,9 +1,6 @@
 # core/__init__.py
 
-from .config import (
-    settings,
-    Settings,
-)
+from .config import Settings, settings
 
 __all__ = [
     "settings",

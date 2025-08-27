@@ -9,17 +9,14 @@ storage implementations.
 """
 
 from datetime import datetime, timezone
-from typing import List, Dict, Any, TypeVar, Union
+from typing import Any, Dict, List, TypeVar, Union
 
-from ..schemas.ohlcv_schemas import OHLCVSchema
-from ..models.ohlcv_models import (
-    OHLCVModelMongoDB,
-    OHLCVModelInfluxDB,
-    OHLCVModelCSV,
-    OHLCVModelTimeScaleDB,
-    OHLCVModelGeneric,
-)
 from common.logger import LoggerFactory
+
+from ..models.ohlcv_models import (OHLCVModelCSV, OHLCVModelGeneric,
+                                   OHLCVModelInfluxDB, OHLCVModelMongoDB,
+                                   OHLCVModelTimeScaleDB)
+from ..schemas.ohlcv_schemas import OHLCVSchema
 
 # Type variables for generic typing
 T = TypeVar("T")

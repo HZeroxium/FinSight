@@ -7,31 +7,33 @@ This module sets up dependency injection using the dependency_injector library
 to provide clean separation of concerns and enable easy testing and configuration.
 """
 
+from common.logger import LoggerFactory
 from dependency_injector import containers, providers
-from fastapi import HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from ..core.config import settings
-from ..interfaces.market_data_repository import MarketDataRepository
-from ..interfaces.market_data_collector import MarketDataCollector
-from ..services.market_data_service import MarketDataService
-from ..services.market_data_collector_service import MarketDataCollectorService
-from ..services.market_data_storage_service import MarketDataStorageService
-from ..services.market_data_job_service import MarketDataJobManagementService
-from ..adapters.csv_market_data_repository import CSVMarketDataRepository
-from ..adapters.mongodb_market_data_repository import MongoDBMarketDataRepository
-from ..adapters.parquet_market_data_repository import ParquetMarketDataRepository
 from ..adapters.binance_market_data_collector import BinanceMarketDataCollector
-from ..utils.storage_client import StorageClient
+from ..adapters.csv_market_data_repository import CSVMarketDataRepository
+from ..adapters.mongodb_market_data_repository import \
+    MongoDBMarketDataRepository
+from ..adapters.parquet_market_data_repository import \
+    ParquetMarketDataRepository
 from ..converters.ohlcv_converter import OHLCVConverter
 from ..converters.timeframe_converter import TimeFrameConverter
+from ..core.config import settings
+from ..interfaces.market_data_collector import MarketDataCollector
+from ..interfaces.market_data_repository import MarketDataRepository
 from ..misc.timeframe_load_convert_save import CrossRepositoryTimeFramePipeline
-from .timeframe_utils import TimeFrameUtils
-from .datetime_utils import DateTimeUtils
-from common.logger import LoggerFactory
 from ..schemas.enums import RepositoryType
-from ..services.eureka_client_service import EurekaClientService
 from ..services.admin_service import AdminService
+from ..services.eureka_client_service import EurekaClientService
+from ..services.market_data_collector_service import MarketDataCollectorService
+from ..services.market_data_job_service import MarketDataJobManagementService
+from ..services.market_data_service import MarketDataService
+from ..services.market_data_storage_service import MarketDataStorageService
+from ..utils.storage_client import StorageClient
+from .datetime_utils import DateTimeUtils
+from .timeframe_utils import TimeFrameUtils
 
 
 def _create_repository(

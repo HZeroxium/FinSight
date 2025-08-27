@@ -8,24 +8,17 @@ Provides scalable and queryable storage for production use.
 """
 
 from datetime import datetime
-from typing import List, Optional, Dict, Any
-from motor.motor_asyncio import (
-    AsyncIOMotorClient,
-    AsyncIOMotorDatabase,
-    AsyncIOMotorCollection,
-)
+from typing import Any, Dict, List, Optional
+
+from common.logger import LoggerFactory
+from motor.motor_asyncio import (AsyncIOMotorClient, AsyncIOMotorCollection,
+                                 AsyncIOMotorDatabase)
 from pymongo import ASCENDING, DESCENDING
 from pymongo.errors import PyMongoError
 
-from ..interfaces.backtesting_repository import (
-    BacktestingRepository,
-    BacktestingRepositoryError,
-)
-from ..schemas.backtesting_schemas import (
-    BacktestResult,
-    BacktestHistoryItem,
-)
-from common.logger import LoggerFactory
+from ..interfaces.backtesting_repository import (BacktestingRepository,
+                                                 BacktestingRepositoryError)
+from ..schemas.backtesting_schemas import BacktestHistoryItem, BacktestResult
 
 
 class MongoDBBacktestingRepository(BacktestingRepository):

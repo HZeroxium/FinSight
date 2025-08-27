@@ -13,26 +13,22 @@ RESTful endpoints for managing market data storage operations including:
 Based on the storage service layer and cross-repository pipeline logic.
 """
 
-from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from ..services.market_data_storage_service import MarketDataStorageService
-from ..misc.timeframe_load_convert_save import CrossRepositoryTimeFramePipeline
-from ..schemas.enums import Exchange, TimeFrame, CryptoSymbol, RepositoryType
-from ..schemas.storage_schema import (
-    DatasetUploadRequest,
-    DatasetDownloadRequest,
-    FormatConversionRequest,
-    BulkOperationRequest,
-    StorageStatsResponse,
-)
-from ..utils.dependencies import (
-    require_admin_access,
-    get_storage_service,
-    get_cross_repository_pipeline,
-)
 from common.logger import LoggerFactory, LoggerType, LogLevel
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from ..misc.timeframe_load_convert_save import CrossRepositoryTimeFramePipeline
+from ..schemas.enums import CryptoSymbol, Exchange, RepositoryType, TimeFrame
+from ..schemas.storage_schema import (BulkOperationRequest,
+                                      DatasetDownloadRequest,
+                                      DatasetUploadRequest,
+                                      FormatConversionRequest,
+                                      StorageStatsResponse)
+from ..services.market_data_storage_service import MarketDataStorageService
+from ..utils.dependencies import (get_cross_repository_pipeline,
+                                  get_storage_service, require_admin_access)
 
 # Initialize logger
 logger = LoggerFactory.get_logger(
@@ -757,10 +753,10 @@ async def convert_timeframes(
             logger.info("No date range specified, attempting to get full dataset range")
 
             # Get source repository to determine data range
-            from ..adapters.csv_market_data_repository import CSVMarketDataRepository
-            from ..adapters.parquet_market_data_repository import (
-                ParquetMarketDataRepository,
-            )
+            from ..adapters.csv_market_data_repository import \
+                CSVMarketDataRepository
+            from ..adapters.parquet_market_data_repository import \
+                ParquetMarketDataRepository
 
             if source_format == RepositoryType.CSV.value:
                 source_repo = CSVMarketDataRepository()
@@ -803,17 +799,15 @@ async def convert_timeframes(
         if source_format == target_format:
             # Same format conversion (e.g., CSV to CSV, Parquet to Parquet)
             if source_format == RepositoryType.CSV.value:
-                from ..adapters.csv_market_data_repository import (
-                    CSVMarketDataRepository,
-                )
+                from ..adapters.csv_market_data_repository import \
+                    CSVMarketDataRepository
 
                 pipeline.source_repository = CSVMarketDataRepository()
                 pipeline.target_repository = CSVMarketDataRepository()
                 logger.info("Using CSV repository for both source and target")
             elif source_format == RepositoryType.PARQUET.value:
-                from ..adapters.parquet_market_data_repository import (
-                    ParquetMarketDataRepository,
-                )
+                from ..adapters.parquet_market_data_repository import \
+                    ParquetMarketDataRepository
 
                 pipeline.source_repository = ParquetMarketDataRepository()
                 pipeline.target_repository = ParquetMarketDataRepository()
@@ -829,12 +823,10 @@ async def convert_timeframes(
                 source_format == RepositoryType.CSV.value
                 and target_format == RepositoryType.PARQUET.value
             ):
-                from ..adapters.csv_market_data_repository import (
-                    CSVMarketDataRepository,
-                )
-                from ..adapters.parquet_market_data_repository import (
-                    ParquetMarketDataRepository,
-                )
+                from ..adapters.csv_market_data_repository import \
+                    CSVMarketDataRepository
+                from ..adapters.parquet_market_data_repository import \
+                    ParquetMarketDataRepository
 
                 pipeline.source_repository = CSVMarketDataRepository()
                 pipeline.target_repository = ParquetMarketDataRepository()
@@ -845,12 +837,10 @@ async def convert_timeframes(
                 source_format == RepositoryType.PARQUET.value
                 and target_format == RepositoryType.CSV.value
             ):
-                from ..adapters.parquet_market_data_repository import (
-                    ParquetMarketDataRepository,
-                )
-                from ..adapters.csv_market_data_repository import (
-                    CSVMarketDataRepository,
-                )
+                from ..adapters.csv_market_data_repository import \
+                    CSVMarketDataRepository
+                from ..adapters.parquet_market_data_repository import \
+                    ParquetMarketDataRepository
 
                 pipeline.source_repository = ParquetMarketDataRepository()
                 pipeline.target_repository = CSVMarketDataRepository()

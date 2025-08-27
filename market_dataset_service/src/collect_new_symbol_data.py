@@ -11,15 +11,16 @@ Intelligent data collection for new symbols with automatic strategy selection:
 
 import asyncio
 from datetime import date, timedelta
-from typing import List, Tuple, Dict, Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from common.logger import LoggerFactory
 
 from .adapters.binance_market_data_collector import BinanceMarketDataCollector
-from .services.market_data_service import MarketDataService
-from .services.market_data_collector_service import MarketDataCollectorService
-from .factories import create_repository
-from .schemas.enums import CryptoSymbol, TimeFrame, Exchange
 from .core.config import settings
-from common.logger import LoggerFactory
+from .factories import create_repository
+from .schemas.enums import CryptoSymbol, Exchange, TimeFrame
+from .services.market_data_collector_service import MarketDataCollectorService
+from .services.market_data_service import MarketDataService
 from .utils.datetime_utils import DateTimeUtils
 
 

@@ -7,12 +7,13 @@ Pydantic schemas for market data job management operations.
 Replaces dataclass-based configurations with modern Pydantic v2 models.
 """
 
-from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional, Union
+
 from pydantic import BaseModel, Field, field_validator
 
-from .enums import Exchange, TimeFrame, RepositoryType, CryptoSymbol
+from .enums import CryptoSymbol, Exchange, RepositoryType, TimeFrame
 
 
 class JobStatus(str, Enum):

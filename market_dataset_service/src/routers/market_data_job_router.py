@@ -7,27 +7,22 @@ REST API endpoints for managing market data collection jobs.
 Provides job control, configuration management, and monitoring capabilities.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from fastapi.responses import JSONResponse
-from typing import Dict, Any
+from typing import Any, Dict
 
-from ..schemas.job_schemas import (
-    JobStatusResponse,
-    JobStartRequest,
-    JobStopRequest,
-    ManualJobRequest,
-    ManualJobResponse,
-    MarketDataJobConfigModel,
-    JobConfigUpdateRequest,
-    JobOperationResponse,
-    JobStatsModel,
-    DataCollectionJobRequest,
-    DataCollectionJobResponse,
-    HealthCheckResponse,
-)
-from ..services.market_data_job_service import MarketDataJobManagementService
-from ..utils.dependencies import get_market_data_job_service, require_admin_access
 from common.logger import LoggerFactory, LoggerType, LogLevel
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import JSONResponse
+
+from ..schemas.job_schemas import (DataCollectionJobRequest,
+                                   DataCollectionJobResponse,
+                                   HealthCheckResponse, JobConfigUpdateRequest,
+                                   JobOperationResponse, JobStartRequest,
+                                   JobStatsModel, JobStatusResponse,
+                                   JobStopRequest, ManualJobRequest,
+                                   ManualJobResponse, MarketDataJobConfigModel)
+from ..services.market_data_job_service import MarketDataJobManagementService
+from ..utils.dependencies import (get_market_data_job_service,
+                                  require_admin_access)
 
 # Initialize router
 router = APIRouter(
@@ -217,8 +212,8 @@ async def run_manual_job(
             # Execute in background
             background_tasks.add_task(job_service.run_manual_job, request)
             # Return immediate response for async execution
-            from datetime import datetime
             import uuid
+            from datetime import datetime
 
             return ManualJobResponse(
                 status="started",

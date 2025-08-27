@@ -5,10 +5,13 @@ Configuration management for the backtesting system.
 Centralized configuration using Pydantic settings with environment variable support.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field, field_validator
-from pydantic_settings import SettingsConfigDict, BaseSettings
-from ..schemas.enums import StorageProviderType, CryptoSymbol, TimeFrame, RepositoryType
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from ..schemas.enums import (CryptoSymbol, RepositoryType, StorageProviderType,
+                             TimeFrame)
 
 
 class Settings(BaseSettings):

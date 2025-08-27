@@ -10,28 +10,24 @@ Provides endpoints for backtesting operations including:
 - Strategy performance metrics
 """
 
-from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, Query, status
+from typing import Any, Dict, Optional
 
-from ..services.backtesting_service import BacktestingService
-from ..services.backtesting_data_service import BacktestingDataService
-from ..schemas.backtesting_schemas import (
-    BacktestRequest,
-    BacktestResult as BacktestResponse,
-    StrategyListResponse,
-    StrategyConfigSchema,
-    BacktestHistoryResponse,
-    BacktestDeletionResponse,
-    BacktestEnginesResponse,
-    BacktestEngineInfo,
-)
-from ..strategies.strategy_factory import StrategyFactory
 from common.logger import LoggerFactory
-from ..factories.backtesting_factory import (
-    get_backtesting_service,
-    get_backtesting_data_service,
-)
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from ..factories.backtesting_factory import (get_backtesting_data_service,
+                                             get_backtesting_service)
+from ..schemas.backtesting_schemas import (BacktestDeletionResponse,
+                                           BacktestEngineInfo,
+                                           BacktestEnginesResponse,
+                                           BacktestHistoryResponse,
+                                           BacktestRequest)
+from ..schemas.backtesting_schemas import BacktestResult as BacktestResponse
+from ..schemas.backtesting_schemas import (StrategyConfigSchema,
+                                           StrategyListResponse)
+from ..services.backtesting_data_service import BacktestingDataService
+from ..services.backtesting_service import BacktestingService
+from ..strategies.strategy_factory import StrategyFactory
 
 # Router configuration
 router = APIRouter(

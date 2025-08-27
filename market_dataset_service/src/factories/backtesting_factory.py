@@ -5,19 +5,21 @@ Factory for creating backtesting components.
 Implements Factory Pattern for consistent component creation.
 """
 
-from typing import Dict, Any, Optional
 from enum import Enum
+from typing import Any, Dict, Optional
 
-from ..interfaces.backtesting_engine import BacktestingEngine
-from ..interfaces.backtesting_repository import BacktestingRepository
+from common.logger import LoggerFactory
+
 from ..adapters.backtesting.backtrader_adapter import BacktraderAdapter
 from ..adapters.file_backtesting_repository import FileBacktestingRepository
-from ..adapters.mongodb_backtesting_repository import MongoDBBacktestingRepository
-from ..services.backtesting_service import BacktestingService
-from ..services.backtesting_data_service import BacktestingDataService
-from ..services.market_data_service import MarketDataService
-from common.logger import LoggerFactory
+from ..adapters.mongodb_backtesting_repository import \
+    MongoDBBacktestingRepository
 from ..core.config import Settings
+from ..interfaces.backtesting_engine import BacktestingEngine
+from ..interfaces.backtesting_repository import BacktestingRepository
+from ..services.backtesting_data_service import BacktestingDataService
+from ..services.backtesting_service import BacktestingService
+from ..services.market_data_service import MarketDataService
 
 
 class BacktestingEngineType(str, Enum):
@@ -283,7 +285,8 @@ def get_market_data_service():
     Returns:
         MarketDataService instance
     """
-    from .market_data_repository_factory import get_market_data_service as get_service
+    from .market_data_repository_factory import \
+        get_market_data_service as get_service
 
     return get_service()
 
@@ -377,8 +380,10 @@ def get_market_data_collector_service():
     Returns:
         MarketDataCollectorService instance
     """
-    from ..services.market_data_collector_service import MarketDataCollectorService
-    from ..adapters.binance_market_data_collector import BinanceMarketDataCollector
+    from ..adapters.binance_market_data_collector import \
+        BinanceMarketDataCollector
+    from ..services.market_data_collector_service import \
+        MarketDataCollectorService
 
     # Create collector
     collector = BinanceMarketDataCollector()

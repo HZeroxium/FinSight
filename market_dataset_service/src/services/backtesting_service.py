@@ -5,22 +5,19 @@ Backtesting Service - Main business logic for backtesting operations.
 Implements Aggregator pattern to coordinate between strategies, engines, and data.
 """
 
-from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+from common.logger import LoggerFactory
 
 from ..interfaces.backtesting_engine import BacktestingEngine
-from ..schemas.backtesting_schemas import (
-    BacktestRequest,
-    BacktestResult,
-    StrategyConfig,
-    StrategyType,
-    BacktestSummary,
-)
+from ..schemas.backtesting_schemas import (BacktestRequest, BacktestResult,
+                                           BacktestSummary, StrategyConfig,
+                                           StrategyType)
 from ..schemas.ohlcv_schemas import OHLCVSchema
-from ..services.market_data_service import MarketDataService
 from ..services.backtesting_data_service import BacktestingDataService
+from ..services.market_data_service import MarketDataService
 from ..strategies.strategy_factory import StrategyFactory
-from common.logger import LoggerFactory
 
 
 class BacktestingServiceError(Exception):

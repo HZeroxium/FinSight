@@ -6,13 +6,10 @@ Part of Ports & Adapters (Hexagonal Architecture) pattern.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
-from ..schemas.backtesting_schemas import (
-    BacktestRequest,
-    BacktestResult,
-    StrategyConfig,
-)
+from ..schemas.backtesting_schemas import (BacktestRequest, BacktestResult,
+                                           StrategyConfig)
 from ..schemas.ohlcv_schemas import OHLCVSchema
 
 

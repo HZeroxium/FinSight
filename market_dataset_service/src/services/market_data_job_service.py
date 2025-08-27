@@ -7,30 +7,23 @@ Service layer for managing market data collection jobs.
 Acts as a facade over MarketDataJobService to provide REST API management interface.
 """
 
-import os
 import asyncio
-from typing import Optional, Dict, Any
-from datetime import datetime
+import os
 import uuid
+from datetime import datetime
+from typing import Any, Dict, Optional
 
-from ..schemas.job_schemas import (
-    JobStatus,
-    MarketDataJobConfigModel,
-    JobStatsModel,
-    JobStatusResponse,
-    JobStartRequest,
-    JobStopRequest,
-    ManualJobRequest,
-    ManualJobResponse,
-    JobConfigUpdateRequest,
-    JobOperationResponse,
-    DataCollectionJobRequest,
-    DataCollectionJobResponse,
-    HealthCheckResponse,
-)
-from ..market_data_job import MarketDataJobService, JobConfig
-from ..core.config import settings
 from common.logger import LoggerFactory, LoggerType, LogLevel
+
+from ..core.config import settings
+from ..market_data_job import JobConfig, MarketDataJobService
+from ..schemas.job_schemas import (DataCollectionJobRequest,
+                                   DataCollectionJobResponse,
+                                   HealthCheckResponse, JobConfigUpdateRequest,
+                                   JobOperationResponse, JobStartRequest,
+                                   JobStatsModel, JobStatus, JobStatusResponse,
+                                   JobStopRequest, ManualJobRequest,
+                                   ManualJobResponse, MarketDataJobConfigModel)
 
 
 class MarketDataJobManagementService:

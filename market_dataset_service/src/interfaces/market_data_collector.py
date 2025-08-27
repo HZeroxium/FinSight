@@ -8,7 +8,8 @@ Focuses solely on data collection logic without storage concerns.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any
+from typing import Any, Dict, List
+
 from ..schemas.ohlcv_schemas import OHLCVSchema
 
 

@@ -5,9 +5,10 @@ Backtesting API schemas for request/response DTOs.
 """
 
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StrategyType(str, Enum):
