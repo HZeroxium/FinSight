@@ -23,10 +23,19 @@ from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
 from .core.config import settings
-from .interfaces.errors import (BacktestingServiceError, CollectionError,
-                                RepositoryError, ValidationError)
-from .routers import (admin_router, backtesting_router, market_data_job_router,
-                      market_data_router, market_data_storage_router)
+from .interfaces.errors import (
+    BacktestingServiceError,
+    CollectionError,
+    RepositoryError,
+    ValidationError,
+)
+from .routers import (
+    admin_router,
+    backtesting_router,
+    market_data_job_router,
+    market_data_router,
+    market_data_storage_router,
+)
 from .routers.eureka_router import router as eureka_router
 from .utils.dependencies import get_eureka_client_service
 
@@ -405,37 +414,31 @@ async def health_check():
 # Include routers
 app.include_router(
     admin_router.router,
-    prefix="/api/v1",
     tags=["admin"],
 )
 
 app.include_router(
     market_data_router.router,
-    prefix="/api/v1",
     tags=["market-data"],
 )
 
-app.include_router(
-    backtesting_router.router,
-    prefix="/api/v1",
-    tags=["backtesting"],
-)
+# app.include_router(
+#     backtesting_router.router,
+#     tags=["backtesting"],
+# )
 
 app.include_router(
     market_data_storage_router.router,
-    prefix="/api/v1",
     tags=["market-data-storage"],
 )
 
 app.include_router(
     market_data_job_router.router,
-    prefix="/api/v1",
     tags=["market-data-job-management"],
 )
 
 app.include_router(
     eureka_router,
-    prefix="/api/v1",
     tags=["eureka-client-management"],
 )
 

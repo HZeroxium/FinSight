@@ -8,9 +8,10 @@ with date range support and boundary validation
 
 import asyncio
 import os
+import random
 import sys
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from common.logger.logger_factory import LoggerFactory
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -433,78 +434,58 @@ class DatabaseMigrationService:
                 )
                 return stats
 
+            # Calculate effective articles after dropout
+            effective_articles = int(stats.total_articles * (1 - dropout_ratio))
+
             self.logger.info(
                 f"Starting migration: {stats.total_articles:,} articles from {source_env} to {target_env}"
             )
 
+            if dropout_ratio > 0:
+                self.logger.info(
+                    f"Dropout ratio: {dropout_ratio:.2f} - Will randomly sample ~{effective_articles:,} articles"
+                )
+
             if dry_run:
                 self.logger.info("DRY RUN MODE - No actual changes will be made")
 
-            # Calculate dropout count
-            dropout_count = 0
-            if dropout_ratio > 0:
-                dropout_count = int(stats.total_articles * dropout_ratio)
-                self.logger.info(
-                    f"Dropout ratio: {dropout_ratio:.2f} - Will skip {dropout_count:,} articles"
-                )
-
-            # Process articles in batches
+            # Process articles in batches with random dropout
             cursor = (
                 self.source_db[settings.mongodb_collection_news]
                 .find(query_filter)
-                .sort(
-                    "published_at", 1
-                )  # Sort by published_at ascending for consistent processing
+                .sort("published_at", 1)
                 .batch_size(batch_size)
             )
 
             batch_number = 0
             articles_processed = 0
+            current_batch: List[Dict] = []
 
             async for article in cursor:
                 articles_processed += 1
+                current_batch.append(article)
 
-                # Apply dropout ratio
-                if dropout_count > 0 and articles_processed <= dropout_count:
-                    stats.skipped_articles += 1
-                    continue
-
-                try:
-                    if not dry_run:
-                        # Check if article already exists in target
-                        existing = await self.target_db[
-                            settings.mongodb_collection_news
-                        ].find_one({"_id": article["_id"]})
-
-                        if existing:
-                            self.logger.debug(
-                                f"Article {article['_id']} already exists in target, skipping"
-                            )
-                            stats.skipped_articles += 1
-                            continue
-
-                        # Insert article into target database
-                        await self.target_db[
-                            settings.mongodb_collection_news
-                        ].insert_one(article)
-
-                    stats.migrated_articles += 1
-
-                    # Log progress every batch
-                    if stats.migrated_articles % batch_size == 0:
-                        batch_number += 1
-                        progress = (articles_processed / stats.total_articles) * 100
-                        self.logger.info(
-                            f"Batch {batch_number}: Processed {articles_processed:,}/{stats.total_articles:,} "
-                            f"({progress:.1f}%) - Migrated: {stats.migrated_articles:,}, "
-                            f"Skipped: {stats.skipped_articles:,}, Failed: {stats.failed_articles:,}"
-                        )
-
-                except Exception as e:
-                    self.logger.error(
-                        f"Failed to migrate article {article.get('_id', 'unknown')}: {e}"
+                # Process when batch is full or at end
+                if len(current_batch) >= batch_size:
+                    await self._process_article_batch(
+                        current_batch, dropout_ratio, stats, dry_run, batch_number + 1
                     )
-                    stats.failed_articles += 1
+                    current_batch.clear()
+                    batch_number += 1
+
+                    # Log progress
+                    progress = (articles_processed / stats.total_articles) * 100
+                    self.logger.info(
+                        f"Batch {batch_number}: Processed {articles_processed:,}/{stats.total_articles:,} "
+                        f"({progress:.1f}%) - Migrated: {stats.migrated_articles:,}, "
+                        f"Skipped: {stats.skipped_articles:,}, Failed: {stats.failed_articles:,}"
+                    )
+
+            # Process remaining articles in final batch
+            if current_batch:
+                await self._process_article_batch(
+                    current_batch, dropout_ratio, stats, dry_run, batch_number + 1
+                )
 
             stats.end_time = datetime.now(timezone.utc)
 
@@ -525,6 +506,78 @@ class DatabaseMigrationService:
             error_msg = f"Migration failed: {e}"
             self.logger.error(error_msg)
             raise DatabaseMigrationError(error_msg)
+
+    async def _process_article_batch(
+        self,
+        batch_articles: List[Dict],
+        dropout_ratio: float,
+        stats: MigrationStats,
+        dry_run: bool,
+        batch_number: int,
+    ) -> None:
+        """
+        Process a batch of articles with random dropout sampling
+
+        Args:
+            batch_articles: List of articles in the batch
+            dropout_ratio: Ratio of articles to randomly skip (0.0-1.0)
+            stats: Migration statistics to update
+            dry_run: Whether this is a dry run
+            batch_number: Current batch number for logging
+        """
+        try:
+            # Apply random dropout to the batch
+            if dropout_ratio > 0.0:
+                # Random sampling - keep (1 - dropout_ratio) of articles
+                keep_count = int(len(batch_articles) * (1 - dropout_ratio))
+                if keep_count < len(batch_articles):
+                    # Randomly select articles to keep
+                    articles_to_process = random.sample(batch_articles, keep_count)
+                    skipped_in_batch = len(batch_articles) - keep_count
+                    stats.skipped_articles += skipped_in_batch
+
+                    self.logger.debug(
+                        f"Batch {batch_number}: Randomly selected {keep_count}/{len(batch_articles)} "
+                        f"articles (skipped {skipped_in_batch})"
+                    )
+                else:
+                    articles_to_process = batch_articles
+            else:
+                articles_to_process = batch_articles
+
+            # Process selected articles
+            for article in articles_to_process:
+                try:
+                    if not dry_run:
+                        # Check if article already exists
+                        existing = await self.target_db[
+                            settings.mongodb_collection_news
+                        ].find_one({"_id": article["_id"]})
+
+                        if existing:
+                            self.logger.debug(
+                                f"Article {article['_id']} already exists, skipping"
+                            )
+                            stats.skipped_articles += 1
+                            continue
+
+                        # Insert article
+                        await self.target_db[
+                            settings.mongodb_collection_news
+                        ].insert_one(article)
+
+                    stats.migrated_articles += 1
+
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to migrate article {article.get('_id', 'unknown')}: {e}"
+                    )
+                    stats.failed_articles += 1
+
+        except Exception as e:
+            self.logger.error(f"Failed to process batch {batch_number}: {e}")
+            # Count all articles in batch as failed
+            stats.failed_articles += len(batch_articles)
 
     async def verify_migration(
         self, source_env: str, target_env: str

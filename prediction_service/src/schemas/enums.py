@@ -27,6 +27,21 @@ class CryptoSymbol(str, Enum):
     BNBUSDT = "BNBUSDT"
     SOLUSDT = "SOLUSDT"
 
+    ADAUSDT = "ADAUSDT"
+    ALGOUSDT = "ALGOUSDT"
+    AVAXUSDT = "AVAXUSDT"
+    BCHUSDT = "BCHUSDT"
+
+    DOGEUSDT = "DOGEUSDT"
+    DOTUSDT = "DOTUSDT"
+
+    LINKUSDT = "LINKUSDT"
+
+    SUIUSDT = "SUIUSDT"
+    TRXUSDT = "TRXUSDT"
+    XLMUSDT = "XLMUSDT"
+    XRPUSDT = "XRPUSDT"
+
 
 class TimeFrame(str, Enum):
     """Supported timeframes for data"""

@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "FinSight Backtesting API",
-    "description": "\n    Advanced backtesting system for cryptocurrency trading strategies.\n    \n    ## Features\n    \n    * **Administrative Operations**: Data management, system statistics, maintenance\n    * **Market Data Management**: Fetch, store, and convert OHLCV data across timeframes\n    * **Strategy Backtesting**: Run and analyze trading strategies with multiple engines\n    * **Cross-Repository Support**: MongoDB, CSV, InfluxDB storage adapters\n    \n    ## Authentication\n    \n    Admin endpoints require API key authentication via Bearer token.\n    Set the `ADMIN_API_KEY` environment variable or use the default key.\n    \n    ## Architecture\n    \n    Built with Ports & Adapters (Hexagonal Architecture) for maximum flexibility:\n    - **Service Layer**: Business logic and orchestration\n    - **Repository Layer**: Pluggable storage adapters  \n    - **Strategy Layer**: Extensible trading strategies\n    - **Adapter Layer**: Exchange connectors and backtesting engines\n    ",
+    "title": "FinSight Market Dataset Service",
+    "description": "\n    Advanced market dataset service for cryptocurrency trading strategies.\n\n    ## Features\n\n    * **Administrative Operations**: Data management, system statistics, maintenance\n    * **Market Data Management**: Fetch, store, and convert OHLCV data across timeframes\n    * **Strategy Backtesting**: Run and analyze trading strategies with multiple engines\n    * **Cross-Repository Support**: MongoDB, CSV, InfluxDB storage adapters\n\n    ## Authentication\n\n    Admin endpoints require API key authentication via Bearer token.\n    Set the `ADMIN_API_KEY` environment variable or use the default key.\n\n    ## Architecture\n\n    Built with Ports & Adapters (Hexagonal Architecture) for maximum flexibility:\n    - **Service Layer**: Business logic and orchestration\n    - **Repository Layer**: Pluggable storage adapters  \n    - **Strategy Layer**: Extensible trading strategies\n    - **Adapter Layer**: Exchange connectors and backtesting engines\n    ",
     "version": "1.0.0"
   },
   "paths": {
@@ -44,6 +44,337 @@
         }
       }
     },
+    "/api/v1/admin/health": {
+      "get": {
+        "tags": ["admin", "admin"],
+        "summary": "Get System Health",
+        "description": "Get system health status.\n\nThis endpoint is not protected to allow monitoring systems to check health.",
+        "operationId": "get_system_health_api_v1_admin_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemHealthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/stats": {
+      "get": {
+        "tags": ["admin", "admin"],
+        "summary": "Get System Stats",
+        "description": "Get comprehensive system statistics.\n\nReturns detailed information about:\n- Total records in system\n- Available symbols, exchanges, timeframes\n- Storage utilization\n- Server uptime",
+        "operationId": "get_system_stats_api_v1_admin_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStatsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/data/ensure": {
+      "post": {
+        "tags": ["admin", "admin"],
+        "summary": "Ensure Data Available",
+        "description": "Ensure OHLCV data is available for specified parameters.\n\nThis endpoint will:\n- Check if data exists for the specified range\n- Fetch missing data from the exchange if needed\n- Return detailed statistics about the operation\n\nUse `force_refresh=true` to re-fetch data even if it exists.",
+        "operationId": "ensure_data_available_api_v1_admin_data_ensure_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataEnsureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataEnsureResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/data/convert-timeframe": {
+      "post": {
+        "tags": ["admin", "admin"],
+        "summary": "Convert Timeframe Data",
+        "description": "Convert OHLCV data to different timeframe.\n\nThis endpoint will:\n- Fetch source data in the specified timeframe\n- Convert it to the target timeframe\n- Optionally save the converted data\n\nSet `save_converted=false` to get converted data without saving.",
+        "operationId": "convert_timeframe_data_api_v1_admin_data_convert_timeframe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeframeConvertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeframeConvertResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/data/cleanup": {
+      "post": {
+        "tags": ["admin", "admin"],
+        "summary": "Cleanup Old Data",
+        "description": "Clean up old data before specified date.\n\n**WARNING: This is a destructive operation!**\n\nSet `confirm=true` to actually perform the deletion.\nThis endpoint will delete all records before the specified cutoff date.",
+        "operationId": "cleanup_old_data_api_v1_admin_data_cleanup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/info": {
+      "get": {
+        "tags": ["admin", "admin"],
+        "summary": "Get Admin Info",
+        "description": "Get information about available admin operations.\n\nReturns documentation about all available admin endpoints\nand their capabilities.",
+        "operationId": "get_admin_info_api_v1_admin_info_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Admin Info Api V1 Admin Info Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/config": {
+      "get": {
+        "tags": ["admin", "admin"],
+        "summary": "Get Current Configuration",
+        "description": "Get current system configuration.\n\nReturns the current configuration settings, with sensitive values masked\nfor security. This helps administrators understand the current system\nconfiguration and troubleshoot issues.",
+        "operationId": "get_current_configuration_api_v1_admin_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Current Configuration Api V1 Admin Config Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/pipeline/quick-run": {
+      "post": {
+        "tags": ["admin", "admin"],
+        "summary": "Run Quick Pipeline",
+        "description": "Run a quick pipeline to collect 1h data → convert to multiple timeframes → upload datasets.\n\nConfiguration is loaded from `market_data_quick_run_convert_upload.json` at the module root.",
+        "operationId": "run_quick_pipeline_api_v1_admin_pipeline_quick_run_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuickPipelineResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid API key"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/market-data/ohlcv": {
       "get": {
         "tags": ["market-data", "market-data"],
@@ -54,10 +385,11 @@
           {
             "name": "exchange",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Exchange name (e.g., binance)",
+              "default": "binance",
               "title": "Exchange"
             },
             "description": "Exchange name (e.g., binance)"
@@ -65,10 +397,11 @@
           {
             "name": "symbol",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Trading symbol (e.g., BTCUSDT)",
+              "default": "BTCUSDT",
               "title": "Symbol"
             },
             "description": "Trading symbol (e.g., BTCUSDT)"
@@ -76,10 +409,11 @@
           {
             "name": "timeframe",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Timeframe (e.g., 1h, 1d)",
+              "default": "1h",
               "title": "Timeframe"
             },
             "description": "Timeframe (e.g., 1h, 1d)"
@@ -87,10 +421,11 @@
           {
             "name": "start_date",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Start date (ISO 8601 format)",
+              "default": "2025-07-29T17:04:37.554766",
               "title": "Start Date"
             },
             "description": "Start date (ISO 8601 format)"
@@ -98,10 +433,11 @@
           {
             "name": "end_date",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "End date (ISO 8601 format)",
+              "default": "2025-08-28T17:04:37.554766",
               "title": "End Date"
             },
             "description": "End date (ISO 8601 format)"
@@ -170,10 +506,11 @@
           {
             "name": "exchange",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Exchange name",
+              "default": "binance",
               "title": "Exchange"
             },
             "description": "Exchange name"
@@ -181,10 +518,11 @@
           {
             "name": "symbol",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Trading symbol",
+              "default": "BTCUSDT",
               "title": "Symbol"
             },
             "description": "Trading symbol"
@@ -192,10 +530,11 @@
           {
             "name": "timeframe",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Timeframe",
+              "default": "1h",
               "title": "Timeframe"
             },
             "description": "Timeframe"
@@ -244,10 +583,11 @@
           {
             "name": "exchange",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Exchange name",
+              "default": "binance",
               "title": "Exchange"
             },
             "description": "Exchange name"
@@ -255,10 +595,11 @@
           {
             "name": "symbol",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Trading symbol",
+              "default": "BTCUSDT",
               "title": "Symbol"
             },
             "description": "Trading symbol"
@@ -266,10 +607,11 @@
           {
             "name": "timeframe",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Timeframe",
+              "default": "1h",
               "title": "Timeframe"
             },
             "description": "Timeframe"
@@ -320,10 +662,11 @@
           {
             "name": "exchange",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Exchange name",
+              "default": "binance",
               "title": "Exchange"
             },
             "description": "Exchange name"
@@ -331,10 +674,11 @@
           {
             "name": "symbol",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Trading symbol",
+              "default": "BTCUSDT",
               "title": "Symbol"
             },
             "description": "Trading symbol"
@@ -342,10 +686,11 @@
           {
             "name": "timeframe",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Timeframe",
+              "default": "1h",
               "title": "Timeframe"
             },
             "description": "Timeframe"
@@ -353,10 +698,11 @@
           {
             "name": "start_date",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Start date for gap analysis",
+              "default": "2025-07-29T17:04:37.557724",
               "title": "Start Date"
             },
             "description": "Start date for gap analysis"
@@ -364,10 +710,11 @@
           {
             "name": "end_date",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "End date for gap analysis",
+              "default": "2025-08-28T17:04:37.557724",
               "title": "End Date"
             },
             "description": "End date for gap analysis"
@@ -449,10 +796,11 @@
           {
             "name": "exchange",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Exchange name",
+              "default": "binance",
               "title": "Exchange"
             },
             "description": "Exchange name"
@@ -503,10 +851,11 @@
           {
             "name": "exchange",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Exchange name",
+              "default": "binance",
               "title": "Exchange"
             },
             "description": "Exchange name"
@@ -514,10 +863,11 @@
           {
             "name": "symbol",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Trading symbol",
+              "default": "BTCUSDT",
               "title": "Symbol"
             },
             "description": "Trading symbol"
@@ -1003,11 +1353,557 @@
         }
       }
     },
+    "/api/v1/storage/query/{symbol}": {
+      "get": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Query Dataset By Symbol",
+        "description": "Query dataset information by symbol and timeframe.\n\nUser-friendly endpoint that defaults exchange to \"binance\" and provides\nsmart defaults for common parameters.",
+        "operationId": "query_dataset_by_symbol_api_v1_storage_query__symbol__get",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Timeframe to query (defaults to 1h)",
+              "default": "1h",
+              "title": "Timeframe"
+            },
+            "description": "Timeframe to query (defaults to 1h)"
+          },
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exchange name (defaults to binance)",
+              "default": "binance",
+              "title": "Exchange"
+            },
+            "description": "Exchange name (defaults to binance)"
+          },
+          {
+            "name": "format_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data format to query (csv or parquet, defaults to csv)",
+              "default": "csv",
+              "title": "Format Type"
+            },
+            "description": "Data format to query (csv or parquet, defaults to csv)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Query Dataset By Symbol Api V1 Storage Query  Symbol  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/download/{symbol}": {
+      "get": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Download Dataset By Symbol",
+        "description": "Download dataset by symbol and timeframe.\n\nUser-friendly endpoint that automatically generates the object key\nbased on symbol, timeframe, and exchange parameters.",
+        "operationId": "download_dataset_by_symbol_api_v1_storage_download__symbol__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Timeframe to download (defaults to 1h)",
+              "default": "1h",
+              "title": "Timeframe"
+            },
+            "description": "Timeframe to download (defaults to 1h)"
+          },
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exchange name (defaults to binance)",
+              "default": "binance",
+              "title": "Exchange"
+            },
+            "description": "Exchange name (defaults to binance)"
+          },
+          {
+            "name": "format_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data format to download (csv or parquet, defaults to csv)",
+              "default": "csv",
+              "title": "Format Type"
+            },
+            "description": "Data format to download (csv or parquet, defaults to csv)"
+          },
+          {
+            "name": "extract_archive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Whether to extract archive files (defaults to False)",
+              "default": false,
+              "title": "Extract Archive"
+            },
+            "description": "Whether to extract archive files (defaults to False)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Download Dataset By Symbol Api V1 Storage Download  Symbol  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/upload/{symbol}": {
+      "post": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "Upload Dataset By Symbol",
+        "description": "Upload dataset by symbol and timeframe.\n\nUser-friendly endpoint that provides smart defaults for all parameters\nand automatically handles date ranges if not specified.\n\nIf start_date and end_date are not provided, the endpoint will automatically\ndetermine the full date range of the available dataset.",
+        "operationId": "upload_dataset_by_symbol_api_v1_storage_upload__symbol__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Timeframe to upload (defaults to 1h)",
+              "default": "1h",
+              "title": "Timeframe"
+            },
+            "description": "Timeframe to upload (defaults to 1h)"
+          },
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exchange name (defaults to binance)",
+              "default": "binance",
+              "title": "Exchange"
+            },
+            "description": "Exchange name (defaults to binance)"
+          },
+          {
+            "name": "source_format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Source data format (csv or parquet, defaults to csv)",
+              "default": "csv",
+              "title": "Source Format"
+            },
+            "description": "Source data format (csv or parquet, defaults to csv)"
+          },
+          {
+            "name": "target_format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Target format for upload (csv or parquet, defaults to parquet)",
+              "default": "parquet",
+              "title": "Target Format"
+            },
+            "description": "Target format for upload (csv or parquet, defaults to parquet)"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start date in ISO format (defaults to dataset's first date)",
+              "title": "Start Date"
+            },
+            "description": "Start date in ISO format (defaults to dataset's first date)"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End date in ISO format (defaults to dataset's last date)",
+              "title": "End Date"
+            },
+            "description": "End date in ISO format (defaults to dataset's last date)"
+          },
+          {
+            "name": "compress",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Whether to compress the dataset (defaults to True)",
+              "default": true,
+              "title": "Compress"
+            },
+            "description": "Whether to compress the dataset (defaults to True)"
+          },
+          {
+            "name": "include_metadata",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Whether to include metadata files (defaults to True)",
+              "default": true,
+              "title": "Include Metadata"
+            },
+            "description": "Whether to include metadata files (defaults to True)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Upload Dataset By Symbol Api V1 Storage Upload  Symbol  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/list/simple": {
+      "get": {
+        "tags": ["market-data-storage", "market-data-storage"],
+        "summary": "List Datasets Simple",
+        "description": "List datasets with simple filtering options.\n\nUser-friendly endpoint that allows filtering by symbol, timeframe, exchange,\nand format with smart defaults.",
+        "operationId": "list_datasets_simple_api_v1_storage_list_simple_get",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by trading symbol",
+              "default": "BTCUSDT",
+              "title": "Symbol"
+            },
+            "description": "Filter by trading symbol"
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by timeframe",
+              "default": "1h",
+              "title": "Timeframe"
+            },
+            "description": "Filter by timeframe"
+          },
+          {
+            "name": "exchange",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by exchange (defaults to binance)",
+              "default": "binance",
+              "title": "Exchange"
+            },
+            "description": "Filter by exchange (defaults to binance)"
+          },
+          {
+            "name": "format_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by data format (csv or parquet)",
+              "default": "csv",
+              "title": "Format Type"
+            },
+            "description": "Filter by data format (csv or parquet)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Maximum number of objects to return (defaults to 50)",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Maximum number of objects to return (defaults to 50)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Datasets Simple Api V1 Storage List Simple Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/storage/upload": {
       "post": {
         "tags": ["market-data-storage", "market-data-storage"],
         "summary": "Upload Dataset",
-        "description": "Upload a dataset to object storage.\n\nSupports format conversion and compression during upload.",
+        "description": "Upload a dataset to object storage.\n\nSupports format conversion and compression during upload.\n\nIf start_date and end_date are not provided, the endpoint will automatically\ndetermine the full date range of the available dataset.",
         "operationId": "upload_dataset_api_v1_storage_upload_post",
         "requestBody": {
           "content": {
@@ -1054,7 +1950,7 @@
       "post": {
         "tags": ["market-data-storage", "market-data-storage"],
         "summary": "Download Dataset",
-        "description": "Download a dataset from object storage.\n\nSupports automatic archive extraction.",
+        "description": "Download a dataset from object storage.\n\nSupports automatic archive extraction and object key auto-generation.",
         "operationId": "download_dataset_api_v1_storage_download_post",
         "requestBody": {
           "content": {
@@ -1220,7 +2116,7 @@
       "post": {
         "tags": ["market-data-storage", "market-data-storage"],
         "summary": "Convert Dataset Format",
-        "description": "Convert dataset between formats (CSV ↔ Parquet).\n\nBased on timeframe_load_convert_save.py logic.",
+        "description": "Convert dataset between formats (CSV ↔ Parquet).\n\nBased on timeframe_load_convert_save.py logic.\n\nIf start_date and end_date are not provided, the endpoint will automatically\ndetermine the full date range of the available dataset.",
         "operationId": "convert_dataset_format_api_v1_storage_convert_post",
         "requestBody": {
           "content": {
@@ -1267,7 +2163,7 @@
       "post": {
         "tags": ["market-data-storage", "market-data-storage"],
         "summary": "Convert Timeframes",
-        "description": "Convert timeframes using the cross-repository pipeline.\n\nReferences timeframe_load_convert_save.py logic for data conversion.",
+        "description": "Convert timeframes using the cross-repository pipeline.\n\nReferences timeframe_load_convert_save.py logic for data conversion.\n\nIf start_date and end_date are not provided, the endpoint will automatically\ndetermine the full date range of the available dataset.",
         "operationId": "convert_timeframes_api_v1_storage_convert_timeframes_post",
         "security": [
           {
@@ -1290,10 +2186,11 @@
           {
             "name": "symbol",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "description": "Trading symbol",
+              "default": "BTCUSDT",
               "title": "Symbol"
             },
             "description": "Trading symbol"
@@ -1328,24 +2225,38 @@
           {
             "name": "start_date",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
-              "description": "Start date in ISO format",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Start date in ISO format (defaults to dataset's first date)",
               "title": "Start Date"
             },
-            "description": "Start date in ISO format"
+            "description": "Start date in ISO format (defaults to dataset's first date)"
           },
           {
             "name": "end_date",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
-              "description": "End date in ISO format",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End date in ISO format (defaults to dataset's last date)",
               "title": "End Date"
             },
-            "description": "End date in ISO format"
+            "description": "End date in ISO format (defaults to dataset's last date)"
           },
           {
             "name": "source_format",
@@ -1692,6 +2603,11 @@
               "schema": {
                 "$ref": "#/components/schemas/ManualJobRequest",
                 "default": {
+                  "symbols": ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
+                  "timeframes": ["1h"],
+                  "max_lookback_days": 30,
+                  "exchange": "binance",
+                  "repository_type": "csv",
                   "job_priority": "normal",
                   "async_execution": true
                 }
@@ -1980,10 +2896,194 @@
           }
         ]
       }
+    },
+    "/api/v1/eureka/status": {
+      "get": {
+        "tags": ["eureka-client-management", "Eureka Client Management"],
+        "summary": "Get Eureka Status",
+        "description": "Get Eureka client status and configuration.\n\nReturns:\n    Dict[str, Any]: Eureka client status information",
+        "operationId": "get_eureka_status_api_v1_eureka_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Eureka Status Api V1 Eureka Status Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/eureka/register": {
+      "post": {
+        "tags": ["eureka-client-management", "Eureka Client Management"],
+        "summary": "Register With Eureka",
+        "description": "Manually register the service with Eureka server.\n\nArgs:\n    admin_access: Admin access verification\n\nReturns:\n    Dict[str, Any]: Registration result",
+        "operationId": "register_with_eureka_api_v1_eureka_register_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Register With Eureka Api V1 Eureka Register Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/eureka/deregister": {
+      "post": {
+        "tags": ["eureka-client-management", "Eureka Client Management"],
+        "summary": "Deregister From Eureka",
+        "description": "Manually deregister the service from Eureka server.\n\nArgs:\n    admin_access: Admin access verification\n\nReturns:\n    Dict[str, Any]: Deregistration result",
+        "operationId": "deregister_from_eureka_api_v1_eureka_deregister_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Deregister From Eureka Api V1 Eureka Deregister Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/eureka/re-register": {
+      "post": {
+        "tags": ["eureka-client-management", "Eureka Client Management"],
+        "summary": "Re Register With Eureka",
+        "description": "Manually trigger re-registration with Eureka server.\n\nArgs:\n    admin_access: Admin access verification\n\nReturns:\n    Dict[str, Any]: Re-registration result",
+        "operationId": "re_register_with_eureka_api_v1_eureka_re_register_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Re Register With Eureka Api V1 Eureka Re Register Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/eureka/config": {
+      "get": {
+        "tags": ["eureka-client-management", "Eureka Client Management"],
+        "summary": "Get Eureka Config",
+        "description": "Get Eureka client configuration.\n\nArgs:\n    admin_access: Admin access verification\n\nReturns:\n    Dict[str, Any]: Eureka configuration",
+        "operationId": "get_eureka_config_api_v1_eureka_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Eureka Config Api V1 Eureka Config Get"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AdminStatsResponse": {
+        "properties": {
+          "total_records": {
+            "type": "integer",
+            "title": "Total Records",
+            "description": "Total OHLCV records in system"
+          },
+          "unique_symbols": {
+            "type": "integer",
+            "title": "Unique Symbols",
+            "description": "Number of unique symbols"
+          },
+          "unique_exchanges": {
+            "type": "integer",
+            "title": "Unique Exchanges",
+            "description": "Number of unique exchanges"
+          },
+          "available_timeframes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Timeframes",
+            "description": "Available timeframes"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols",
+            "description": "List of available symbols"
+          },
+          "exchanges": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exchanges",
+            "description": "List of available exchanges"
+          },
+          "storage_info": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Storage Info",
+            "description": "Storage utilization info"
+          },
+          "uptime_seconds": {
+            "type": "integer",
+            "title": "Uptime Seconds",
+            "description": "Server uptime in seconds"
+          },
+          "server_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Server Timestamp",
+            "description": "Current server timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_records",
+          "unique_symbols",
+          "unique_exchanges",
+          "available_timeframes",
+          "symbols",
+          "exchanges",
+          "storage_info",
+          "uptime_seconds",
+          "server_timestamp"
+        ],
+        "title": "AdminStatsResponse",
+        "description": "Response schema for admin statistics."
+      },
       "BacktestDeletionResponse": {
         "properties": {
           "success": {
@@ -2460,6 +3560,32 @@
             "title": "Operations",
             "description": "List of operations to perform"
           },
+          "source_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Format",
+            "description": "Source data format for bulk operations (csv or parquet, defaults to csv)",
+            "default": "csv"
+          },
+          "target_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Format",
+            "description": "Target format for bulk operations (csv or parquet, defaults to parquet)",
+            "default": "parquet"
+          },
           "max_concurrent": {
             "type": "integer",
             "maximum": 20,
@@ -2480,6 +3606,97 @@
         "title": "BulkOperationRequest",
         "description": "Request schema for bulk storage operations."
       },
+      "CleanupRequest": {
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name",
+            "default": "binance"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol",
+            "default": "BTCUSDT"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Data timeframe",
+            "default": "1h"
+          },
+          "cutoff_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Cutoff Date",
+            "description": "Delete data before this date",
+            "default": "2025-08-28"
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "description": "Confirmation flag for destructive operation",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "CleanupRequest",
+        "description": "Request schema for data cleanup operations."
+      },
+      "CleanupResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether cleanup was successful"
+          },
+          "records_before": {
+            "type": "integer",
+            "title": "Records Before",
+            "description": "Records count before cleanup"
+          },
+          "records_deleted": {
+            "type": "integer",
+            "title": "Records Deleted",
+            "description": "Number of records deleted"
+          },
+          "cutoff_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Cutoff Date",
+            "description": "Cutoff date used"
+          },
+          "operation_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Operation Timestamp",
+            "description": "When operation completed"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error message if cleanup failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "records_before",
+          "records_deleted",
+          "cutoff_date",
+          "operation_timestamp"
+        ],
+        "title": "CleanupResponse",
+        "description": "Response schema for cleanup operations."
+      },
       "DataCollectionJobRequest": {
         "properties": {
           "symbols": {
@@ -2488,7 +3705,8 @@
             },
             "type": "array",
             "title": "Symbols",
-            "description": "List of symbols to collect"
+            "description": "List of symbols to collect",
+            "default": ["BTCUSDT"]
           },
           "timeframes": {
             "items": {
@@ -2496,7 +3714,8 @@
             },
             "type": "array",
             "title": "Timeframes",
-            "description": "List of timeframes to collect"
+            "description": "List of timeframes to collect",
+            "default": ["1h"]
           },
           "start_date": {
             "anyOf": [
@@ -2508,7 +3727,8 @@
               }
             ],
             "title": "Start Date",
-            "description": "Start date for data collection (ISO format)"
+            "description": "Start date for data collection (ISO format)",
+            "default": "2025-08-28"
           },
           "end_date": {
             "anyOf": [
@@ -2520,7 +3740,8 @@
               }
             ],
             "title": "End Date",
-            "description": "End date for data collection (ISO format)"
+            "description": "End date for data collection (ISO format)",
+            "default": "2025-08-28"
           },
           "exchange": {
             "type": "string",
@@ -2550,7 +3771,6 @@
           }
         },
         "type": "object",
-        "required": ["symbols", "timeframes"],
         "title": "DataCollectionJobRequest",
         "description": "Request for data collection job execution."
       },
@@ -2644,17 +3864,178 @@
         "title": "DataCollectionJobResponse",
         "description": "Response from data collection job execution."
       },
+      "DataEnsureRequest": {
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name (e.g., binance)",
+            "default": "binance"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol (e.g., BTCUSDT)",
+            "default": "BTCUSDT"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Timeframe (e.g., 1h, 1d)",
+            "default": "1h"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date",
+            "description": "Start date for data range",
+            "default": "2025-08-28"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date",
+            "description": "End date for data range",
+            "default": "2025-08-28"
+          },
+          "force_refresh": {
+            "type": "boolean",
+            "title": "Force Refresh",
+            "description": "Force refresh even if data exists",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "DataEnsureRequest",
+        "description": "Request schema for ensuring data availability."
+      },
+      "DataEnsureResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether operation was successful"
+          },
+          "data_was_missing": {
+            "type": "boolean",
+            "title": "Data Was Missing",
+            "description": "Whether data was missing"
+          },
+          "records_fetched": {
+            "type": "integer",
+            "title": "Records Fetched",
+            "description": "Number of records fetched"
+          },
+          "records_saved": {
+            "type": "integer",
+            "title": "Records Saved",
+            "description": "Number of records saved"
+          },
+          "data_statistics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OHLCVStatsSchema"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Data statistics after operation"
+          },
+          "operation_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Operation Timestamp",
+            "description": "When operation completed"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error message if operation failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "data_was_missing",
+          "records_fetched",
+          "records_saved",
+          "operation_timestamp"
+        ],
+        "title": "DataEnsureResponse",
+        "description": "Response schema for data ensure operations."
+      },
       "DatasetDownloadRequest": {
         "properties": {
           "object_key": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Object Key",
-            "description": "Object storage key for the dataset"
+            "description": "Object storage key for the dataset (auto-generated if not provided)"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol",
+            "description": "Trading symbol for auto-generating object key (defaults to BTCUSDT)",
+            "default": "BTCUSDT"
+          },
+          "timeframe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeframe",
+            "description": "Timeframe for auto-generating object key (defaults to 1h)",
+            "default": "1h"
+          },
+          "exchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange",
+            "description": "Exchange for auto-generating object key (defaults to binance)",
+            "default": "binance"
           },
           "extract_archive": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Extract Archive",
-            "description": "Whether to extract archive files",
+            "description": "Whether to extract archive files (defaults to False)",
             "default": false
           },
           "target_directory": {
@@ -2671,68 +4052,130 @@
           }
         },
         "type": "object",
-        "required": ["object_key"],
         "title": "DatasetDownloadRequest",
-        "description": "Request schema for dataset download operations."
+        "description": "Request schema for dataset download operations with smart defaults."
       },
       "DatasetUploadRequest": {
         "properties": {
           "exchange": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Exchange",
-            "description": "Exchange name",
+            "description": "Exchange name (defaults to binance)",
             "default": "binance"
           },
           "symbol": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Symbol",
-            "description": "Trading symbol (e.g., BTCUSDT)"
+            "description": "Trading symbol (defaults to BTCUSDT)",
+            "default": "BTCUSDT"
           },
           "timeframe": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Timeframe",
-            "description": "Time interval",
+            "description": "Time interval (defaults to 1h)",
             "default": "1h"
           },
           "start_date": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Start Date",
-            "description": "Start date in ISO format"
+            "description": "Start date in ISO format (defaults to dataset's first date)"
           },
           "end_date": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "End Date",
-            "description": "End date in ISO format"
+            "description": "End date in ISO format (defaults to dataset's last date)"
           },
           "source_format": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Source Format",
-            "description": "Source data format (csv or parquet)",
+            "description": "Source data format (csv or parquet, defaults to csv)",
             "default": "csv"
           },
           "target_format": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Target Format",
-            "description": "Target format for upload (csv or parquet)",
+            "description": "Target format for upload (csv or parquet, defaults to parquet)",
             "default": "parquet"
           },
           "compress": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Compress",
-            "description": "Whether to compress the dataset",
+            "description": "Whether to compress the dataset (defaults to True)",
             "default": true
           },
           "include_metadata": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Include Metadata",
-            "description": "Whether to include metadata files",
+            "description": "Whether to include metadata files (defaults to True)",
             "default": true
           }
         },
         "type": "object",
-        "required": ["symbol", "start_date", "end_date"],
         "title": "DatasetUploadRequest",
-        "description": "Request schema for dataset upload operations."
+        "description": "Request schema for dataset upload operations with smart defaults."
       },
       "EquityCurvePoint": {
         "properties": {
@@ -2773,40 +4216,93 @@
       "FormatConversionRequest": {
         "properties": {
           "exchange": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Exchange",
-            "description": "Exchange name",
+            "description": "Exchange name (defaults to binance)",
             "default": "binance"
           },
           "symbol": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Symbol",
-            "description": "Trading symbol"
+            "description": "Trading symbol (defaults to BTCUSDT)",
+            "default": "BTCUSDT"
           },
           "timeframe": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Timeframe",
-            "description": "Source timeframe"
+            "description": "Source timeframe (defaults to 1h)",
+            "default": "1h"
           },
           "start_date": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Start Date",
-            "description": "Start date in ISO format"
+            "description": "Start date in ISO format (defaults to dataset's first date)"
           },
           "end_date": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "End Date",
-            "description": "End date in ISO format"
+            "description": "End date in ISO format (defaults to dataset's last date)"
           },
           "source_format": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Source Format",
-            "description": "Source repository format (csv or parquet)"
+            "description": "Source repository format (csv or parquet, defaults to csv)",
+            "default": "csv"
           },
           "target_format": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Target Format",
-            "description": "Target repository format (csv or parquet)"
+            "description": "Target repository format (csv or parquet, defaults to parquet)",
+            "default": "parquet"
           },
           "target_timeframes": {
             "anyOf": [
@@ -2821,26 +4317,26 @@
               }
             ],
             "title": "Target Timeframes",
-            "description": "Target timeframes for conversion (optional)"
+            "description": "Target timeframes for conversion (optional)",
+            "default": ["4h", "1d"]
           },
           "overwrite_existing": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Overwrite Existing",
             "description": "Whether to overwrite existing data",
             "default": false
           }
         },
         "type": "object",
-        "required": [
-          "symbol",
-          "timeframe",
-          "start_date",
-          "end_date",
-          "source_format",
-          "target_format"
-        ],
         "title": "FormatConversionRequest",
-        "description": "Request schema for data format conversion."
+        "description": "Request schema for data format conversion with smart defaults."
       },
       "HTTPValidationError": {
         "properties": {
@@ -3544,7 +5040,8 @@
               }
             ],
             "title": "Symbols",
-            "description": "Specific symbols to collect (uses config default if not provided)"
+            "description": "Specific symbols to collect (uses config default if not provided)",
+            "default": ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
           },
           "timeframes": {
             "anyOf": [
@@ -3559,7 +5056,8 @@
               }
             ],
             "title": "Timeframes",
-            "description": "Specific timeframes to collect (uses config default if not provided)"
+            "description": "Specific timeframes to collect (uses config default if not provided)",
+            "default": ["1h"]
           },
           "max_lookback_days": {
             "anyOf": [
@@ -3573,7 +5071,8 @@
               }
             ],
             "title": "Max Lookback Days",
-            "description": "Maximum lookback days (uses config default if not provided)"
+            "description": "Maximum lookback days (uses config default if not provided)",
+            "default": 30
           },
           "exchange": {
             "anyOf": [
@@ -3585,7 +5084,8 @@
               }
             ],
             "title": "Exchange",
-            "description": "Exchange to collect from (uses config default if not provided)"
+            "description": "Exchange to collect from (uses config default if not provided)",
+            "default": "binance"
           },
           "repository_type": {
             "anyOf": [
@@ -3597,7 +5097,8 @@
               }
             ],
             "title": "Repository Type",
-            "description": "Repository type for storage (uses config default if not provided)"
+            "description": "Repository type for storage (uses config default if not provided)",
+            "default": "csv"
           },
           "job_priority": {
             "$ref": "#/components/schemas/JobPriority",
@@ -3633,7 +5134,8 @@
             },
             "type": "array",
             "title": "Symbols",
-            "description": "Symbols that were processed"
+            "description": "Symbols that were processed",
+            "default": ["BTCUSDT"]
           },
           "timeframes": {
             "items": {
@@ -3641,17 +5143,22 @@
             },
             "type": "array",
             "title": "Timeframes",
-            "description": "Timeframes that were processed"
+            "description": "Timeframes that were processed",
+            "default": ["1h"]
           },
           "exchange": {
             "type": "string",
             "title": "Exchange",
-            "description": "Exchange used for data collection"
+            "description": "Exchange used for data collection",
+            "default": "binance"
           },
           "max_lookback_days": {
             "type": "integer",
+            "maximum": 365,
+            "minimum": 1,
             "title": "Max Lookback Days",
-            "description": "Max lookback days used"
+            "description": "Max lookback days used",
+            "default": 30
           },
           "start_time": {
             "type": "string",
@@ -3726,15 +5233,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "status",
-          "job_id",
-          "symbols",
-          "timeframes",
-          "exchange",
-          "max_lookback_days",
-          "start_time"
-        ],
+        "required": ["status", "job_id", "start_time"],
         "title": "ManualJobResponse",
         "description": "Response from manual data collection job execution."
       },
@@ -4342,6 +5841,204 @@
         "title": "PositionSide",
         "description": "Position side for trades."
       },
+      "QuickPipelineResponse": {
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange used for operations"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols",
+            "description": "Symbols processed"
+          },
+          "source_timeframe": {
+            "type": "string",
+            "title": "Source Timeframe",
+            "description": "Source timeframe collected"
+          },
+          "target_timeframes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Timeframes",
+            "description": "Target timeframes converted"
+          },
+          "source_format": {
+            "type": "string",
+            "title": "Source Format",
+            "description": "Source repository format"
+          },
+          "target_format": {
+            "type": "string",
+            "title": "Target Format",
+            "description": "Target repository format for upload"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At",
+            "description": "Pipeline start time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Finished At",
+            "description": "Pipeline finish time"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds",
+            "description": "Total pipeline duration in seconds"
+          },
+          "results_by_symbol": {
+            "items": {
+              "$ref": "#/components/schemas/QuickSymbolPipelineResult"
+            },
+            "type": "array",
+            "title": "Results By Symbol",
+            "description": "Detailed results per symbol"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Overall pipeline success status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Summary message"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "description": "Additional metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exchange",
+          "symbols",
+          "source_timeframe",
+          "target_timeframes",
+          "source_format",
+          "target_format",
+          "started_at",
+          "finished_at",
+          "duration_seconds",
+          "success",
+          "message"
+        ],
+        "title": "QuickPipelineResponse",
+        "description": "Response schema for the quick collect → convert → upload pipeline."
+      },
+      "QuickSymbolPipelineResult": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol"
+          },
+          "collection_status": {
+            "type": "string",
+            "title": "Collection Status",
+            "description": "Collection step status"
+          },
+          "collection_records": {
+            "type": "integer",
+            "title": "Collection Records",
+            "description": "Records collected in step",
+            "default": 0
+          },
+          "conversion_status": {
+            "type": "string",
+            "title": "Conversion Status",
+            "description": "Conversion step status"
+          },
+          "converted_timeframes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Converted Timeframes",
+            "description": "Converted target timeframes"
+          },
+          "upload_results": {
+            "items": {
+              "$ref": "#/components/schemas/QuickUploadResult"
+            },
+            "type": "array",
+            "title": "Upload Results",
+            "description": "Per-timeframe upload results"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "Errors encountered for this symbol"
+          }
+        },
+        "type": "object",
+        "required": ["symbol", "collection_status", "conversion_status"],
+        "title": "QuickSymbolPipelineResult",
+        "description": "Aggregated pipeline results for a single symbol."
+      },
+      "QuickUploadResult": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol"
+          },
+          "timeframe": {
+            "type": "string",
+            "title": "Timeframe",
+            "description": "Timeframe uploaded"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the upload succeeded"
+          },
+          "object_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Key",
+            "description": "Uploaded object key"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "Status message"
+          }
+        },
+        "type": "object",
+        "required": ["symbol", "timeframe", "success"],
+        "title": "QuickUploadResult",
+        "description": "Result of a single upload operation for a symbol and timeframe."
+      },
       "StorageStatsResponse": {
         "properties": {
           "total_objects": {
@@ -4458,6 +6155,182 @@
         ],
         "title": "StrategyType",
         "description": "Supported strategy types."
+      },
+      "SystemHealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Overall health status"
+          },
+          "repository_connected": {
+            "type": "boolean",
+            "title": "Repository Connected",
+            "description": "Repository connectivity"
+          },
+          "data_fresh": {
+            "type": "boolean",
+            "title": "Data Fresh",
+            "description": "Whether data is fresh"
+          },
+          "memory_usage_percent": {
+            "type": "number",
+            "title": "Memory Usage Percent",
+            "description": "Memory usage percentage"
+          },
+          "disk_usage_percent": {
+            "type": "number",
+            "title": "Disk Usage Percent",
+            "description": "Disk usage percentage"
+          },
+          "checks_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checks Timestamp",
+            "description": "When checks were performed"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error message if unhealthy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "repository_connected",
+          "data_fresh",
+          "memory_usage_percent",
+          "disk_usage_percent",
+          "checks_timestamp"
+        ],
+        "title": "SystemHealthResponse",
+        "description": "Response schema for system health checks."
+      },
+      "TimeframeConvertRequest": {
+        "properties": {
+          "exchange": {
+            "type": "string",
+            "title": "Exchange",
+            "description": "Exchange name (e.g., binance)",
+            "default": "binance"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol",
+            "description": "Trading symbol (e.g., BTCUSDT)",
+            "default": "BTCUSDT"
+          },
+          "source_timeframe": {
+            "type": "string",
+            "title": "Source Timeframe",
+            "description": "Source timeframe (e.g., 1h)",
+            "default": "1h"
+          },
+          "target_timeframe": {
+            "type": "string",
+            "title": "Target Timeframe",
+            "description": "Target timeframe (e.g., 1d)",
+            "default": "1d"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Date",
+            "description": "Start date for conversion",
+            "default": "2025-08-28"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Date",
+            "description": "End date for conversion",
+            "default": "2025-08-28"
+          },
+          "save_converted": {
+            "type": "boolean",
+            "title": "Save Converted",
+            "description": "Whether to save converted data",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "TimeframeConvertRequest",
+        "description": "Request schema for timeframe conversion."
+      },
+      "TimeframeConvertResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether conversion was successful"
+          },
+          "source_records": {
+            "type": "integer",
+            "title": "Source Records",
+            "description": "Number of source records"
+          },
+          "converted_records": {
+            "type": "integer",
+            "title": "Converted Records",
+            "description": "Number of converted records"
+          },
+          "saved_records": {
+            "type": "integer",
+            "title": "Saved Records",
+            "description": "Number of saved records"
+          },
+          "operation_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Operation Timestamp",
+            "description": "When operation completed"
+          },
+          "converted_data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OHLCVSchema"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converted Data",
+            "description": "Converted data (if not saved)"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Error message if conversion failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "source_records",
+          "converted_records",
+          "saved_records",
+          "operation_timestamp"
+        ],
+        "title": "TimeframeConvertResponse",
+        "description": "Response schema for timeframe conversion."
       },
       "TradeResult": {
         "properties": {
