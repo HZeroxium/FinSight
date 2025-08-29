@@ -30,23 +30,8 @@ services:
       - "8001:8000" # FastAPI API
     depends_on:
       - eureka-server
-    environment:
-      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-YOUR_PROVIDER}
-      - SPACES_ENDPOINT_URL=${SPACES_ENDPOINT_URL:-YOUR_ENDPOINT_URL}
-      - SPACES_REGION_NAME=${SPACES_REGION_NAME:-YOUR_REGION}
-      - SPACES_ACCESS_KEY=${SPACES_ACCESS_KEY:-YOUR_ACCESS_KEY}
-      - SPACES_SECRET_KEY=${SPACES_SECRET_KEY:-YOUR_SECRET_KEY}
-      - SPACES_BUCKET_NAME=${SPACES_BUCKET_NAME:-YOUR_BUCKET_NAME}
-      - FORCE_CPU=${FORCE_CPU:-true}
-
-      # Eureka Client configuration
-      - EUREKA_SERVER_URL=${EUREKA_SERVER_URL:-http://eureka-server:8761}
-      - EUREKA_APP_NAME=${EUREKA_APP_NAME:-prediction-service}
-      - EUREKA_INSTANCE_ID=${EUREKA_INSTANCE_ID:-prediction-service-1}
-      - EUREKA_HOST_NAME=${EUREKA_HOST_NAME:-prediction-service}
-      - EUREKA_IP_ADDRESS=${EUREKA_IP_ADDRESS:-127.0.0.1}
-      - EUREKA_PORT=${EUREKA_PORT:-8000}
-      - EUREKA_SECURE_PORT=${EUREKA_SECURE_PORT:-8443}
+    env_file:
+      - .env
 
     networks:
       - prediction-service-network
