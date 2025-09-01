@@ -15,16 +15,23 @@ from common.logger import LoggerFactory, LoggerType, LogLevel
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from .core.config import settings
 from .grpc_services import GrpcServer, create_grpc_server
 from .routers import eureka_router, job_router, news_router
-from .services.sentiment_message_consumer_service import \
-    SentimentMessageConsumerService
+from .services.sentiment_message_consumer_service import SentimentMessageConsumerService
 from .utils.cache_utils import check_cache_health, get_cache_statistics
-from .utils.dependencies import (cleanup_services,  # get_search_service,
-                                 get_eureka_client_service, get_message_broker,
-                                 get_news_service, initialize_services)
+from .utils.dependencies import (
+    cleanup_services,  # get_search_service,
+    get_eureka_client_service,
+    get_message_broker,
+    get_news_service,
+    initialize_services,
+)
+from .utils.rate_limiting import limiter, rate_limit_utils
 
 # Setup application logger
 logger = LoggerFactory.get_logger(
@@ -73,6 +80,18 @@ async def lifespan(app: FastAPI):
         )
     else:
         logger.info("💾 Cache: Disabled")
+
+    # Check if rate limiting is enabled
+    if settings.rate_limit_enabled:
+        logger.info(
+            f"🚦 Rate Limiting: Enabled (Default: {settings.rate_limit_requests_per_minute}/min, {settings.rate_limit_requests_per_hour}/hour)"
+        )
+        logger.info(f"🚦 Rate Limit Storage: {settings.rate_limit_storage_url}")
+        logger.info(
+            f"🚦 Exempt Endpoints: {', '.join(settings.rate_limit_exempt_endpoints)}"
+        )
+    else:
+        logger.info("🚦 Rate Limiting: Disabled")
 
     startup_errors = []
 
@@ -260,6 +279,13 @@ app = FastAPI(
     redoc_url="/redoc" if settings.debug else None,
 )
 
+# Add rate limiting middleware if enabled
+if settings.rate_limit_enabled:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
+    logger.info("✅ Rate limiting middleware added")
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -268,6 +294,24 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+
+# Custom rate limiting middleware for exempt endpoints
+@app.middleware("http")
+async def rate_limit_exempt_middleware(request: Request, call_next):
+    """
+    Middleware to handle rate limiting exemptions.
+    Checks if the endpoint is exempt and bypasses rate limiting if so.
+    """
+    if settings.rate_limit_enabled:
+        # Check if endpoint is exempt from rate limiting
+        if rate_limit_utils.is_endpoint_exempt(request):
+            # Mark request as exempt from rate limiting
+            request.state._rate_limit_exempt = True
+            logger.debug(f"Rate limiting exempt for endpoint: {request.url.path}")
+
+    response = await call_next(request)
+    return response
 
 
 # Request logging middleware
@@ -317,6 +361,7 @@ app.include_router(eureka_router.router)
 
 
 @app.get("/")
+@limiter.exempt
 async def root():
     """Root endpoint with service information."""
     return {
@@ -333,11 +378,13 @@ async def root():
             "rabbitmq_messaging": True,
             "caching": settings.enable_caching,
             "eureka_client": settings.enable_eureka_client,
+            "rate_limiting": settings.rate_limit_enabled,
         },
     }
 
 
 @app.get("/health")
+@limiter.exempt
 async def health_check():
     """Comprehensive health check endpoint including gRPC and Eureka status."""
     global sentiment_consumer, grpc_server, eureka_client_service
@@ -401,7 +448,7 @@ async def health_check():
         )
 
         # Check news service
-        news_service = get_news_service()
+        news_service = await get_news_service()
         news_stats = await news_service.get_repository_stats()
         health_status["components"]["database"] = "healthy"
         health_status["metrics"]["total_articles"] = news_stats.get("total_articles", 0)
@@ -421,6 +468,19 @@ async def health_check():
             except Exception as cache_error:
                 health_status["components"]["cache"] = "unhealthy"
                 health_status["metrics"]["cache_error"] = str(cache_error)
+
+        # Check rate limiting status if enabled
+        if settings.rate_limit_enabled:
+            health_status["components"]["rate_limiting"] = "enabled"
+            health_status["metrics"]["rate_limiting"] = {
+                "default_limits": {
+                    "per_minute": settings.rate_limit_requests_per_minute,
+                    "per_hour": settings.rate_limit_requests_per_hour,
+                    "per_day": settings.rate_limit_requests_per_day,
+                },
+                "storage": settings.rate_limit_storage_url,
+                "exempt_endpoints": settings.rate_limit_exempt_endpoints,
+            }
 
         # Overall health determination
         unhealthy_components = [
@@ -460,12 +520,13 @@ async def health_check():
 
 
 @app.get("/metrics")
+@limiter.exempt
 async def get_metrics():
     """Get service metrics and statistics."""
     global sentiment_consumer
 
     try:
-        news_service = get_news_service()
+        news_service = await get_news_service()
         stats = await news_service.get_repository_stats()
 
         metrics = {
@@ -480,7 +541,7 @@ async def get_metrics():
                 "max_concurrent_crawls": settings.max_concurrent_crawls,
                 "cache_enabled": settings.enable_caching,
                 "cache_ttl": settings.cache_ttl_seconds,
-                "rate_limit": settings.rate_limit_requests_per_minute,
+                "rate_limit_enabled": settings.rate_limit_enabled,
             },
         }
 
@@ -491,6 +552,32 @@ async def get_metrics():
                 metrics["cache_stats"] = cache_stats
             except Exception as cache_error:
                 metrics["cache_error"] = str(cache_error)
+
+        # Add rate limiting metrics if enabled
+        if settings.rate_limit_enabled:
+            metrics["rate_limiting"] = {
+                "default_limits": {
+                    "per_minute": settings.rate_limit_requests_per_minute,
+                    "per_hour": settings.rate_limit_requests_per_hour,
+                    "per_day": settings.rate_limit_requests_per_day,
+                },
+                "per_route_limits": {
+                    "news_search": {
+                        "per_minute": settings.rate_limit_news_search_per_minute,
+                        "per_hour": settings.rate_limit_news_search_per_hour,
+                    },
+                    "admin": {
+                        "per_minute": settings.rate_limit_admin_per_minute,
+                        "per_hour": settings.rate_limit_admin_per_hour,
+                    },
+                    "cache": {
+                        "per_minute": settings.rate_limit_cache_per_minute,
+                        "per_hour": settings.rate_limit_cache_per_hour,
+                    },
+                },
+                "storage": settings.rate_limit_storage_url,
+                "exempt_endpoints": settings.rate_limit_exempt_endpoints,
+            }
 
         return metrics
 

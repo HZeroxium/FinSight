@@ -172,8 +172,12 @@ class Settings(BaseSettings):
     rabbitmq_queue_sentiment_results: str = Field(default="sentiment.results")
 
     # Routing keys
-    rabbitmq_routing_key_news_to_sentiment: str = Field(default="news.sentiment.analyze")
-    rabbitmq_routing_key_sentiment_results: str = Field(default="sentiment.results.processed")
+    rabbitmq_routing_key_news_to_sentiment: str = Field(
+        default="news.sentiment.analyze"
+    )
+    rabbitmq_routing_key_sentiment_results: str = Field(
+        default="sentiment.results.processed"
+    )
 
     # Crawler configuration
     enable_advanced_crawling: bool = Field(default=True)
@@ -245,8 +249,79 @@ class Settings(BaseSettings):
         default=5, description="Delay before cache invalidation"
     )
 
-    # Rate limiting
-    rate_limit_requests_per_minute: int = 100
+    # Rate Limiting Configuration
+    rate_limit_enabled: bool = Field(default=True, description="Enable rate limiting")
+    rate_limit_requests_per_minute: int = Field(
+        default=100, description="Default requests per minute"
+    )
+    rate_limit_requests_per_hour: int = Field(
+        default=1000, description="Default requests per hour"
+    )
+    rate_limit_requests_per_day: int = Field(
+        default=10000, description="Default requests per day"
+    )
+
+    # Rate limiting backend configuration
+    rate_limit_storage_url: str = Field(
+        default="redis://localhost:6379/1",
+        description="Redis URL for rate limiting storage",
+    )
+    rate_limit_key_prefix: str = Field(
+        default="rate-limit:", description="Redis key prefix for rate limiting"
+    )
+
+    # Rate limiting headers configuration
+    rate_limit_include_headers: bool = Field(
+        default=True, description="Include rate limit headers in responses"
+    )
+    rate_limit_retry_after_header: bool = Field(
+        default=True, description="Include Retry-After header when rate limited"
+    )
+
+    # Rate limiting client identification
+    rate_limit_by_api_key: bool = Field(
+        default=True, description="Use API key for client identification when available"
+    )
+    rate_limit_by_ip: bool = Field(
+        default=True, description="Use IP address for client identification"
+    )
+    rate_limit_trust_proxy: bool = Field(
+        default=True, description="Trust X-Forwarded-For header from proxies"
+    )
+
+    # Rate limiting exempt endpoints
+    rate_limit_exempt_endpoints: List[str] = Field(
+        default_factory=lambda: [
+            "/health",
+            "/metrics",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+        ],
+        description="Endpoints exempt from rate limiting",
+    )
+
+    # Rate limiting per-route configuration
+    rate_limit_news_search_per_minute: int = Field(
+        default=60, description="Rate limit for news search endpoints"
+    )
+    rate_limit_news_search_per_hour: int = Field(
+        default=500, description="Hourly rate limit for news search endpoints"
+    )
+
+    rate_limit_admin_per_minute: int = Field(
+        default=30, description="Rate limit for admin endpoints"
+    )
+    rate_limit_admin_per_hour: int = Field(
+        default=200, description="Hourly rate limit for admin endpoints"
+    )
+
+    rate_limit_cache_per_minute: int = Field(
+        default=20, description="Rate limit for cache management endpoints"
+    )
+    rate_limit_cache_per_hour: int = Field(
+        default=100, description="Hourly rate limit for cache management endpoints"
+    )
 
     # Cron job configuration
     cron_job_enabled: bool = True
@@ -377,6 +452,33 @@ class Settings(BaseSettings):
             raise ValueError("redis_max_connections must be between 1 and 100")
         return v
 
+    @field_validator("rate_limit_requests_per_minute")
+    @classmethod
+    def validate_rate_limit_requests_per_minute(cls, v):
+        if v < 1 or v > 10000:
+            raise ValueError(
+                "rate_limit_requests_per_minute must be between 1 and 10000"
+            )
+        return v
+
+    @field_validator("rate_limit_requests_per_hour")
+    @classmethod
+    def validate_rate_limit_requests_per_hour(cls, v):
+        if v < 1 or v > 100000:
+            raise ValueError(
+                "rate_limit_requests_per_hour must be between 1 and 100000"
+            )
+        return v
+
+    @field_validator("rate_limit_requests_per_day")
+    @classmethod
+    def validate_rate_limit_requests_per_day(cls, v):
+        if v < 1 or v > 1000000:
+            raise ValueError(
+                "rate_limit_requests_per_day must be between 1 and 1000000"
+            )
+        return v
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -482,6 +584,46 @@ class Settings(BaseSettings):
             "cache_invalidation_enabled": self.cache_invalidation_enabled,
             "cache_invalidation_pattern": self.cache_invalidation_pattern,
             "cache_invalidation_delay_seconds": self.cache_invalidation_delay_seconds,
+        }
+
+    @property
+    def rate_limit_config(self) -> dict:
+        """Get rate limiting configuration"""
+        return {
+            "enabled": self.rate_limit_enabled,
+            "default_limits": {
+                "per_minute": self.rate_limit_requests_per_minute,
+                "per_hour": self.rate_limit_requests_per_hour,
+                "per_day": self.rate_limit_requests_per_day,
+            },
+            "storage": {
+                "url": self.rate_limit_storage_url,
+                "key_prefix": self.rate_limit_key_prefix,
+            },
+            "headers": {
+                "include_headers": self.rate_limit_include_headers,
+                "retry_after_header": self.rate_limit_retry_after_header,
+            },
+            "client_identification": {
+                "by_api_key": self.rate_limit_by_api_key,
+                "by_ip": self.rate_limit_by_ip,
+                "trust_proxy": self.rate_limit_trust_proxy,
+            },
+            "exempt_endpoints": self.rate_limit_exempt_endpoints,
+            "per_route_limits": {
+                "news_search": {
+                    "per_minute": self.rate_limit_news_search_per_minute,
+                    "per_hour": self.rate_limit_news_search_per_hour,
+                },
+                "admin": {
+                    "per_minute": self.rate_limit_admin_per_minute,
+                    "per_hour": self.rate_limit_admin_per_hour,
+                },
+                "cache": {
+                    "per_minute": self.rate_limit_cache_per_minute,
+                    "per_hour": self.rate_limit_cache_per_hour,
+                },
+            },
         }
 
 

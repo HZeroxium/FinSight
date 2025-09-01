@@ -4,20 +4,19 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from common.logger import LoggerFactory, LoggerType, LogLevel
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
 
-from ..schemas.news_schemas import (NewsResponse, NewsSource,
-                                    TimeRangeSearchParams)
+from ..schemas.news_schemas import NewsResponse, NewsSource, TimeRangeSearchParams
 from ..services.news_service import NewsSearchRequest, NewsService
 from ..utils.cache_utils import check_cache_health as check_cache_health_util
-from ..utils.cache_utils import \
-    get_cache_statistics as get_cache_statistics_util
-from ..utils.cache_utils import \
-    invalidate_all_news_cache as invalidate_all_news_cache_util
+from ..utils.cache_utils import get_cache_statistics as get_cache_statistics_util
+from ..utils.cache_utils import (
+    invalidate_all_news_cache as invalidate_all_news_cache_util,
+)
 from ..utils.dependencies import get_news_service, require_admin_access
-from ..utils.response_converters import (build_filters_summary,
-                                         build_news_response)
+from ..utils.response_converters import build_filters_summary, build_news_response
+from ..utils.rate_limiting import limiter, rate_limit_utils
 
 # Initialize router
 router = APIRouter(prefix="/news", tags=["news"])
@@ -33,7 +32,9 @@ logger = LoggerFactory.get_logger(
 
 
 @router.get("/", response_model=NewsResponse)
+@limiter.limit(rate_limit_utils.get_news_search_rate_limits())
 async def search_news(
+    request: Request,
     source: Optional[NewsSource] = Query(None, description="Filter by news source"),
     keywords: Optional[str] = Query(None, description="Comma-separated keywords"),
     tags: Optional[str] = Query(None, description="Comma-separated tags"),
@@ -42,7 +43,7 @@ async def search_news(
     limit: int = Query(100, ge=1, le=1000, description="Maximum items to return"),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     news_service: NewsService = Depends(get_news_service),
-) -> NewsResponse:
+):
     """
     Search news articles with flexible filtering options
 
@@ -120,12 +121,15 @@ async def search_news(
 
 
 @router.get("/recent", response_model=NewsResponse)
+@limiter.limit(rate_limit_utils.get_news_search_rate_limits())
 async def get_recent_news(
+    request: Request,
+    response: Response,
     hours: int = Query(24, ge=1, le=168, description="Hours to look back (max 1 week)"),
     source: Optional[NewsSource] = Query(None, description="Filter by news source"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum items to return"),
     news_service: NewsService = Depends(get_news_service),
-) -> NewsResponse:
+):
     """
     Get recent news articles from the last N hours
 
@@ -174,9 +178,13 @@ async def get_recent_news(
 
 
 @router.post("/search/time-range", response_model=NewsResponse)
+@limiter.limit(rate_limit_utils.get_news_search_rate_limits())
 async def search_by_time_range(
-    params: TimeRangeSearchParams, news_service: NewsService = Depends(get_news_service)
-) -> NewsResponse:
+    request: Request,
+    response: Response,
+    params: TimeRangeSearchParams,
+    news_service: NewsService = Depends(get_news_service),
+):
     """
     Advanced time-based search with optimized performance
 
@@ -252,14 +260,17 @@ async def search_by_time_range(
 
 
 @router.get("/keywords/{keywords}", response_model=NewsResponse)
+@limiter.limit(rate_limit_utils.get_news_search_rate_limits())
 async def search_by_keywords(
+    request: Request,
+    response: Response,
     keywords: str = Path(..., description="Comma-separated keywords"),
     source: Optional[NewsSource] = Query(None, description="Optional source filter"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum items to return"),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     hours: Optional[int] = Query(None, ge=1, le=8760, description="Hours to look back"),
     news_service: NewsService = Depends(get_news_service),
-) -> NewsResponse:
+):
     """
     Search news by keywords with optional filters
 
@@ -330,14 +341,17 @@ async def search_by_keywords(
 
 
 @router.get("/by-tag/{tags}", response_model=NewsResponse)
+@limiter.limit(rate_limit_utils.get_news_search_rate_limits())
 async def get_news_by_tags(
+    request: Request,
+    response: Response,
     tags: str = Path(..., description="Comma-separated tags"),
     source: Optional[NewsSource] = Query(None, description="Optional source filter"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum items to return"),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     hours: Optional[int] = Query(None, ge=1, le=8760, description="Hours to look back"),
     news_service: NewsService = Depends(get_news_service),
-) -> NewsResponse:
+):
     """
     Get news articles by tags with optional filters
 
@@ -407,11 +421,14 @@ async def get_news_by_tags(
 
 
 @router.get("/tags/available", response_model=Dict[str, Any])
+@limiter.limit(rate_limit_utils.get_news_search_rate_limits())
 async def get_available_tags(
+    request: Request,
+    response: Response,
     source: Optional[NewsSource] = Query(None, description="Optional source filter"),
     limit: int = Query(100, ge=1, le=500, description="Maximum tags to return"),
     news_service: NewsService = Depends(get_news_service),
-) -> Dict[str, Any]:
+):
     """
     Get available tags from news articles
 
@@ -441,8 +458,10 @@ async def get_available_tags(
 # Health check endpoint for the news router
 @router.get("/health/check")
 async def news_health_check(
+    request: Request,
+    response: Response,
     news_service: NewsService = Depends(get_news_service),
-) -> Dict[str, Any]:
+):
     """
     Health check for news service functionality
     """
@@ -474,9 +493,12 @@ async def news_health_check(
 
 # Cache management endpoints (admin only)
 @router.get("/cache/stats", response_model=Dict[str, Any])
+@limiter.limit(rate_limit_utils.get_cache_rate_limits())
 async def cache_stats(
+    request: Request,
+    response: Response,
     _: bool = Depends(require_admin_access),
-) -> Dict[str, Any]:
+):
     """
     Get cache statistics and information (Admin only)
 
@@ -500,9 +522,12 @@ async def cache_stats(
 
 
 @router.get("/cache/health")
+@limiter.limit(rate_limit_utils.get_cache_rate_limits())
 async def cache_health(
+    request: Request,
+    response: Response,
     _: bool = Depends(require_admin_access),
-) -> Dict[str, Any]:
+):
     """
     Check cache health status (Admin only)
 
@@ -533,9 +558,12 @@ async def cache_health(
 
 
 @router.post("/cache/invalidate")
+@limiter.limit(rate_limit_utils.get_cache_rate_limits())
 async def cache_invalidate(
+    request: Request,
+    response: Response,
     _: bool = Depends(require_admin_access),
-) -> Dict[str, Any]:
+):
     """
     Invalidate all news cache entries (Admin only)
 
