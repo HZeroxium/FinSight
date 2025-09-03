@@ -439,7 +439,6 @@ app.include_router(
 
 app.include_router(
     eureka_router,
-    tags=["eureka-client-management"],
 )
 
 

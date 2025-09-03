@@ -32,6 +32,7 @@ from .utils.dependencies import (
     initialize_services,
 )
 from .utils.rate_limiting import limiter, rate_limit_utils
+from .utils.monitoring import get_metrics_collector
 
 # Setup application logger
 logger = LoggerFactory.get_logger(
@@ -92,6 +93,10 @@ async def lifespan(app: FastAPI):
         )
     else:
         logger.info("🚦 Rate Limiting: Disabled")
+
+    # Check if monitoring is enabled
+    logger.info("📊 Prometheus Monitoring: Enabled")
+    logger.info("📊 Metrics Endpoint: /metrics")
 
     startup_errors = []
 
@@ -219,18 +224,20 @@ async def lifespan(app: FastAPI):
         else:
             if grpc_enabled and eureka_enabled:
                 logger.info(
-                    "🎉 News Crawler Service is fully operational (REST + gRPC + Eureka)!"
+                    "🎉 News Crawler Service is fully operational (REST + gRPC + Eureka + Monitoring)!"
                 )
             elif grpc_enabled:
                 logger.info(
-                    "🎉 News Crawler Service is fully operational (REST + gRPC)!"
+                    "🎉 News Crawler Service is fully operational (REST + gRPC + Monitoring)!"
                 )
             elif eureka_enabled:
                 logger.info(
-                    "🎉 News Crawler Service is fully operational (REST + Eureka)!"
+                    "🎉 News Crawler Service is fully operational (REST + Eureka + Monitoring)!"
                 )
             else:
-                logger.info("🎉 News Crawler Service is fully operational (REST only)!")
+                logger.info(
+                    "🎉 News Crawler Service is fully operational (REST + Monitoring)!"
+                )
 
     except Exception as e:
         logger.error(f"❌ Critical startup error: {str(e)}")
@@ -353,11 +360,69 @@ async def log_requests(request: Request, call_next):
     )
 
 
+# Initialize Prometheus monitoring
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+
+    # Initialize Prometheus instrumentator with optimized settings
+    instrumentator = Instrumentator(
+        should_group_status_codes=True,
+        should_ignore_untemplated=True,
+        should_respect_env_var=True,
+        should_instrument_requests_inprogress=True,
+        # Use optimized latency buckets for web APIs (in seconds)
+    )
+
+    # Add custom labels to all metrics
+    def add_service_label(metric, info):
+        metric.labels(service="news_service")
+
+    instrumentator.add(add_service_label)
+
+    # Instrument the app and expose metrics endpoint
+    instrumentator.instrument(app).expose(
+        app, endpoint="/metrics", include_in_schema=False, should_gzip=True
+    )
+
+    logger.info(
+        "✅ Prometheus monitoring initialized with prometheus-fastapi-instrumentator"
+    )
+
+except ImportError:
+    # Fallback to starlette-exporter if prometheus-fastapi-instrumentator is not available
+    try:
+        from starlette_exporter import PrometheusMiddleware, handle_metrics
+
+        app.add_middleware(PrometheusMiddleware, app_name="news_service")
+        app.add_route("/metrics", handle_metrics, include_in_schema=False)
+
+        logger.info(
+            "✅ Prometheus monitoring initialized with starlette-exporter (fallback)"
+        )
+
+    except ImportError:
+        logger.warning(
+            "⚠️ Prometheus monitoring libraries not available - metrics disabled"
+        )
+
+
 # Include routers
 # app.include_router(search.router)
 app.include_router(news_router.router)
 app.include_router(job_router.router)
 app.include_router(eureka_router.router)
+
+EXEMPT_PATHS = set(settings.rate_limit_exempt_endpoints)
+
+
+def _exempt_path(path: str):
+    for route in app.routes:
+        if getattr(route, "path", None) == path and hasattr(route, "endpoint"):
+            limiter.exempt(route.endpoint)
+
+
+for p in EXEMPT_PATHS:
+    _exempt_path(p)
 
 
 @app.get("/")
@@ -379,6 +444,7 @@ async def root():
             "caching": settings.enable_caching,
             "eureka_client": settings.enable_eureka_client,
             "rate_limiting": settings.rate_limit_enabled,
+            "monitoring": True,
         },
     }
 
@@ -482,6 +548,22 @@ async def health_check():
                 "exempt_endpoints": settings.rate_limit_exempt_endpoints,
             }
 
+        # Add monitoring status
+        health_status["components"]["monitoring"] = "enabled"
+        health_status["metrics"]["monitoring"] = {
+            "endpoint": "/metrics",
+            "available": True,
+            "custom_metrics": [
+                "news_ingested_total",
+                "news_processing_duration_seconds",
+                "cache_items_total",
+                "cache_hit_ratio",
+                "database_connections_active",
+                "job_executions_total",
+                "job_duration_seconds",
+            ],
+        }
+
         # Overall health determination
         unhealthy_components = [
             k
@@ -517,6 +599,14 @@ async def health_check():
                 "timestamp": None,
             },
         )
+
+
+@app.get("/metrics/info")
+@limiter.exempt
+async def metrics_info():
+    """Get information about available metrics."""
+    metrics_collector = get_metrics_collector()
+    return metrics_collector.get_metrics_summary()
 
 
 @app.get("/metrics")
@@ -578,6 +668,26 @@ async def get_metrics():
                 "storage": settings.rate_limit_storage_url,
                 "exempt_endpoints": settings.rate_limit_exempt_endpoints,
             }
+
+        # Add monitoring information
+        metrics["monitoring"] = {
+            "prometheus_endpoint": "/metrics",
+            "custom_metrics_available": True,
+            "http_duration_buckets": [
+                0.005,
+                0.01,
+                0.025,
+                0.05,
+                0.1,
+                0.25,
+                0.5,
+                1,
+                2.5,
+                5,
+                10,
+            ],
+            "news_processing_buckets": [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60],
+        }
 
         return metrics
 

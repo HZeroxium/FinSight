@@ -4,7 +4,6 @@
 Configuration management for the news crawler service.
 """
 
-import os
 from typing import List, Optional
 
 from pydantic import Field, field_validator
@@ -15,7 +14,7 @@ class Settings(BaseSettings):
     """Application settings with validation."""
 
     # Service configuration
-    app_name: str = "news-crawler-service"
+    app_name: str = "news-service"
     debug: bool = False
     environment: str = "development"
     host: str = "0.0.0.0"

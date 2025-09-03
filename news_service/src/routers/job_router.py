@@ -9,14 +9,19 @@ from common.logger import LoggerFactory, LoggerType, LogLevel
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
-from ..schemas.job_schemas import (JobConfigModel, JobConfigUpdateRequest,
-                                   JobOperationResponse, JobStartRequest,
-                                   JobStatsModel, JobStatusResponse,
-                                   JobStopRequest, ManualJobRequest,
-                                   ManualJobResponse)
+from ..schemas.job_schemas import (
+    JobConfigModel,
+    JobConfigUpdateRequest,
+    JobOperationResponse,
+    JobStartRequest,
+    JobStatsModel,
+    JobStatusResponse,
+    JobStopRequest,
+    ManualJobRequest,
+    ManualJobResponse,
+)
 from ..services.job_management_service import JobManagementService
-from ..utils.dependencies import (get_job_management_service,
-                                  require_admin_access)
+from ..utils.dependencies import get_job_management_service, require_admin_access
 
 # Initialize router
 router = APIRouter(prefix="/jobs", tags=["job-management"])
